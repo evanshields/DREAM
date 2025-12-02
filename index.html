@@ -1,0 +1,110 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>DreamVision</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Libre+Franklin:wght@400;500;600;700&family=Playfair+Display:wght@500;600;700&display=swap" rel="stylesheet">
+    <style>
+      :root {
+        /* Primary Palette */
+        --color-primary: #28323E;       /* Dark Slate */
+        --color-primary-light: #3C4856; /* Charcoal */
+        --color-primary-dark: #005253;  /* Deep Teal */
+
+        /* Secondary Palette */
+        --color-secondary: #3C4856;     /* Charcoal */
+        --color-secondary-light: #5C6876;
+        --color-secondary-muted: #9DA3AA; /* Muted Gray */
+
+        /* Accent */
+        --color-accent: #58ABA8;        /* Teal */
+        --color-accent-light: #95C9E6;  /* Light Blue/Teal */
+
+        /* Semantic - Main */
+        --color-success: #58ABA8;       /* Teal */
+        --color-warning: #F3B8A7;       /* Coral */
+        --color-danger: #C94A3E;        /* Muted Red */
+        --color-info: #95C9E6;          /* Light Blue */
+
+        /* Semantic - Backgrounds (Subtle) */
+        --color-bg-success: #E6F6F6;
+        --color-bg-warning: #FEF4F2;
+        --color-bg-danger: #FDF2F1;
+        --color-bg-info: #F0F8FC;
+
+        /* Backgrounds */
+        --color-bg-primary: #ffffff;
+        --color-bg-secondary: #f8f7f5;  /* Warm off-white */
+        --color-bg-tertiary: #EBE5DE;   /* Tan tint */
+
+        /* Borders */
+        --color-border: #D6C9BA;        /* Warm Tan */
+      }
+
+      /* Dark Mode Overrides */
+      .dark {
+        /* Primary - Lighter for dark bg */
+        --color-primary: #f8f7f5;       /* Off-white */
+        --color-primary-light: #e2e8f0;
+        --color-primary-dark: #cbd5e1;
+
+        /* Secondary - Text turns light */
+        --color-secondary: #d1d5db;     /* Light Gray */
+        --color-secondary-light: #9ca3af;
+        --color-secondary-muted: #9DA3AA;
+
+        /* Accent */
+        --color-accent: #58ABA8;
+        --color-accent-light: #2B52EF;  /* YinMn Blue */
+
+        /* Semantic - Backgrounds (Dark Mode Translucent) */
+        --color-bg-success: rgba(88, 171, 168, 0.15);
+        --color-bg-warning: rgba(243, 184, 167, 0.15);
+        --color-bg-danger: rgba(201, 74, 62, 0.15);
+        --color-bg-info: rgba(149, 201, 230, 0.15);
+
+        /* Backgrounds */
+        --color-bg-primary: #1e293b;    /* Slate 800 */
+        --color-bg-secondary: #0f172a;  /* Slate 900 */
+        --color-bg-tertiary: #334155;   /* Slate 700 */
+
+        /* Borders */
+        --color-border: #334155;        /* Slate 700 */
+      }
+
+      body {
+        font-family: 'Libre Franklin', sans-serif;
+        background-color: var(--color-bg-secondary);
+        color: var(--color-secondary);
+      }
+
+      h1, h2, h3, h4, h5, h6, .font-heading {
+        font-family: 'Playfair Display', serif;
+      }
+
+      /* Custom Scrollbar */
+      .custom-scrollbar::-webkit-scrollbar {
+        height: 8px;
+        width: 8px;
+      }
+      .custom-scrollbar::-webkit-scrollbar-track {
+        background: transparent;
+      }
+      .custom-scrollbar::-webkit-scrollbar-thumb {
+        background: var(--color-border);
+        border-radius: 4px;
+      }
+      .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+        background: var(--color-secondary-muted);
+      }
+    </style>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

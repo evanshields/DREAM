@@ -1,0 +1,61 @@
+/* Google Fonts fallback import */
+@import url('https://fonts.googleapis.com/css2?family=Libre+Franklin:wght@400;500;600;700&family=Playfair+Display:wght@500;600;700&display=swap');
+
+/* If you have Visby CF and Aleo font files, add @font-face rules here */
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    /* Fonts */
+    --font-heading: 'Visby CF', 'Playfair Display', Georgia, serif;
+    --font-body: 'Aleo', 'Libre Franklin', system-ui, sans-serif;
+
+    /* Primary palette */
+    --color-primary: #28323E;
+    --color-primary-dark: #005253;
+    --color-primary-alt: #3C4856;
+
+    /* Secondary/Accent palette */
+    --color-accent-teal: #58ABA8;
+    --color-accent-blue: #95C9E6;
+    --color-accent-coral: #F3B8A7;
+    --color-accent-tan: #D6C9BA;
+    --color-muted: #9DA3AA;
+
+    /* Semantic colors */
+    --color-success: #58ABA8;
+    --color-warning: #F3B8A7;
+    --color-danger: #C94A3E;
+    --color-info: #95C9E6;
+
+    /* Backgrounds */
+    --color-background-primary: #ffffff;
+    --color-background-secondary: #f8f7f5;
+    --color-background-tertiary: rgba(214, 201, 186, 0.2);
+
+    /* Borders */
+    --color-border-default: #D6C9BA;
+    --color-border-focus: #58ABA8;
+  }
+
+  * {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+  }
+
+  body {
+    font-family: var(--font-body);
+    color: var(--color-primary);
+    background-color: var(--color-background-primary);
+    min-height: 100vh;
+  }
+
+  h1, h2, h3, h4, h5, h6 {
+    font-family: var(--font-heading);
+    color: var(--color-primary);
+  }
+}
