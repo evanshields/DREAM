@@ -1,14 +1,12 @@
 import React, { useState } from 'react';
 import { MOCK_ANALYSIS_DEAL } from '../constants';
-import { Button, Badge, Card, CircularProgress } from '../components/UIComponents';
+import { Button, Badge, Card } from '../components/UIComponents';
 import { 
   Download, Share2, PlusCircle, ChevronDown, ChevronUp, MapPin, 
   Building2, Calendar, TrendingUp, AlertTriangle, CheckCircle2, 
   ShieldAlert, ArrowRight
 } from 'lucide-react';
-import { 
-  PieChart, Pie, Cell, ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip 
-} from 'recharts';
+// recharts import removed - not currently used
 
 const AnalysisView: React.FC = () => {
   const deal = MOCK_ANALYSIS_DEAL;

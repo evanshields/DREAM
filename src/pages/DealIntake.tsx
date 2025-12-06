@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
-import { Card, Button, Badge } from '../components/UIComponents';
-import { UploadCloud, FileText, Check, X, Loader2, ArrowRight } from 'lucide-react';
+import { Card, Button } from '../components/UIComponents';
+import { UploadCloud, FileText, Check, Loader2, ArrowRight } from 'lucide-react';
 
 const DealIntake: React.FC<{ onComplete: () => void }> = ({ onComplete }) => {
   const [dragActive, setDragActive] = useState(false);
