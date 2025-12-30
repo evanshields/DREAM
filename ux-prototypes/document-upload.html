@@ -1,0 +1,531 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Document Upload - DREAM AI</title>
+    <!--
+        UX Prototype: Document Upload Interface
+        Task: 1.8 - Minimal Pro Styled UI
+        PRD Reference: Section 8.2
+        Design Language: Minimal Pro
+        CSS Framework: Tailwind CSS
+        Typography: Libre Franklin (body), Playfair Display (headings)
+        Mobile-first responsive design with 44pt minimum touch targets
+    -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Libre+Franklin:wght@400;500;600;700&family=Playfair+Display:wght@500;600;700&display=swap" rel="stylesheet">
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        primary: {
+                            DEFAULT: '#28323E',
+                            light: '#3C4856',
+                            dark: '#1A1F26',
+                        },
+                        secondary: {
+                            DEFAULT: '#3C4856',
+                            light: '#5C6876',
+                            muted: '#9DA3AA',
+                        },
+                        accent: {
+                            DEFAULT: '#005253',
+                            dark: '#003F3F',
+                            light: '#007A7C',
+                        },
+                        'yinmn-blue': {
+                            DEFAULT: '#2E5090',
+                            dark: '#1E3A6B',
+                            light: '#4A6BA8',
+                        },
+                        background: {
+                            primary: '#FFFFFF',
+                            secondary: '#F8F7F5',
+                            tertiary: '#EBE5DE',
+                        },
+                        border: '#D6C9BA',
+                        brand: {
+                            success: '#58ABA8',
+                            warning: '#F3B8A7',
+                            danger: '#C94A3E',
+                            info: '#95C9E6',
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Libre Franklin', 'sans-serif'],
+                        heading: ['Playfair Display', 'serif'],
+                    },
+                }
+            }
+        }
+    </script>
+    <style>
+        /* Ensure proper font application */
+        body {
+            @apply font-sans text-primary;
+        }
+        h1, h2, h3, h4, h5, h6 {
+            @apply font-heading;
+        }
+    </style>
+</head>
+<body class="bg-background-secondary text-primary">
+    <!-- 
+        NAVIGATION STRUCTURE:
+        - Main app navigation (header)
+        - Breadcrumb: Dashboard > Deal Name > Upload Documents
+        - Drag-and-drop zone
+        - Uploaded files list
+        - Action buttons (Cancel, Extract Data)
+    -->
+
+    <!-- Header Navigation -->
+    <header role="banner" class="sticky top-0 z-40 bg-background-primary border-b border-border shadow-sm">
+        <nav aria-label="Main navigation" class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
+            <h1 class="text-2xl font-heading font-bold text-primary">DREAM AI</h1>
+            <button
+                type="button"
+                aria-label="User menu"
+                class="px-4 py-2 text-sm font-medium text-secondary hover:text-primary hover:bg-background-tertiary rounded-md transition-colors"
+            >
+                User Menu
+            </button>
+        </nav>
+    </header>
+
+    <!-- Main Content -->
+    <main role="main" class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 lg:py-12">
+        <!-- Page Header -->
+        <header class="mb-8">
+            <!-- Breadcrumb -->
+            <nav aria-label="Breadcrumb" class="mb-6">
+                <ol class="flex items-center gap-2 text-sm text-secondary">
+                    <li><a href="/dashboard" class="hover:text-primary hover:underline">Dashboard</a></li>
+                    <li class="text-secondary-muted">/</li>
+                    <li><a href="/deals/oak-creek" class="hover:text-primary hover:underline">Oak Creek Apartments</a></li>
+                    <li class="text-secondary-muted">/</li>
+                    <li aria-current="page" class="text-primary font-medium">Upload Documents</li>
+                </ol>
+            </nav>
+
+            <h1 class="text-4xl font-heading font-bold text-primary mb-2">Upload Documents</h1>
+            <p class="text-lg text-secondary max-w-2xl">Upload documents to extract deal information automatically. Supported formats: PDF, XLSX, XLS, PNG, JPG, DOCX</p>
+        </header>
+
+        <!-- Drag-and-Drop Zone -->
+        <section aria-label="File upload area" class="mb-12">
+            <!--
+                STATE: Empty (default)
+                - Large drag-and-drop zone
+                - File icon
+                - Instructions text
+                - Browse button
+                - File size and format info
+            -->
+            <div
+                role="region"
+                aria-label="Drag and drop zone"
+                class="relative bg-background-primary border-2 border-dashed border-border rounded-lg p-8 sm:p-12 text-center transition-all duration-200 cursor-pointer hover:border-accent hover:bg-background-tertiary"
+                id="dropZone"
+            >
+                <!-- Upload Icon -->
+                <div class="flex justify-center mb-4">
+                    <span aria-hidden="true" class="text-5xl">📁</span>
+                </div>
+
+                <!-- Instructions -->
+                <h2 class="text-2xl font-heading font-semibold text-primary mb-2">Drag and drop files here, or click to browse</h2>
+                <p class="text-base text-secondary mb-3">Supported formats: PDF, XLSX, XLS, PNG, JPG, DOCX</p>
+                <p class="text-sm text-secondary-muted mb-6">Max file size: 50MB per file</p>
+
+                <!-- Browse Button -->
+                <button
+                    type="button"
+                    class="inline-flex items-center px-6 py-3 bg-yinmn-blue text-white font-medium rounded-md hover:bg-yinmn-blue-dark transition-colors focus:ring-2 focus:ring-yinmn-blue focus:ring-offset-2 min-h-[44px]"
+                    onclick="document.getElementById('file-input').click()"
+                >
+                    Browse Files
+                </button>
+
+                <!-- Hidden File Input -->
+                <input
+                    type="file"
+                    id="file-input"
+                    name="files"
+                    multiple
+                    accept=".pdf,.xlsx,.xls,.png,.jpg,.jpeg,.docx"
+                    aria-label="Select files to upload"
+                    class="hidden"
+                />
+            </div>
+
+            <!--
+                STATE: Dragging (when files are dragged over)
+                - Visual feedback: border highlight, background change
+                - Same structure as empty state
+            -->
+            <div
+                role="region"
+                aria-label="Drag and drop zone (active)"
+                aria-live="polite"
+                class="hidden relative bg-background-primary border-2 border-solid border-accent rounded-lg p-8 sm:p-12 text-center bg-accent/5 transition-all duration-200"
+                id="dropZoneActive"
+            >
+                <div class="flex justify-center mb-4">
+                    <span aria-hidden="true" class="text-5xl">📁</span>
+                </div>
+                <h2 class="text-2xl font-heading font-semibold text-accent mb-2">Drop files here</h2>
+                <p class="text-base text-secondary">Release to upload</p>
+            </div>
+        </section>
+
+        <!-- Uploaded Files List -->
+        <section aria-label="Uploaded files" class="mb-8">
+            <h2 class="text-2xl font-heading font-semibold text-primary mb-4">Uploaded Files</h2>
+
+            <!--
+                STATE: Empty (no files uploaded yet)
+            -->
+            <div
+                role="status"
+                aria-live="polite"
+                id="emptyState"
+                class="bg-background-primary border border-border rounded-lg p-6 text-center text-secondary"
+            >
+                <p class="text-base">No files uploaded yet. Drag and drop files above or click Browse Files.</p>
+            </div>
+
+            <!--
+                STATE: Files Uploading/Uploaded
+                - List of files with:
+                  - Filename
+                  - File size
+                  - Document type dropdown (all 22 types)
+                  - Status indicator (uploading, uploaded, error)
+                  - Remove button
+            -->
+            <ul role="list" aria-label="Uploaded files list" class="hidden space-y-3" id="filesList">
+                <!-- File Item 1: Uploading State -->
+                <li role="listitem">
+                    <article class="bg-background-primary border border-border rounded-lg p-4 hover:shadow-md transition-shadow">
+                        <!-- File Icon and Name -->
+                        <div class="flex items-start gap-3 mb-4">
+                            <span aria-hidden="true" class="text-2xl mt-0.5">📄</span>
+                            <div class="flex-1 min-w-0">
+                                <h3 class="text-base font-medium text-primary truncate">Oak_Creek_OM.pdf</h3>
+                                <p class="text-sm text-secondary-muted">2.4 MB</p>
+                            </div>
+                        </div>
+
+                        <!-- Document Type Dropdown -->
+                        <div class="mb-4">
+                            <label for="doc-type-1" class="block text-sm font-medium text-secondary mb-1">Document Type</label>
+                            <select
+                                id="doc-type-1"
+                                name="document_type"
+                                aria-label="Select document type"
+                                class="w-full px-3 py-2 border border-border rounded-md bg-background-primary text-primary text-sm focus:ring-2 focus:ring-yinmn-blue focus:border-transparent"
+                            >
+                                <option value="">Select type...</option>
+                                <option value="OFFERING_MEMORANDUM">Offering Memorandum</option>
+                                <option value="T12_STATEMENT">T-12 Statement</option>
+                                <option value="RENT_ROLL">Rent Roll</option>
+                                <option value="LEASING_REPORT">Leasing Report</option>
+                                <option value="CONCESSIONS_REPORT">Concessions Report</option>
+                                <option value="AGED_RECEIVABLES">Aged Receivables</option>
+                                <option value="CAPITAL_EXPENDITURE_REPORT">Capital Expenditure Report</option>
+                                <option value="LOAN_DOCUMENTS">Loan Documents</option>
+                                <option value="PROPERTY_PHOTO">Property Photo</option>
+                                <option value="SITE_PLAN">Site Plan</option>
+                                <option value="FLOOR_PLAN">Floor Plan</option>
+                                <option value="INSPECTION_REPORT">Inspection Report</option>
+                                <option value="APPRAISAL">Appraisal</option>
+                                <option value="PRIOR_APPRAISAL">Prior Appraisal</option>
+                                <option value="MARKET_STUDY">Market Study</option>
+                                <option value="ENVIRONMENTAL_REPORT">Environmental Report</option>
+                                <option value="TITLE_REPORT">Title Report</option>
+                                <option value="ORIGINAL_PLANS">Original Plans</option>
+                                <option value="CONSTRUCTION_BUDGET">Construction Budget</option>
+                                <option value="PERMITS">Permits</option>
+                                <option value="ENGINEERING_REPORT">Engineering Report</option>
+                                <option value="OTHER">Other</option>
+                            </select>
+                        </div>
+
+                        <!-- Upload Progress -->
+                        <div role="progressbar" aria-valuenow="45" aria-valuemin="0" aria-valuemax="100" aria-label="Upload progress: 45%" class="mb-4">
+                            <div class="bg-background-tertiary rounded-full h-2 mb-1 overflow-hidden">
+                                <div class="bg-yinmn-blue h-2 rounded-full transition-all" style="width: 45%;"></div>
+                            </div>
+                            <p class="text-xs text-secondary-muted">Uploading... 45%</p>
+                        </div>
+
+                        <!-- Status Indicator and Remove Button -->
+                        <div class="flex items-center justify-between">
+                            <span
+                                aria-label="Status: Uploading"
+                                class="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-50 text-yinmn-blue"
+                            >
+                                ⏳ Uploading
+                            </span>
+                            <button
+                                type="button"
+                                aria-label="Remove Oak_Creek_OM.pdf"
+                                class="text-secondary hover:text-primary transition-colors text-sm font-medium"
+                            >
+                                🗑️ Remove
+                            </button>
+                        </div>
+                    </article>
+                </li>
+
+                <!-- File Item 2: Uploaded State -->
+                <li role="listitem">
+                    <article class="bg-background-primary border border-border rounded-lg p-4 hover:shadow-md transition-shadow">
+                        <div class="flex items-start gap-3 mb-4">
+                            <span aria-hidden="true" class="text-2xl mt-0.5">📊</span>
+                            <div class="flex-1 min-w-0">
+                                <h3 class="text-base font-medium text-primary truncate">Oak_Creek_T12.xlsx</h3>
+                                <p class="text-sm text-secondary-muted">1.2 MB</p>
+                            </div>
+                        </div>
+
+                        <div class="mb-4">
+                            <label for="doc-type-2" class="block text-sm font-medium text-secondary mb-1">Document Type</label>
+                            <select
+                                id="doc-type-2"
+                                name="document_type"
+                                aria-label="Select document type"
+                                class="w-full px-3 py-2 border border-border rounded-md bg-background-primary text-primary text-sm focus:ring-2 focus:ring-yinmn-blue focus:border-transparent"
+                            >
+                                <option value="">Select type...</option>
+                                <option value="OFFERING_MEMORANDUM">Offering Memorandum</option>
+                                <option value="T12_STATEMENT" selected>T-12 Statement</option>
+                                <option value="RENT_ROLL">Rent Roll</option>
+                                <option value="LEASING_REPORT">Leasing Report</option>
+                                <option value="CONCESSIONS_REPORT">Concessions Report</option>
+                                <option value="AGED_RECEIVABLES">Aged Receivables</option>
+                                <option value="CAPITAL_EXPENDITURE_REPORT">Capital Expenditure Report</option>
+                                <option value="LOAN_DOCUMENTS">Loan Documents</option>
+                                <option value="PROPERTY_PHOTO">Property Photo</option>
+                                <option value="SITE_PLAN">Site Plan</option>
+                                <option value="FLOOR_PLAN">Floor Plan</option>
+                                <option value="INSPECTION_REPORT">Inspection Report</option>
+                                <option value="APPRAISAL">Appraisal</option>
+                                <option value="PRIOR_APPRAISAL">Prior Appraisal</option>
+                                <option value="MARKET_STUDY">Market Study</option>
+                                <option value="ENVIRONMENTAL_REPORT">Environmental Report</option>
+                                <option value="TITLE_REPORT">Title Report</option>
+                                <option value="ORIGINAL_PLANS">Original Plans</option>
+                                <option value="CONSTRUCTION_BUDGET">Construction Budget</option>
+                                <option value="PERMITS">Permits</option>
+                                <option value="ENGINEERING_REPORT">Engineering Report</option>
+                                <option value="OTHER">Other</option>
+                            </select>
+                        </div>
+
+                        <div class="flex items-center justify-between">
+                            <span
+                                aria-label="Status: Uploaded"
+                                class="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-50 text-brand-success"
+                            >
+                                ✓ Uploaded
+                            </span>
+                            <button
+                                type="button"
+                                aria-label="Remove Oak_Creek_T12.xlsx"
+                                class="text-secondary hover:text-primary transition-colors text-sm font-medium"
+                            >
+                                🗑️ Remove
+                            </button>
+                        </div>
+                    </article>
+                </li>
+
+                <!-- File Item 3: Uploaded State (Another file) -->
+                <li role="listitem">
+                    <article class="bg-background-primary border border-border rounded-lg p-4 hover:shadow-md transition-shadow">
+                        <div class="flex items-start gap-3 mb-4">
+                            <span aria-hidden="true" class="text-2xl mt-0.5">📊</span>
+                            <div class="flex-1 min-w-0">
+                                <h3 class="text-base font-medium text-primary truncate">Oak_Creek_RentRoll.xlsx</h3>
+                                <p class="text-sm text-secondary-muted">856 KB</p>
+                            </div>
+                        </div>
+
+                        <div class="mb-4">
+                            <label for="doc-type-3" class="block text-sm font-medium text-secondary mb-1">Document Type</label>
+                            <select
+                                id="doc-type-3"
+                                name="document_type"
+                                aria-label="Select document type"
+                                class="w-full px-3 py-2 border border-border rounded-md bg-background-primary text-primary text-sm focus:ring-2 focus:ring-yinmn-blue focus:border-transparent"
+                            >
+                                <option value="">Select type...</option>
+                                <option value="OFFERING_MEMORANDUM">Offering Memorandum</option>
+                                <option value="T12_STATEMENT">T-12 Statement</option>
+                                <option value="RENT_ROLL" selected>Rent Roll</option>
+                                <option value="LEASING_REPORT">Leasing Report</option>
+                                <option value="CONCESSIONS_REPORT">Concessions Report</option>
+                                <option value="AGED_RECEIVABLES">Aged Receivables</option>
+                                <option value="CAPITAL_EXPENDITURE_REPORT">Capital Expenditure Report</option>
+                                <option value="LOAN_DOCUMENTS">Loan Documents</option>
+                                <option value="PROPERTY_PHOTO">Property Photo</option>
+                                <option value="SITE_PLAN">Site Plan</option>
+                                <option value="FLOOR_PLAN">Floor Plan</option>
+                                <option value="INSPECTION_REPORT">Inspection Report</option>
+                                <option value="APPRAISAL">Appraisal</option>
+                                <option value="PRIOR_APPRAISAL">Prior Appraisal</option>
+                                <option value="MARKET_STUDY">Market Study</option>
+                                <option value="ENVIRONMENTAL_REPORT">Environmental Report</option>
+                                <option value="TITLE_REPORT">Title Report</option>
+                                <option value="ORIGINAL_PLANS">Original Plans</option>
+                                <option value="CONSTRUCTION_BUDGET">Construction Budget</option>
+                                <option value="PERMITS">Permits</option>
+                                <option value="ENGINEERING_REPORT">Engineering Report</option>
+                                <option value="OTHER">Other</option>
+                            </select>
+                        </div>
+
+                        <div class="flex items-center justify-between">
+                            <span
+                                aria-label="Status: Uploaded"
+                                class="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-50 text-brand-success"
+                            >
+                                ✓ Uploaded
+                            </span>
+                            <button
+                                type="button"
+                                aria-label="Remove Oak_Creek_RentRoll.xlsx"
+                                class="text-secondary hover:text-primary transition-colors text-sm font-medium"
+                            >
+                                🗑️ Remove
+                            </button>
+                        </div>
+                    </article>
+                </li>
+
+                <!-- File Item 4: Error State -->
+                <li role="listitem">
+                    <article class="bg-background-primary border-2 border-brand-danger rounded-lg p-4 bg-red-50">
+                        <div class="flex items-start gap-3 mb-4">
+                            <span aria-hidden="true" class="text-2xl mt-0.5">📄</span>
+                            <div class="flex-1 min-w-0">
+                                <h3 class="text-base font-medium text-primary truncate">invalid_file.exe</h3>
+                                <p class="text-sm text-secondary-muted">12.5 MB</p>
+                            </div>
+                        </div>
+
+                        <div class="mb-4 opacity-50">
+                            <label for="doc-type-4" class="block text-sm font-medium text-secondary mb-1">Document Type</label>
+                            <select
+                                id="doc-type-4"
+                                name="document_type"
+                                aria-label="Select document type"
+                                class="w-full px-3 py-2 border border-border rounded-md bg-background-primary text-primary text-sm cursor-not-allowed"
+                                disabled
+                            >
+                                <option value="">Select type...</option>
+                            </select>
+                        </div>
+
+                        <!-- Error Message -->
+                        <div role="alert" class="mb-4">
+                            <div class="flex items-start gap-2">
+                                <span aria-hidden="true" class="text-lg">❌</span>
+                                <div>
+                                    <p class="font-medium text-brand-danger">Error</p>
+                                    <p class="text-sm text-brand-danger mt-1">File type not supported. Please upload PDF, XLSX, XLS, PNG, JPG, or DOCX files.</p>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="flex justify-end">
+                            <button
+                                type="button"
+                                aria-label="Remove invalid_file.exe"
+                                class="text-secondary hover:text-primary transition-colors text-sm font-medium"
+                            >
+                                🗑️ Remove
+                            </button>
+                        </div>
+                    </article>
+                </li>
+            </ul>
+        </section>
+
+        <!-- Action Buttons -->
+        <section aria-label="Form actions" class="mb-8 border-t border-border pt-8">
+            <!-- Button group -->
+            <div class="flex flex-col sm:flex-row gap-3 sm:gap-4 mb-4">
+                <button
+                    type="button"
+                    class="px-6 py-3 border border-border bg-background-primary text-secondary hover:text-primary hover:bg-background-tertiary font-medium rounded-md transition-colors min-h-[44px]"
+                >
+                    Cancel
+                </button>
+                <button
+                    type="button"
+                    disabled
+                    class="px-6 py-3 bg-yinmn-blue text-white font-medium rounded-md hover:bg-yinmn-blue-dark transition-colors disabled:opacity-50 disabled:cursor-not-allowed min-h-[44px]"
+                >
+                    Extract Data →
+                </button>
+            </div>
+
+            <!--
+                STATE: Files ready for extraction
+                - Extract Data button enabled
+                - Shows count of files ready
+            -->
+            <div role="status" aria-live="polite" class="hidden" id="filesReadyStatus">
+                <p class="text-sm text-secondary">3 files ready for extraction</p>
+            </div>
+        </section>
+
+        <!--
+            STATE: Extraction in progress (after clicking Extract Data)
+            - Loading indicator
+            - Progress message
+            - Cancel extraction button
+        -->
+        <section aria-label="Extraction progress" class="hidden" id="extractionProgressSection">
+            <div role="status" aria-live="polite" class="bg-background-primary border border-border rounded-lg p-8 text-center">
+                <div class="flex justify-center mb-4">
+                    <span aria-hidden="true" class="text-4xl animate-spin">⏳</span>
+                </div>
+                <h2 class="text-2xl font-heading font-semibold text-primary mb-2">Extracting Data...</h2>
+                <p class="text-base text-secondary mb-6">Processing 3 documents. This may take up to 45 seconds.</p>
+
+                <div role="progressbar" aria-valuenow="60" aria-valuemin="0" aria-valuemax="100" aria-label="Extraction progress: 60%" class="mb-6">
+                    <div class="bg-background-tertiary rounded-full h-2 mb-2 overflow-hidden">
+                        <div class="bg-yinmn-blue h-2 rounded-full transition-all" style="width: 60%;"></div>
+                    </div>
+                    <p class="text-sm text-secondary-muted">60% complete</p>
+                </div>
+
+                <button
+                    type="button"
+                    class="px-6 py-3 border border-border bg-background-primary text-secondary hover:text-primary hover:bg-background-tertiary font-medium rounded-md transition-colors min-h-[44px]"
+                >
+                    Cancel Extraction
+                </button>
+            </div>
+        </section>
+    </main>
+
+    <!-- Footer -->
+    <footer role="contentinfo" class="border-t border-border bg-background-secondary mt-16 py-8">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <p class="text-sm text-secondary-muted">&copy; 2025 DREAM AI. All rights reserved.</p>
+        </div>
+    </footer>
+</body>
+</html>
+
+
+

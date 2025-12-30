@@ -1,0 +1,381 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DREAM AI - Swiss/International Style</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Helvetica+Neue:wght@300;400;500;700&display=swap" rel="stylesheet">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        :root {
+            --primary: #000000;
+            --accent: #E63946;
+            --bg: #FFFFFF;
+            --border: #000000;
+        }
+
+        body {
+            font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
+            background-color: var(--bg);
+            color: var(--primary);
+            line-height: 1.4;
+        }
+
+        /* Swiss Grid System */
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 60px 40px;
+        }
+
+        /* Header - Minimal */
+        .header {
+            border-bottom: 2px solid var(--primary);
+            padding-bottom: 40px;
+            margin-bottom: 60px;
+        }
+
+        .logo {
+            font-size: 48px;
+            font-weight: 700;
+            letter-spacing: -1px;
+            text-transform: uppercase;
+        }
+
+        .nav {
+            margin-top: 20px;
+            display: flex;
+            gap: 40px;
+        }
+
+        .nav a {
+            color: var(--primary);
+            text-decoration: none;
+            font-size: 14px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            font-weight: 500;
+        }
+
+        .nav a.active {
+            color: var(--accent);
+        }
+
+        /* Typography - Precise Swiss Style */
+        h1 {
+            font-size: 72px;
+            font-weight: 700;
+            line-height: 1.1;
+            margin-bottom: 20px;
+            text-transform: uppercase;
+            letter-spacing: -2px;
+        }
+
+        h2 {
+            font-size: 36px;
+            font-weight: 700;
+            line-height: 1.2;
+            margin-bottom: 30px;
+            text-transform: uppercase;
+            letter-spacing: -1px;
+        }
+
+        h3 {
+            font-size: 24px;
+            font-weight: 500;
+            margin-bottom: 20px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .body-text {
+            font-size: 16px;
+            line-height: 1.6;
+            font-weight: 300;
+        }
+
+        /* Asymmetric Grid */
+        .swiss-grid {
+            display: grid;
+            grid-template-columns: 2fr 1fr;
+            gap: 60px;
+            margin-bottom: 60px;
+        }
+
+        .swiss-grid-3 {
+            display: grid;
+            grid-template-columns: 1fr 1fr 1fr;
+            gap: 40px;
+            margin-bottom: 60px;
+        }
+
+        /* Data Section */
+        .data-box {
+            border: 2px solid var(--primary);
+            padding: 40px;
+            background: white;
+        }
+
+        .data-box.accent {
+            background: var(--accent);
+            color: white;
+            border-color: var(--accent);
+        }
+
+        .metric-swiss {
+            margin-bottom: 30px;
+        }
+
+        .metric-label-swiss {
+            font-size: 11px;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            font-weight: 700;
+            margin-bottom: 10px;
+        }
+
+        .metric-value-swiss {
+            font-size: 64px;
+            font-weight: 700;
+            line-height: 1;
+            font-variant-numeric: tabular-nums;
+        }
+
+        /* Table - Swiss Grid */
+        .table-swiss {
+            border-collapse: collapse;
+            width: 100%;
+            margin-bottom: 60px;
+        }
+
+        .table-swiss th {
+            text-align: left;
+            font-size: 11px;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            font-weight: 700;
+            padding: 20px 0;
+            border-bottom: 2px solid var(--primary);
+        }
+
+        .table-swiss td {
+            padding: 20px 0;
+            border-bottom: 1px solid var(--primary);
+            font-size: 16px;
+            font-weight: 300;
+        }
+
+        .table-swiss th.right,
+        .table-swiss td.right {
+            text-align: right;
+            font-variant-numeric: tabular-nums;
+        }
+
+        /* Buttons */
+        .btn-swiss {
+            background: var(--primary);
+            color: white;
+            border: none;
+            padding: 20px 40px;
+            font-size: 14px;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            font-weight: 700;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+
+        .btn-swiss:hover {
+            background: var(--accent);
+        }
+
+        .btn-swiss-outline {
+            background: transparent;
+            color: var(--primary);
+            border: 2px solid var(--primary);
+            padding: 18px 38px;
+            font-size: 14px;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            font-weight: 700;
+            cursor: pointer;
+        }
+
+        .btn-swiss-outline:hover {
+            background: var(--primary);
+            color: white;
+        }
+
+        /* Color Blocks */
+        .color-blocks {
+            display: flex;
+            gap: 0;
+            margin-bottom: 60px;
+        }
+
+        .color-block {
+            flex: 1;
+            padding: 60px 40px;
+            border-right: 2px solid white;
+        }
+
+        .color-block:last-child {
+            border-right: none;
+        }
+
+        .color-block.black {
+            background: #000000;
+            color: white;
+        }
+
+        .color-block.red {
+            background: #E63946;
+            color: white;
+        }
+
+        .color-block.white {
+            background: #FFFFFF;
+            color: black;
+            border: 2px solid black;
+        }
+
+        /* Chart - Minimalist */
+        .chart-container-swiss {
+            border: 2px solid var(--primary);
+            padding: 40px;
+            margin-bottom: 60px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- Header -->
+        <header class="header">
+            <div class="logo">DREAM.AI</div>
+            <nav class="nav">
+                <a href="#">Dashboard</a>
+                <a href="#">Pipeline</a>
+                <a href="#" class="active">Analysis</a>
+                <a href="#">Upload</a>
+            </nav>
+        </header>
+
+        <!-- Title -->
+        <h1>SWISS / INTERNATIONAL<br>STYLE</h1>
+        <p class="body-text" style="max-width: 600px; margin-bottom: 60px;">
+            Precise grid-based layouts. Helvetica typography. Maximum clarity through asymmetric composition and whitespace.
+        </p>
+
+        <!-- Color Palette -->
+        <div class="color-blocks">
+            <div class="color-block black">
+                <div style="font-size: 11px; text-transform: uppercase; letter-spacing: 2px; margin-bottom: 10px;">Black</div>
+                <div style="font-size: 32px; font-weight: 700;">#000000</div>
+            </div>
+            <div class="color-block red">
+                <div style="font-size: 11px; text-transform: uppercase; letter-spacing: 2px; margin-bottom: 10px;">Red Accent</div>
+                <div style="font-size: 32px; font-weight: 700;">#E63946</div>
+            </div>
+            <div class="color-block white">
+                <div style="font-size: 11px; text-transform: uppercase; letter-spacing: 2px; margin-bottom: 10px;">White</div>
+                <div style="font-size: 32px; font-weight: 700;">#FFFFFF</div>
+            </div>
+        </div>
+
+        <!-- Asymmetric Grid with Metrics -->
+        <h2>KEY METRICS</h2>
+        <div class="swiss-grid">
+            <div>
+                <div class="data-box accent">
+                    <div class="metric-swiss">
+                        <div class="metric-label-swiss">IRR</div>
+                        <div class="metric-value-swiss">18.5%</div>
+                    </div>
+                </div>
+            </div>
+            <div>
+                <div class="data-box">
+                    <div class="metric-swiss">
+                        <div class="metric-label-swiss">Equity Multiple</div>
+                        <div class="metric-value-swiss">2.1x</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="swiss-grid-3">
+            <div class="data-box">
+                <div class="metric-swiss">
+                    <div class="metric-label-swiss">Cap Rate</div>
+                    <div class="metric-value-swiss">5.8%</div>
+                </div>
+            </div>
+            <div class="data-box">
+                <div class="metric-label-swiss">Purchase Price</div>
+                <div class="metric-value-swiss" style="font-size: 36px;">$8.5M</div>
+            </div>
+            <div class="data-box">
+                <div class="metric-label-swiss">Deal Score</div>
+                <div class="metric-value-swiss">87</div>
+            </div>
+        </div>
+
+        <!-- Data Table -->
+        <h2>DEAL PIPELINE</h2>
+        <table class="table-swiss">
+            <thead>
+                <tr>
+                    <th>PROPERTY</th>
+                    <th>MARKET</th>
+                    <th class="right">UNITS</th>
+                    <th class="right">PRICE</th>
+                    <th class="right">IRR</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td>Sunset Gardens</td>
+                    <td>Austin, TX</td>
+                    <td class="right">156</td>
+                    <td class="right">$8,500,000</td>
+                    <td class="right">18.5%</td>
+                </tr>
+                <tr>
+                    <td>Oak Ridge Apartments</td>
+                    <td>Dallas, TX</td>
+                    <td class="right">224</td>
+                    <td class="right">$14,200,000</td>
+                    <td class="right">16.8%</td>
+                </tr>
+                <tr>
+                    <td>Metro Plaza</td>
+                    <td>Phoenix, AZ</td>
+                    <td class="right">88</td>
+                    <td class="right">$5,100,000</td>
+                    <td class="right">15.2%</td>
+                </tr>
+                <tr>
+                    <td>Riverside Commons</td>
+                    <td>Nashville, TN</td>
+                    <td class="right">192</td>
+                    <td class="right">$11,800,000</td>
+                    <td class="right">17.3%</td>
+                </tr>
+            </tbody>
+        </table>
+
+        <!-- Buttons -->
+        <div style="display: flex; gap: 20px;">
+            <button class="btn-swiss">ANALYZE NEW DEAL</button>
+            <button class="btn-swiss-outline">VIEW REPORTS</button>
+        </div>
+    </div>
+</body>
+</html>

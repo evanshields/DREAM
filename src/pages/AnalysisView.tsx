@@ -1,21 +1,26 @@
 import React, { useState } from 'react';
 import { MOCK_ANALYSIS_DEAL } from '../constants';
-import { Button, Badge, Card, CircularProgress } from '../components/UIComponents';
+import { Button, Badge, Card } from '../components/UIComponents';
+import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@/components/ui/table';
 import { 
   Download, Share2, PlusCircle, ChevronDown, ChevronUp, MapPin, 
   Building2, Calendar, TrendingUp, AlertTriangle, CheckCircle2, 
   ShieldAlert, ArrowRight
 } from 'lucide-react';
-import { 
-  PieChart, Pie, Cell, ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip 
-} from 'recharts';
 
 const AnalysisView: React.FC = () => {
   const deal = MOCK_ANALYSIS_DEAL;
-  const [expandedSection, setExpandedSection] = useState<string | null>('financial');
+  const [expandedSection, setExpandedSection] = useState<string | null>('overview');
 
   const toggleSection = (id: string) => {
     setExpandedSection(expandedSection === id ? null : id);
+    // Smooth scroll to section
+    setTimeout(() => {
+      const element = document.getElementById(`section-${id}`);
+      if (element) {
+        element.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }
+    }, 100);
   };
 
   const MetricCard = ({ label, value, subtext, subtextColor = 'text-brand-success' }: { label: string, value: string, subtext: string, subtextColor?: string }) => (
@@ -37,8 +42,10 @@ const AnalysisView: React.FC = () => {
     return (
       <div className="border border-border rounded-lg bg-background-primary mb-4 overflow-hidden shadow-sm">
         <button 
-          className={`w-full px-6 py-4 flex items-center justify-between bg-background-primary hover:bg-background-tertiary transition-colors ${isOpen ? 'border-b border-border' : ''}`}
+          className={`w-full px-6 py-4 flex items-center justify-between bg-background-primary hover:bg-background-tertiary transition-colors focus:outline-none focus:ring-2 focus:ring-primary ${isOpen ? 'border-b border-border' : ''}`}
           onClick={() => toggleSection(id)}
+          aria-expanded={isOpen}
+          aria-controls={`section-${id}`}
         >
           <div className="flex items-center space-x-3">
             <div className={`p-2 rounded-md ${isOpen ? 'bg-[#005253] text-white' : 'bg-background-tertiary text-secondary'}`}>
@@ -49,7 +56,7 @@ const AnalysisView: React.FC = () => {
           {isOpen ? <ChevronUp className="w-5 h-5 text-secondary-muted" /> : <ChevronDown className="w-5 h-5 text-secondary-muted" />}
         </button>
         {isOpen && (
-          <div className="p-6 bg-background-primary animate-in fade-in slide-in-from-top-2 duration-200">
+          <div id={`section-${id}`} className="p-6 bg-background-primary animate-in fade-in slide-in-from-top-2 duration-200">
             {children}
           </div>
         )}
@@ -137,39 +144,40 @@ const AnalysisView: React.FC = () => {
         <div className="lg:col-span-3 space-y-4">
           
           <AccordionItem id="overview" title="Property Overview" icon={Building2}>
+            <div id="section-overview">
              <div className="grid grid-cols-2 gap-x-8 gap-y-4 mb-6">
                 <div>
                   <h4 className="text-xs font-semibold text-secondary-muted uppercase mb-1">Unit Mix</h4>
-                  <table className="w-full text-sm text-left">
-                    <thead>
-                      <tr className="border-b border-border text-xs text-secondary-muted">
-                        <th className="py-2 font-medium">Type</th>
-                        <th className="py-2 font-medium">Count</th>
-                        <th className="py-2 font-medium">Sq Ft</th>
-                        <th className="py-2 font-medium">Rent</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      <tr className="border-b border-border">
-                        <td className="py-2 text-secondary">1 Bed / 1 Bath</td>
-                        <td className="py-2 text-secondary">96</td>
-                        <td className="py-2 text-secondary">750</td>
-                        <td className="py-2 text-secondary">$1,250</td>
-                      </tr>
-                      <tr className="border-b border-border">
-                        <td className="py-2 text-secondary">2 Bed / 2 Bath</td>
-                        <td className="py-2 text-secondary">112</td>
-                        <td className="py-2 text-secondary">1,050</td>
-                        <td className="py-2 text-secondary">$1,550</td>
-                      </tr>
-                      <tr>
-                        <td className="py-2 text-secondary">3 Bed / 2 Bath</td>
-                        <td className="py-2 text-secondary">40</td>
-                        <td className="py-2 text-secondary">1,300</td>
-                        <td className="py-2 text-secondary">$1,850</td>
-                      </tr>
-                    </tbody>
-                  </table>
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Type</TableHead>
+                        <TableHead>Count</TableHead>
+                        <TableHead>Sq Ft</TableHead>
+                        <TableHead>Rent</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      <TableRow>
+                        <TableCell>1 Bed / 1 Bath</TableCell>
+                        <TableCell className="tabular-nums">96</TableCell>
+                        <TableCell className="tabular-nums">750</TableCell>
+                        <TableCell className="tabular-nums">$1,250</TableCell>
+                      </TableRow>
+                      <TableRow>
+                        <TableCell>2 Bed / 2 Bath</TableCell>
+                        <TableCell className="tabular-nums">112</TableCell>
+                        <TableCell className="tabular-nums">1,050</TableCell>
+                        <TableCell className="tabular-nums">$1,550</TableCell>
+                      </TableRow>
+                      <TableRow>
+                        <TableCell>3 Bed / 2 Bath</TableCell>
+                        <TableCell className="tabular-nums">40</TableCell>
+                        <TableCell className="tabular-nums">1,300</TableCell>
+                        <TableCell className="tabular-nums">$1,850</TableCell>
+                      </TableRow>
+                    </TableBody>
+                  </Table>
                 </div>
                 <div>
                    <h4 className="text-xs font-semibold text-secondary-muted uppercase mb-2">Key Characteristics</h4>
@@ -192,9 +200,11 @@ const AnalysisView: React.FC = () => {
                    </ul>
                 </div>
              </div>
+            </div>
           </AccordionItem>
 
           <AccordionItem id="financial" title="Financial Analysis" icon={TrendingUp}>
+            <div id="section-financial">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
               <div>
                 <h4 className="text-sm font-semibold text-secondary mb-3">Sources & Uses</h4>
@@ -230,42 +240,50 @@ const AnalysisView: React.FC = () => {
 
               <div>
                 <h4 className="text-sm font-semibold text-secondary mb-3">Price Sensitivity (IRR)</h4>
-                <table className="w-full text-sm text-center">
-                  <thead>
-                     <tr className="text-xs text-secondary-muted bg-background-tertiary">
-                       <th className="py-2 rounded-l">Purchase Price</th>
-                       <th className="py-2">$/Unit</th>
-                       <th className="py-2">IRR</th>
-                       <th className="py-2 rounded-r">Rec</th>
-                     </tr>
-                  </thead>
-                  <tbody className="divide-y divide-border">
-                    <tr className="hover:bg-background-tertiary transition-colors">
-                      <td className="py-2 text-secondary">$37.0M (+5%)</td>
-                      <td className="py-2 text-secondary-muted">$149k</td>
-                      <td className="py-2 text-secondary font-medium">16.1%</td>
-                      <td className="py-2"><span className="text-brand-success font-medium text-xs">BUY</span></td>
-                    </tr>
-                    {/* Highlighted Row - Use semantic primary-dark text as it contrasts well in both modes (dark teal on light, light gray on dark) */}
-                    <tr className="bg-primary-dark/5 dark:bg-primary-dark/20 font-semibold">
-                      <td className="py-2 text-primary-dark border-l-2 border-primary-dark">$35.3M (Ask)</td>
-                      <td className="py-2 text-primary-dark">$142k</td>
-                      <td className="py-2 text-primary-dark">18.5%</td>
-                      <td className="py-2"><span className="text-brand-success font-bold text-xs">STRONG</span></td>
-                    </tr>
-                    <tr className="hover:bg-background-tertiary transition-colors">
-                      <td className="py-2 text-secondary">$33.5M (-5%)</td>
-                      <td className="py-2 text-secondary-muted">$135k</td>
-                      <td className="py-2 text-secondary font-medium">21.2%</td>
-                      <td className="py-2"><span className="text-brand-success font-bold text-xs">UNICORN</span></td>
-                    </tr>
-                  </tbody>
-                </table>
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead className="text-center">Purchase Price</TableHead>
+                      <TableHead className="text-center">$/Unit</TableHead>
+                      <TableHead className="text-center">IRR</TableHead>
+                      <TableHead className="text-center">Rec</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    <TableRow>
+                      <TableCell className="text-center">$37.0M (+5%)</TableCell>
+                      <TableCell className="text-center text-secondary-muted tabular-nums">$149k</TableCell>
+                      <TableCell className="text-center font-medium tabular-nums">16.1%</TableCell>
+                      <TableCell className="text-center">
+                        <Badge variant="success" className="text-xs">BUY</Badge>
+                      </TableCell>
+                    </TableRow>
+                    {/* Highlighted Row */}
+                    <TableRow className="bg-[#005253]/5 dark:bg-[#005253]/20 font-semibold">
+                      <TableCell className="text-[#005253] border-l-2 border-[#005253]">$35.3M (Ask)</TableCell>
+                      <TableCell className="text-[#005253] tabular-nums">$142k</TableCell>
+                      <TableCell className="text-[#005253] tabular-nums">18.5%</TableCell>
+                      <TableCell className="text-center">
+                        <Badge variant="success" className="text-xs font-bold">STRONG</Badge>
+                      </TableCell>
+                    </TableRow>
+                    <TableRow>
+                      <TableCell className="text-center">$33.5M (-5%)</TableCell>
+                      <TableCell className="text-center text-secondary-muted tabular-nums">$135k</TableCell>
+                      <TableCell className="text-center font-medium tabular-nums">21.2%</TableCell>
+                      <TableCell className="text-center">
+                        <Badge variant="success" className="text-xs font-bold">UNICORN</Badge>
+                      </TableCell>
+                    </TableRow>
+                  </TableBody>
+                </Table>
               </div>
+            </div>
             </div>
           </AccordionItem>
 
           <AccordionItem id="risk" title="Risk Assessment" icon={ShieldAlert}>
+            <div id="section-risk">
             <div className="flex gap-6 mb-4">
               <div className="w-1/4 bg-brand-bg-danger p-4 rounded-lg border border-brand-danger/20">
                 <div className="text-xs font-semibold text-brand-danger uppercase mb-1">Overall Risk Score</div>
@@ -296,6 +314,7 @@ const AnalysisView: React.FC = () => {
                 </div>
               </div>
             </div>
+            </div>
           </AccordionItem>
 
         </div>
@@ -307,12 +326,40 @@ const AnalysisView: React.FC = () => {
             {/* Nav */}
             <div className="bg-background-primary rounded-lg border border-border shadow-sm p-4">
               <h4 className="text-xs font-bold text-secondary-muted uppercase tracking-wider mb-3">Quick Navigation</h4>
-              <nav className="space-y-1">
-                <button onClick={() => setExpandedSection('overview')} className="w-full text-left px-2 py-1.5 text-sm text-secondary hover:bg-background-tertiary rounded transition-colors">Property Overview</button>
-                {/* Updated Active State to use fixed Deep Teal text and subtle background */}
-                <button onClick={() => setExpandedSection('financial')} className="w-full text-left px-2 py-1.5 text-sm text-[#005253] dark:text-accent font-medium bg-[#005253]/10 rounded transition-colors border-l-2 border-[#005253] dark:border-accent pl-1.5">Financial Analysis</button>
-                <button onClick={() => setExpandedSection('market')} className="w-full text-left px-2 py-1.5 text-sm text-secondary hover:bg-background-tertiary rounded transition-colors">Market Research</button>
-                <button onClick={() => setExpandedSection('risk')} className="w-full text-left px-2 py-1.5 text-sm text-secondary hover:bg-background-tertiary rounded transition-colors">Risk Assessment</button>
+              <nav className="space-y-1" aria-label="Section navigation">
+                <button 
+                  onClick={() => toggleSection('overview')} 
+                  className={`w-full text-left px-2 py-1.5 text-sm rounded transition-colors focus:outline-none focus:ring-2 focus:ring-primary ${
+                    expandedSection === 'overview' 
+                      ? 'text-[#005253] dark:text-accent font-medium bg-[#005253]/10 border-l-2 border-[#005253] dark:border-accent pl-1.5' 
+                      : 'text-secondary hover:bg-background-tertiary'
+                  }`}
+                  aria-current={expandedSection === 'overview' ? 'true' : undefined}
+                >
+                  Property Overview
+                </button>
+                <button 
+                  onClick={() => toggleSection('financial')} 
+                  className={`w-full text-left px-2 py-1.5 text-sm rounded transition-colors focus:outline-none focus:ring-2 focus:ring-primary ${
+                    expandedSection === 'financial' 
+                      ? 'text-[#005253] dark:text-accent font-medium bg-[#005253]/10 border-l-2 border-[#005253] dark:border-accent pl-1.5' 
+                      : 'text-secondary hover:bg-background-tertiary'
+                  }`}
+                  aria-current={expandedSection === 'financial' ? 'true' : undefined}
+                >
+                  Financial Analysis
+                </button>
+                <button 
+                  onClick={() => toggleSection('risk')} 
+                  className={`w-full text-left px-2 py-1.5 text-sm rounded transition-colors focus:outline-none focus:ring-2 focus:ring-primary ${
+                    expandedSection === 'risk' 
+                      ? 'text-[#005253] dark:text-accent font-medium bg-[#005253]/10 border-l-2 border-[#005253] dark:border-accent pl-1.5' 
+                      : 'text-secondary hover:bg-background-tertiary'
+                  }`}
+                  aria-current={expandedSection === 'risk' ? 'true' : undefined}
+                >
+                  Risk Assessment
+                </button>
               </nav>
             </div>
 

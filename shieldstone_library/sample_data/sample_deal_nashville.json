@@ -1,0 +1,63 @@
+{
+  "property_name": "Riverbend Commons",
+  "address": "1200 Music Row",
+  "city": "Nashville",
+  "state": "TN",
+  "county": "Davidson",
+  "zip_code": "37203",
+  "year_built": 2015,
+  "unit_count": 200,
+  "property_class": "A",
+  
+  "purchase_price": 45000000,
+  "current_noi": 2850000,
+  "current_occupancy": 0.92,
+  "current_avg_rent": 1650,
+  "current_assessed_value": 38000000,
+  "current_annual_taxes": 285000,
+  
+  "market_tier": "secondary",
+  "submarket_type": "primary",
+  
+  "renovation_scope": "light",
+  "renovation_cost_per_unit": 8500,
+  "renovation_cost_total": 1700000,
+  "renovation_duration_months": 12,
+  
+  "target_stabilized_noi": 3200000,
+  "target_stabilized_occupancy": 0.96,
+  "target_avg_rent": 1750,
+  
+  "financing": {
+    "ltv": 0.65,
+    "interest_rate": 0.0550,
+    "io_period_months": 30,
+    "loan_term_years": 5,
+    "amortization_years": 30
+  },
+  
+  "projected_returns": {
+    "levered_irr": 0.165,
+    "stabilized_coc": 0.082,
+    "equity_multiple": 1.68,
+    "net_investor_irr": 0.145
+  },
+  
+  "screening_flags": {
+    "structural_issues": false,
+    "environmental_contamination": false,
+    "severe_flood_zone": false,
+    "code_violations_unresolved": false,
+    "high_crime_area": false,
+    "population_declining": false,
+    "single_employer_risk": false,
+    "title_defects": false,
+    "active_litigation": false,
+    "zoning_nonconformance": false
+  },
+  
+  "deferred_maintenance_per_unit": 1200,
+  "floating_rate_debt": false,
+  "market_distressed": false
+}
+

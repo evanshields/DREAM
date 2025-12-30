@@ -1,0 +1,774 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Manual Entry Form - DREAM AI</title>
+    <!-- 
+        UX Prototype: Manual Entry Form (Quick Add)
+        Task: 1.2
+        PRD Reference: Section 5.1
+        No CSS - Pure semantic HTML only
+        Mobile-first design (44pt minimum touch targets)
+    -->
+    <script>
+        // Set dynamic max year for year built field (evergreen)
+        document.addEventListener('DOMContentLoaded', function() {
+            const yearBuiltInput = document.getElementById('year-built');
+            if (yearBuiltInput) {
+                const currentYear = new Date().getFullYear();
+                yearBuiltInput.setAttribute('max', currentYear.toString());
+                yearBuiltInput.setAttribute('placeholder', `1800-${currentYear}`);
+            }
+        });
+    </script>
+</head>
+<body>
+    <!-- 
+        NAVIGATION STRUCTURE:
+        - Main app navigation (header)
+        - Breadcrumb: Dashboard > New Deal > Manual Entry
+        - Form sections with progress indicator
+        - Submit/Cancel actions in footer
+    -->
+
+    <!-- Header Navigation -->
+    <header role="banner">
+        <nav aria-label="Main navigation">
+            <!-- ShadCN Component: Will use NavigationMenu or Sheet (mobile) -->
+            <h1>DREAM AI</h1>
+            <button type="button" aria-label="User menu">
+                <!-- ShadCN Component: DropdownMenu for user menu -->
+                User Menu
+            </button>
+        </nav>
+    </header>
+
+    <!-- Main Content -->
+    <main role="main">
+        <!-- Page Header -->
+        <header>
+            <h2>New Deal - Manual Entry</h2>
+            <p>Quick Add: Enter basic deal information manually</p>
+        </header>
+
+        <!-- Form Progress Indicator -->
+        <!-- ShadCN Component: Progress or Steps component -->
+        <nav aria-label="Form progress">
+            <ol>
+                <li>Property Info</li>
+                <li>Financials</li>
+                <li>Source</li>
+                <li>Notes</li>
+            </ol>
+        </nav>
+
+        <!-- 
+            FORM STRUCTURE:
+            - Single form with 4 sections
+            - Each section can be expanded/collapsed (accordion pattern)
+            - Validation states shown inline
+            - Mobile: Stack sections vertically
+            - Desktop: Can show multiple sections
+        -->
+
+        <form id="manual-entry-form" aria-label="Manual deal entry form" novalidate>
+            
+            <!-- ============================================================
+                 SECTION 1: PROPERTY IDENTIFICATION
+                 ============================================================ -->
+            <!-- ShadCN Component: Card for section container -->
+            <section aria-labelledby="section-1-heading">
+                <header>
+                    <h3 id="section-1-heading">Property Identification</h3>
+                    <p>Basic property information</p>
+                </header>
+
+                <!-- Field Group: Property Name -->
+                <div class="field-group">
+                    <label for="property-name">
+                        Property Name
+                        <span aria-label="required">*</span>
+                    </label>
+                    <!-- ShadCN Component: Input -->
+                    <input 
+                        type="text" 
+                        id="property-name" 
+                        name="property_name" 
+                        required 
+                        minlength="3" 
+                        maxlength="100"
+                        aria-describedby="property-name-help property-name-error"
+                        aria-invalid="false"
+                    >
+                    <small id="property-name-help">3-100 characters</small>
+                    <!-- Validation Error State (hidden by default) -->
+                    <div id="property-name-error" role="alert" aria-live="polite" hidden>
+                        Property name must be between 3 and 100 characters
+                    </div>
+                    <!-- Success State (hidden by default) -->
+                    <div id="property-name-success" aria-live="polite" hidden>
+                        ✓ Valid
+                    </div>
+                </div>
+
+                <!-- Field Group: Street Address -->
+                <div class="field-group">
+                    <label for="street-address">
+                        Street Address
+                        <span aria-label="required">*</span>
+                    </label>
+                    <!-- ShadCN Component: Input -->
+                    <input 
+                        type="text" 
+                        id="street-address" 
+                        name="address_street" 
+                        required 
+                        minlength="5"
+                        aria-describedby="street-address-help street-address-error"
+                        aria-invalid="false"
+                    >
+                    <small id="street-address-help">Full street address</small>
+                    <div id="street-address-error" role="alert" aria-live="polite" hidden>
+                        Street address must be at least 5 characters
+                    </div>
+                </div>
+
+                <!-- Field Group: City, State, ZIP (Grouped for layout) -->
+                <div class="field-group-row">
+                    <!-- City -->
+                    <div class="field-group">
+                        <label for="city">
+                            City
+                            <span aria-label="required">*</span>
+                        </label>
+                        <!-- ShadCN Component: Input -->
+                        <input 
+                            type="text" 
+                            id="city" 
+                            name="address_city" 
+                            required 
+                            minlength="2"
+                            aria-describedby="city-error"
+                            aria-invalid="false"
+                        >
+                        <div id="city-error" role="alert" aria-live="polite" hidden>
+                            City is required
+                        </div>
+                    </div>
+
+                    <!-- State -->
+                    <div class="field-group">
+                        <label for="state">
+                            State
+                            <span aria-label="required">*</span>
+                        </label>
+                        <!-- ShadCN Component: Select -->
+                        <select 
+                            id="state" 
+                            name="address_state" 
+                            required
+                            aria-describedby="state-error"
+                            aria-invalid="false"
+                        >
+                            <option value="">Select state or territory</option>
+                            <!-- US States -->
+                            <option value="AL">Alabama</option>
+                            <option value="AK">Alaska</option>
+                            <option value="AZ">Arizona</option>
+                            <option value="AR">Arkansas</option>
+                            <option value="CA">California</option>
+                            <option value="CO">Colorado</option>
+                            <option value="CT">Connecticut</option>
+                            <option value="DE">Delaware</option>
+                            <option value="FL">Florida</option>
+                            <option value="GA">Georgia</option>
+                            <option value="HI">Hawaii</option>
+                            <option value="ID">Idaho</option>
+                            <option value="IL">Illinois</option>
+                            <option value="IN">Indiana</option>
+                            <option value="IA">Iowa</option>
+                            <option value="KS">Kansas</option>
+                            <option value="KY">Kentucky</option>
+                            <option value="LA">Louisiana</option>
+                            <option value="ME">Maine</option>
+                            <option value="MD">Maryland</option>
+                            <option value="MA">Massachusetts</option>
+                            <option value="MI">Michigan</option>
+                            <option value="MN">Minnesota</option>
+                            <option value="MS">Mississippi</option>
+                            <option value="MO">Missouri</option>
+                            <option value="MT">Montana</option>
+                            <option value="NE">Nebraska</option>
+                            <option value="NV">Nevada</option>
+                            <option value="NH">New Hampshire</option>
+                            <option value="NJ">New Jersey</option>
+                            <option value="NM">New Mexico</option>
+                            <option value="NY">New York</option>
+                            <option value="NC">North Carolina</option>
+                            <option value="ND">North Dakota</option>
+                            <option value="OH">Ohio</option>
+                            <option value="OK">Oklahoma</option>
+                            <option value="OR">Oregon</option>
+                            <option value="PA">Pennsylvania</option>
+                            <option value="RI">Rhode Island</option>
+                            <option value="SC">South Carolina</option>
+                            <option value="SD">South Dakota</option>
+                            <option value="TN">Tennessee</option>
+                            <option value="TX">Texas</option>
+                            <option value="UT">Utah</option>
+                            <option value="VT">Vermont</option>
+                            <option value="VA">Virginia</option>
+                            <option value="WA">Washington</option>
+                            <option value="WV">West Virginia</option>
+                            <option value="WI">Wisconsin</option>
+                            <option value="WY">Wyoming</option>
+                            <!-- US Territories -->
+                            <option value="DC">District of Columbia</option>
+                            <option value="AS">American Samoa</option>
+                            <option value="GU">Guam</option>
+                            <option value="MP">Northern Mariana Islands</option>
+                            <option value="PR">Puerto Rico</option>
+                            <option value="VI">U.S. Virgin Islands</option>
+                        </select>
+                        <div id="state-error" role="alert" aria-live="polite" hidden>
+                            State is required
+                        </div>
+                    </div>
+
+                    <!-- ZIP Code -->
+                    <div class="field-group">
+                        <label for="zip-code">
+                            ZIP Code
+                            <span aria-label="required">*</span>
+                        </label>
+                        <!-- ShadCN Component: Input -->
+                        <input 
+                            type="text" 
+                            id="zip-code" 
+                            name="address_zip" 
+                            required 
+                            pattern="[0-9]{5}(-[0-9]{4})?"
+                            placeholder="12345 or 12345-6789"
+                            aria-describedby="zip-code-help zip-code-error"
+                            aria-invalid="false"
+                        >
+                        <small id="zip-code-help">5 or 9 digits</small>
+                        <div id="zip-code-error" role="alert" aria-live="polite" hidden>
+                            ZIP code must be 5 or 9 digits
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Field Group: Property Type -->
+                <div class="field-group">
+                    <label for="property-type">
+                        Property Type
+                        <span aria-label="required">*</span>
+                    </label>
+                    <!-- ShadCN Component: Select -->
+                    <select 
+                        id="property-type" 
+                        name="property_type" 
+                        required
+                        aria-describedby="property-type-error"
+                        aria-invalid="false"
+                    >
+                        <option value="MULTIFAMILY" selected>Multifamily</option>
+                        <option value="AFFORDABLE_HOUSING">Affordable Housing (Tax Credits)</option>
+                        <option value="SINGLE_FAMILY">Single Family</option>
+                        <option value="STUDENT_HOUSING">Student Housing</option>
+                        <option value="SENIOR_HOUSING">Senior Housing</option>
+                        <option value="MOBILE_HOME_PARK">Mobile Home Park</option>
+                        <option value="MIXED_USE">Mixed Use</option>
+                        <option value="OTHER">Other</option>
+                    </select>
+                    <div id="property-type-error" role="alert" aria-live="polite" hidden>
+                        Property type is required
+                    </div>
+                </div>
+
+                <!-- Field Group: Property Class -->
+                <div class="field-group">
+                    <label for="property-class">Property Class</label>
+                    <!-- ShadCN Component: Select -->
+                    <select 
+                        id="property-class" 
+                        name="property_class"
+                        aria-describedby="property-class-help"
+                    >
+                        <option value="">Select class</option>
+                        <option value="A+">Class A+</option>
+                        <option value="A">Class A</option>
+                        <option value="A-">Class A-</option>
+                        <option value="B+">Class B+</option>
+                        <option value="B">Class B</option>
+                        <option value="B-">Class B-</option>
+                        <option value="C+">Class C+</option>
+                        <option value="C">Class C</option>
+                        <option value="C-">Class C-</option>
+                        <option value="D+">Class D+</option>
+                        <option value="D">Class D</option>
+                    </select>
+                    <small id="property-class-help">User estimate</small>
+                </div>
+
+                <!-- Field Group: Year Built -->
+                <div class="field-group">
+                    <label for="year-built">Year Built</label>
+                    <!-- ShadCN Component: Input (type="number") -->
+                    <input 
+                        type="number" 
+                        id="year-built" 
+                        name="year_built" 
+                        min="1800" 
+                        aria-describedby="year-built-help year-built-error"
+                        aria-invalid="false"
+                    >
+                    <small id="year-built-help">1800 to current year</small>
+                    <div id="year-built-error" role="alert" aria-live="polite" hidden>
+                        Year must be between 1800 and current year
+                    </div>
+                </div>
+
+                <!-- Field Group: Number of Units -->
+                <div class="field-group">
+                    <label for="units">
+                        Number of Units
+                        <span aria-label="required">*</span>
+                    </label>
+                    <!-- ShadCN Component: Input (type="number") -->
+                    <input 
+                        type="number" 
+                        id="units" 
+                        name="units" 
+                        required 
+                        min="1" 
+                        max="9999"
+                        aria-describedby="units-help units-error"
+                        aria-invalid="false"
+                    >
+                    <small id="units-help">1-9999 units</small>
+                    <div id="units-error" role="alert" aria-live="polite" hidden>
+                        Number of units is required (1-9999)
+                    </div>
+                </div>
+
+            </section>
+
+            <!-- ============================================================
+                 SECTION 2: FINANCIAL OVERVIEW
+                 ============================================================ -->
+            <!-- ShadCN Component: Card for section container -->
+            <section aria-labelledby="section-2-heading">
+                <header>
+                    <h3 id="section-2-heading">Financial Overview</h3>
+                    <p>Key financial metrics</p>
+                </header>
+
+                <!-- Field Group: Asking Price -->
+                <div class="field-group">
+                    <label for="asking-price">Asking Price</label>
+                    <!-- ShadCN Component: Input with currency formatting -->
+                    <div class="input-group">
+                        <span aria-label="Currency">$</span>
+                        <input 
+                            type="text" 
+                            id="asking-price" 
+                            name="asking_price" 
+                            inputmode="decimal"
+                            pattern="[0-9,]*\.?[0-9]*"
+                            placeholder="0.00"
+                            aria-describedby="asking-price-help asking-price-error"
+                            aria-invalid="false"
+                        >
+                    </div>
+                    <small id="asking-price-help">$0 - $999,999,999</small>
+                    <div id="asking-price-error" role="alert" aria-live="polite" hidden>
+                        Invalid asking price
+                    </div>
+                </div>
+
+                <!-- Field Group: Price Per Unit (Auto-calculated, read-only) -->
+                <div class="field-group">
+                    <label for="price-per-unit">Price Per Unit</label>
+                    <!-- ShadCN Component: Input (read-only, calculated) -->
+                    <div class="input-group">
+                        <span aria-label="Currency">$</span>
+                        <input 
+                            type="text" 
+                            id="price-per-unit" 
+                            name="price_per_unit" 
+                            readonly
+                            aria-describedby="price-per-unit-help"
+                            aria-label="Auto-calculated: Asking Price ÷ Units"
+                        >
+                    </div>
+                    <small id="price-per-unit-help">Auto-calculated: Asking Price ÷ Units</small>
+                </div>
+
+                <!-- Field Group: Current Occupancy -->
+                <div class="field-group">
+                    <label for="occupancy">Current Occupancy</label>
+                    <!-- ShadCN Component: Input with percentage formatting -->
+                    <div class="input-group">
+                        <input 
+                            type="number" 
+                            id="occupancy" 
+                            name="occupancy" 
+                            min="0" 
+                            max="100" 
+                            step="0.01"
+                            placeholder="0.00"
+                            aria-describedby="occupancy-help occupancy-error"
+                            aria-invalid="false"
+                        >
+                        <span aria-label="Percentage">%</span>
+                    </div>
+                    <small id="occupancy-help">0-100%</small>
+                    <div id="occupancy-error" role="alert" aria-live="polite" hidden>
+                        Occupancy must be between 0% and 100%
+                    </div>
+                </div>
+
+                <!-- Field Group: In-Place NOI -->
+                <div class="field-group">
+                    <label for="noi-in-place">In-Place NOI</label>
+                    <!-- ShadCN Component: Input with currency formatting -->
+                    <div class="input-group">
+                        <span aria-label="Currency">$</span>
+                        <input 
+                            type="text" 
+                            id="noi-in-place" 
+                            name="noi_in_place" 
+                            inputmode="decimal"
+                            pattern="[0-9,]*\.?[0-9]*"
+                            placeholder="0.00"
+                            aria-describedby="noi-in-place-help noi-in-place-error"
+                            aria-invalid="false"
+                        >
+                    </div>
+                    <small id="noi-in-place-help">$0 - $99,999,999</small>
+                    <div id="noi-in-place-error" role="alert" aria-live="polite" hidden>
+                        Invalid NOI amount
+                    </div>
+                </div>
+
+                <!-- Field Group: Pro Forma NOI -->
+                <div class="field-group">
+                    <label for="noi-pro-forma">Pro Forma NOI</label>
+                    <!-- ShadCN Component: Input with currency formatting -->
+                    <div class="input-group">
+                        <span aria-label="Currency">$</span>
+                        <input 
+                            type="text" 
+                            id="noi-pro-forma" 
+                            name="noi_pro_forma" 
+                            inputmode="decimal"
+                            pattern="[0-9,]*\.?[0-9]*"
+                            placeholder="0.00"
+                            aria-describedby="noi-pro-forma-help"
+                        >
+                    </div>
+                    <small id="noi-pro-forma-help">Seller's projection</small>
+                </div>
+
+                <!-- Field Group: In-Place Cap Rate (Auto-calculated, read-only) -->
+                <div class="field-group">
+                    <label for="cap-rate">In-Place Cap Rate</label>
+                    <!-- ShadCN Component: Input (read-only, calculated) -->
+                    <div class="input-group">
+                        <input 
+                            type="text" 
+                            id="cap-rate" 
+                            name="cap_rate_in_place" 
+                            readonly
+                            placeholder="0.00"
+                            aria-describedby="cap-rate-help"
+                            aria-label="Auto-calculated: NOI ÷ Price"
+                        >
+                        <span aria-label="Percentage">%</span>
+                    </div>
+                    <small id="cap-rate-help">Auto-calculated: NOI ÷ Price</small>
+                </div>
+
+            </section>
+
+            <!-- ============================================================
+                 SECTION 3: DEAL SOURCE
+                 ============================================================ -->
+            <!-- ShadCN Component: Card for section container -->
+            <section aria-labelledby="section-3-heading">
+                <header>
+                    <h3 id="section-3-heading">Deal Source</h3>
+                    <p>How you received this deal</p>
+                </header>
+
+                <!-- Field Group: Source Type -->
+                <div class="field-group">
+                    <label for="source-type">Source Type</label>
+                    <!-- ShadCN Component: Select -->
+                    <select 
+                        id="source-type" 
+                        name="source_type"
+                        aria-describedby="source-type-help"
+                    >
+                        <option value="BROKER" selected>Broker</option>
+                        <option value="DIRECT_OWNER">Direct from Owner</option>
+                        <option value="AUCTION">Auction</option>
+                        <option value="WHOLESALER">Wholesaler</option>
+                        <option value="NETWORK">Network/Referral</option>
+                        <option value="LOOPNET_COSTAR">LoopNet/CoStar</option>
+                        <option value="OTHER">Other</option>
+                    </select>
+                    <small id="source-type-help">How you received this deal</small>
+                </div>
+
+                <!-- Field Group: Source Name -->
+                <div class="field-group">
+                    <label for="source-name">Source Name</label>
+                    <!-- ShadCN Component: Input -->
+                    <input 
+                        type="text" 
+                        id="source-name" 
+                        name="source_name" 
+                        maxlength="100"
+                        placeholder="Broker/contact name"
+                        aria-describedby="source-name-help"
+                    >
+                    <small id="source-name-help">Broker/contact name (max 100 chars)</small>
+                </div>
+
+                <!-- Field Group: Source Company -->
+                <div class="field-group">
+                    <label for="source-company">Source Company</label>
+                    <!-- ShadCN Component: Input -->
+                    <input 
+                        type="text" 
+                        id="source-company" 
+                        name="source_company" 
+                        maxlength="100"
+                        placeholder="Brokerage firm"
+                        aria-describedby="source-company-help"
+                    >
+                    <small id="source-company-help">Brokerage firm (max 100 chars)</small>
+                </div>
+
+                <!-- Field Group: Source Email -->
+                <div class="field-group">
+                    <label for="source-email">Source Email</label>
+                    <!-- ShadCN Component: Input (type="email") -->
+                    <input 
+                        type="email" 
+                        id="source-email" 
+                        name="source_email" 
+                        placeholder="email@example.com"
+                        aria-describedby="source-email-help source-email-error"
+                        aria-invalid="false"
+                    >
+                    <small id="source-email-help">Valid email address</small>
+                    <div id="source-email-error" role="alert" aria-live="polite" hidden>
+                        Please enter a valid email address
+                    </div>
+                </div>
+
+                <!-- Field Group: Source Phone -->
+                <div class="field-group">
+                    <label for="source-phone">Source Phone</label>
+                    <!-- ShadCN Component: Input (type="tel") -->
+                    <input 
+                        type="tel" 
+                        id="source-phone" 
+                        name="source_phone" 
+                        placeholder="(555) 123-4567"
+                        pattern="[0-9\s\(\)\-]+"
+                        aria-describedby="source-phone-help source-phone-error"
+                        aria-invalid="false"
+                    >
+                    <small id="source-phone-help">Valid phone number</small>
+                    <div id="source-phone-error" role="alert" aria-live="polite" hidden>
+                        Please enter a valid phone number
+                    </div>
+                </div>
+
+                <!-- Field Group: How Received -->
+                <div class="field-group">
+                    <label for="how-received">How Received</label>
+                    <!-- ShadCN Component: Select -->
+                    <select 
+                        id="how-received" 
+                        name="how_received"
+                        aria-describedby="how-received-help"
+                    >
+                        <option value="EMAIL" selected>Email</option>
+                        <option value="PHONE">Phone Call</option>
+                        <option value="IN_PERSON">In Person</option>
+                        <option value="WEBSITE">Website/Portal</option>
+                        <option value="REFERRAL">Referral</option>
+                        <option value="OTHER">Other</option>
+                    </select>
+                    <small id="how-received-help">How you received this deal</small>
+                </div>
+
+                <!-- Field Group: Market Status -->
+                <div class="field-group">
+                    <label for="market-status">Market Status</label>
+                    <!-- ShadCN Component: Select -->
+                    <select 
+                        id="market-status" 
+                        name="market_status"
+                        aria-describedby="market-status-help"
+                    >
+                        <option value="LISTED" selected>Listed</option>
+                        <option value="OFF_MARKET">Off-Market</option>
+                        <option value="PRE_MARKET">Pre-Market</option>
+                        <option value="POCKET_LISTING">Pocket Listing</option>
+                        <option value="REO">REO/Foreclosure</option>
+                    </select>
+                    <small id="market-status-help">Current market status</small>
+                </div>
+
+            </section>
+
+            <!-- ============================================================
+                 SECTION 4: NOTES & TAGS
+                 ============================================================ -->
+            <!-- ShadCN Component: Card for section container -->
+            <section aria-labelledby="section-4-heading">
+                <header>
+                    <h3 id="section-4-heading">Notes & Tags</h3>
+                    <p>Additional information and organization</p>
+                </header>
+
+                <!-- Field Group: Initial Notes -->
+                <div class="field-group">
+                    <label for="notes">Initial Notes</label>
+                    <!-- ShadCN Component: Textarea -->
+                    <textarea 
+                        id="notes" 
+                        name="notes" 
+                        rows="5" 
+                        maxlength="2000"
+                        placeholder="Free-form notes about this deal..."
+                        aria-describedby="notes-help notes-char-count"
+                    ></textarea>
+                    <small id="notes-help">Free-form notes (max 2000 characters)</small>
+                    <div id="notes-char-count" aria-live="polite">0 / 2000 characters</div>
+                </div>
+
+                <!-- Field Group: Tags (Multi-select) -->
+                <div class="field-group">
+                    <label for="tags">Tags</label>
+                    <!-- ShadCN Component: MultiSelect or Combobox for tags -->
+                    <!-- Mobile: Could use Sheet/Dialog for tag selection -->
+                    <div class="tags-container">
+                        <input 
+                            type="text" 
+                            id="tags-input" 
+                            placeholder="Type to add tags, press Enter"
+                            aria-describedby="tags-help tags-list"
+                        >
+                        <div id="tags-list" role="list" aria-label="Selected tags">
+                            <!-- Selected tags will appear here -->
+                            <!-- ShadCN Component: Badge for each tag -->
+                        </div>
+                    </div>
+                    <small id="tags-help">Custom tags for organization</small>
+                </div>
+
+                <!-- Field Group: Priority -->
+                <div class="field-group">
+                    <label for="priority">Priority</label>
+                    <!-- ShadCN Component: Select or RadioGroup -->
+                    <select 
+                        id="priority" 
+                        name="priority"
+                        aria-describedby="priority-help"
+                    >
+                        <option value="LOW">Low</option>
+                        <option value="MEDIUM" selected>Medium</option>
+                        <option value="HIGH">High</option>
+                    </select>
+                    <small id="priority-help">Deal priority level</small>
+                </div>
+
+            </section>
+
+            <!-- Form Actions -->
+            <!-- ShadCN Component: Button group or separate buttons -->
+            <footer class="form-actions">
+                <button type="button" aria-label="Cancel and go back">
+                    Cancel
+                </button>
+                <button type="submit" aria-label="Create deal">
+                    Create Deal
+                </button>
+            </footer>
+
+        </form>
+
+        <!-- 
+            FORM STATES TO IMPLEMENT:
+            
+            1. EMPTY STATE (default):
+               - All fields empty
+               - No validation errors shown
+               - Submit button enabled
+            
+            2. FILLED STATE:
+               - Fields have values
+               - Auto-calculated fields update (price per unit, cap rate)
+               - Validation runs on blur
+            
+            3. VALIDATION ERROR STATE:
+               - Required fields show error if empty/invalid
+               - Error messages appear below fields
+               - aria-invalid="true" on invalid fields
+               - Submit button disabled until valid
+            
+            4. SUCCESS STATE:
+               - Form submitted successfully
+               - Success message shown
+               - Redirect to deal detail page
+        -->
+
+    </main>
+
+    <!-- 
+        ACCESSIBILITY NOTES:
+        - All form fields have proper labels
+        - Required fields marked with aria-label="required"
+        - Error messages use role="alert" and aria-live="polite"
+        - Auto-calculated fields marked as readonly with aria-label
+        - Form has aria-label for screen readers
+        - Field groups use aria-describedby for help text
+        - Validation states use aria-invalid
+    -->
+
+    <!-- 
+        MOBILE CONSIDERATIONS:
+        - All interactive elements minimum 44pt (44px) touch targets
+        - Form sections stack vertically on mobile
+        - Field groups in row (city/state/zip) stack on mobile
+        - Currency/percentage inputs have clear visual formatting
+        - Tags input uses mobile-friendly pattern
+        - Submit button full-width on mobile
+    -->
+
+    <!-- 
+        SHADCN COMPONENT MAPPINGS:
+        - Form container: Card
+        - Text inputs: Input
+        - Dropdowns: Select
+        - Textarea: Textarea
+        - Buttons: Button
+        - Tags: MultiSelect or Combobox
+        - Error messages: Alert (variant: destructive)
+        - Success indicators: Check icon
+        - Progress indicator: Steps or Progress
+        - Navigation: NavigationMenu (desktop) or Sheet (mobile)
+    -->
+
+</body>
+</html>
+

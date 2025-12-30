@@ -1,0 +1,630 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Review Extraction - DREAM AI</title>
+    <!--
+        UX Prototype: Extraction Review Interface
+        Task: 1.20 - Minimal Pro Styled UI
+        PRD Reference: Section 8.3, 8.4
+        Design Language: Minimal Pro
+        CSS Framework: Tailwind CSS
+        Typography: Libre Franklin (body), Playfair Display (headings)
+        Mobile-first responsive design with 44pt minimum touch targets
+    -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Libre+Franklin:wght@400;500;600;700&family=Playfair+Display:wght@500;600;700&display=swap" rel="stylesheet">
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        primary: {
+                            DEFAULT: '#28323E',
+                            light: '#3C4856',
+                            dark: '#1A1F26',
+                        },
+                        secondary: {
+                            DEFAULT: '#3C4856',
+                            light: '#5C6876',
+                            muted: '#9DA3AA',
+                        },
+                        accent: {
+                            DEFAULT: '#005253',
+                            dark: '#003F3F',
+                            light: '#007A7C',
+                        },
+                        'yinmn-blue': {
+                            DEFAULT: '#2E5090',
+                            dark: '#1E3A6B',
+                            light: '#4A6BA8',
+                        },
+                        background: {
+                            primary: '#FFFFFF',
+                            secondary: '#F8F7F5',
+                            tertiary: '#EBE5DE',
+                        },
+                        border: '#D6C9BA',
+                        brand: {
+                            success: '#58ABA8',
+                            warning: '#F3B8A7',
+                            danger: '#C94A3E',
+                            info: '#95C9E6',
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Libre Franklin', 'sans-serif'],
+                        heading: ['Playfair Display', 'serif'],
+                    },
+                }
+            }
+        }
+    </script>
+    <style>
+        /* Ensure proper font application */
+        body {
+            @apply font-sans text-primary;
+        }
+        h1, h2, h3, h4, h5, h6 {
+            @apply font-heading;
+        }
+    </style>
+</head>
+<body class="bg-background-secondary text-primary">
+    <!--
+        NAVIGATION STRUCTURE:
+        - Main app navigation (header)
+        - Breadcrumb: Dashboard > Deal Name > Review Extraction
+        - Split-view layout:
+          - Left: PDF/document viewer
+          - Right: Extracted data form with confidence indicators
+        - Action buttons (Save Changes, Looks Good)
+    -->
+
+    <!-- Header Navigation -->
+    <header role="banner" class="sticky top-0 z-40 bg-background-primary border-b border-border shadow-sm">
+        <nav aria-label="Main navigation" class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
+            <h1 class="text-2xl font-heading font-bold text-primary">DREAM AI</h1>
+            <button
+                type="button"
+                aria-label="User menu"
+                class="px-4 py-2 text-sm font-medium text-secondary hover:text-primary hover:bg-background-tertiary rounded-md transition-colors"
+            >
+                User Menu
+            </button>
+        </nav>
+    </header>
+
+    <!-- Main Content -->
+    <main role="main" class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 lg:py-12">
+        <!-- Page Header -->
+        <header class="mb-8">
+            <!-- Breadcrumb -->
+            <nav aria-label="Breadcrumb" class="mb-6">
+                <ol class="flex items-center gap-2 text-sm text-secondary">
+                    <li><a href="/dashboard" class="hover:text-primary hover:underline">Dashboard</a></li>
+                    <li class="text-secondary-muted">/</li>
+                    <li><a href="/deals/oak-creek" class="hover:text-primary hover:underline">Oak Creek Apartments</a></li>
+                    <li class="text-secondary-muted">/</li>
+                    <li aria-current="page" class="text-primary font-medium">Review Extraction</li>
+                </ol>
+            </nav>
+
+            <h1 class="text-4xl font-heading font-bold text-primary mb-2">Review Extracted Data</h1>
+            <p class="text-lg text-secondary max-w-2xl">Review and correct extracted information from your documents. Fields highlighted in yellow or orange require your attention.</p>
+        </header>
+
+        <!-- Extraction Summary -->
+        <section aria-label="Extraction summary" class="mb-8">
+            <!-- ShadCN Component: Card for summary -->
+            <div class="bg-background-primary border border-border rounded-lg p-6">
+                <h2 class="text-xl font-heading font-semibold text-primary mb-4">Extraction Summary</h2>
+                <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                    <div>
+                        <p class="text-sm text-secondary-muted mb-1">Fields Extracted</p>
+                        <p class="text-2xl font-semibold text-primary tabular-nums">45</p>
+                    </div>
+                    <div>
+                        <p class="text-sm text-secondary-muted mb-1">Need Review</p>
+                        <p class="text-2xl font-semibold text-brand-warning tabular-nums">8</p>
+                    </div>
+                    <div>
+                        <p class="text-sm text-secondary-muted mb-1">Overall Confidence</p>
+                        <p class="text-2xl font-semibold text-primary tabular-nums">87%</p>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Split-View Layout -->
+        <section aria-label="Extraction review" class="mb-8">
+            <!--
+                STATE: Loading
+                - Loading indicator
+                - Skeleton placeholders
+            -->
+            <div role="status" aria-live="polite" class="hidden bg-background-primary border border-border rounded-lg p-6 text-center">
+                <p class="text-secondary">Loading extraction data...</p>
+            </div>
+
+            <!--
+                STATE: Populated (default)
+                - Split-view: document viewer + extracted data form
+            -->
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                <!-- Left: Document Viewer -->
+                <aside aria-label="Document viewer" class="lg:sticky lg:top-24 lg:h-[calc(100vh-8rem)]">
+                    <!-- ShadCN Component: Card for document viewer -->
+                    <div class="bg-background-primary border border-border rounded-lg overflow-hidden flex flex-col h-full">
+                        <header class="px-4 py-3 border-b border-border flex items-center justify-between">
+                            <h2 class="text-base font-medium text-primary truncate">Oak_Creek_OM.pdf</h2>
+                            <button
+                                type="button"
+                                aria-label="Download document"
+                                class="px-3 py-1.5 text-sm font-medium text-secondary hover:text-primary hover:bg-background-tertiary rounded-md transition-colors"
+                            >
+                                Download
+                            </button>
+                        </header>
+
+                        <!-- PDF Viewer -->
+                        <div role="region" aria-label="PDF viewer" class="flex-1 overflow-hidden bg-background-tertiary">
+                            <!-- ShadCN Component: PDF viewer or iframe -->
+                            <iframe
+                                src="/api/v1/documents/doc_001/preview"
+                                title="Document preview"
+                                aria-label="Document preview"
+                                class="w-full h-full"
+                            ></iframe>
+                        </div>
+
+                        <!-- Page Navigation -->
+                        <nav aria-label="Page navigation" class="px-4 py-3 border-t border-border flex items-center justify-between gap-4">
+                            <button
+                                type="button"
+                                aria-label="Previous page"
+                                class="px-3 py-1.5 text-sm font-medium text-secondary hover:text-primary hover:bg-background-tertiary rounded-md transition-colors min-h-[44px]"
+                            >
+                                ← Previous
+                            </button>
+                            <span class="text-sm text-secondary">
+                                Page
+                                <input
+                                    type="number"
+                                    value="1"
+                                    min="1"
+                                    max="24"
+                                    aria-label="Page number"
+                                    class="w-16 px-2 py-1 mx-2 border border-border rounded-md text-center text-primary tabular-nums"
+                                />
+                                of 24
+                            </span>
+                            <button
+                                type="button"
+                                aria-label="Next page"
+                                class="px-3 py-1.5 text-sm font-medium text-secondary hover:text-primary hover:bg-background-tertiary rounded-md transition-colors min-h-[44px]"
+                            >
+                                Next →
+                            </button>
+                        </nav>
+                    </div>
+                </aside>
+
+                <!-- Right: Extracted Data Form -->
+                <section aria-label="Extracted data" class="space-y-6">
+                    <!-- ShadCN Component: Card for extracted data form -->
+                    <form class="space-y-6">
+                        <!-- Property Information Section -->
+                        <fieldset class="bg-background-primary border border-border rounded-lg p-6 space-y-4">
+                            <legend class="text-lg font-heading font-semibold text-primary px-2 mb-4">Property Information</legend>
+
+                            <!-- Property Name - High Confidence -->
+                            <div>
+                                <label for="property-name" class="block text-sm font-medium text-secondary mb-1 flex items-center gap-2">
+                                    Property Name
+                                    <span
+                                        aria-label="High confidence: 95%"
+                                        class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-brand-success/10 text-brand-success"
+                                    >
+                                        ✓ 95%
+                                    </span>
+                                </label>
+                                <!-- ShadCN Component: Input -->
+                                <input
+                                    type="text"
+                                    id="property-name"
+                                    name="property_name"
+                                    value="Oak Creek Apartments"
+                                    aria-describedby="property-name-source"
+                                    class="w-full px-3 py-2 border border-border rounded-md bg-background-primary text-primary text-sm focus:ring-2 focus:ring-yinmn-blue focus:border-transparent"
+                                />
+                                <p id="property-name-source" class="text-xs text-secondary-muted mt-1">Source: Page 1</p>
+                            </div>
+
+                            <!-- Street Address - High Confidence -->
+                            <div>
+                                <label for="street-address" class="block text-sm font-medium text-secondary mb-1 flex items-center gap-2">
+                                    Street Address
+                                    <span
+                                        aria-label="High confidence: 90%"
+                                        class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-brand-success/10 text-brand-success"
+                                    >
+                                        ✓ 90%
+                                    </span>
+                                </label>
+                                <input
+                                    type="text"
+                                    id="street-address"
+                                    name="street_address"
+                                    value="1234 Oak Creek Dr"
+                                    aria-describedby="street-address-source"
+                                    class="w-full px-3 py-2 border border-border rounded-md bg-background-primary text-primary text-sm focus:ring-2 focus:ring-yinmn-blue focus:border-transparent"
+                                />
+                                <p id="street-address-source" class="text-xs text-secondary-muted mt-1">Source: Page 2</p>
+                            </div>
+
+                            <!-- City - High Confidence -->
+                            <div>
+                                <label for="city" class="block text-sm font-medium text-secondary mb-1 flex items-center gap-2">
+                                    City
+                                    <span
+                                        aria-label="High confidence: 90%"
+                                        class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-brand-success/10 text-brand-success"
+                                    >
+                                        ✓ 90%
+                                    </span>
+                                </label>
+                                <input
+                                    type="text"
+                                    id="city"
+                                    name="city"
+                                    value="Austin"
+                                    aria-describedby="city-source"
+                                    class="w-full px-3 py-2 border border-border rounded-md bg-background-primary text-primary text-sm focus:ring-2 focus:ring-yinmn-blue focus:border-transparent"
+                                />
+                                <p id="city-source" class="text-xs text-secondary-muted mt-1">Source: Page 2</p>
+                            </div>
+
+                            <!-- State - High Confidence -->
+                            <div>
+                                <label for="state" class="block text-sm font-medium text-secondary mb-1 flex items-center gap-2">
+                                    State
+                                    <span
+                                        aria-label="High confidence: 90%"
+                                        class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-brand-success/10 text-brand-success"
+                                    >
+                                        ✓ 90%
+                                    </span>
+                                </label>
+                                <!-- ShadCN Component: Select -->
+                                <select
+                                    id="state"
+                                    name="state"
+                                    aria-describedby="state-source"
+                                    class="w-full px-3 py-2 border border-border rounded-md bg-background-primary text-primary text-sm focus:ring-2 focus:ring-yinmn-blue focus:border-transparent"
+                                >
+                                    <option value="TX" selected>Texas</option>
+                                    <!-- More states -->
+                                </select>
+                                <p id="state-source" class="text-xs text-secondary-muted mt-1">Source: Page 2</p>
+                            </div>
+
+                            <!-- ZIP Code - High Confidence -->
+                            <div>
+                                <label for="zip-code" class="block text-sm font-medium text-secondary mb-1 flex items-center gap-2">
+                                    ZIP Code
+                                    <span
+                                        aria-label="High confidence: 90%"
+                                        class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-brand-success/10 text-brand-success"
+                                    >
+                                        ✓ 90%
+                                    </span>
+                                </label>
+                                <input
+                                    type="text"
+                                    id="zip-code"
+                                    name="zip_code"
+                                    value="78701"
+                                    aria-describedby="zip-code-source"
+                                    class="w-full px-3 py-2 border border-border rounded-md bg-background-primary text-primary text-sm tabular-nums focus:ring-2 focus:ring-yinmn-blue focus:border-transparent"
+                                />
+                                <p id="zip-code-source" class="text-xs text-secondary-muted mt-1">Source: Page 2</p>
+                            </div>
+
+                            <!-- Year Built - Medium Confidence (Needs Review) -->
+                            <div class="bg-brand-warning/5 border border-brand-warning/30 rounded-md p-4">
+                                <label for="year-built" class="block text-sm font-medium text-secondary mb-1 flex items-center gap-2">
+                                    Year Built
+                                    <span
+                                        aria-label="Medium confidence: 80%"
+                                        class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-brand-warning/20 text-[#EAB308] border border-brand-warning/50"
+                                    >
+                                        ⚠ 80%
+                                    </span>
+                                </label>
+                                <input
+                                    type="number"
+                                    id="year-built"
+                                    name="year_built"
+                                    value="1985"
+                                    aria-describedby="year-built-source year-built-note"
+                                    class="w-full px-3 py-2 border border-border rounded-md bg-background-primary text-primary text-sm tabular-nums focus:ring-2 focus:ring-yinmn-blue focus:border-transparent"
+                                />
+                                <p id="year-built-source" class="text-xs text-secondary-muted mt-1">Source: Page 3</p>
+                                <p id="year-built-note" class="text-xs text-brand-warning mt-1 font-medium">Please verify this value</p>
+                            </div>
+
+                            <!-- Number of Units - High Confidence -->
+                            <div>
+                                <label for="number-of-units" class="block text-sm font-medium text-secondary mb-1 flex items-center gap-2">
+                                    Number of Units
+                                    <span
+                                        aria-label="High confidence: 90%"
+                                        class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-brand-success/10 text-brand-success"
+                                    >
+                                        ✓ 90%
+                                    </span>
+                                </label>
+                                <input
+                                    type="number"
+                                    id="number-of-units"
+                                    name="number_of_units"
+                                    value="120"
+                                    aria-describedby="number-of-units-source"
+                                    class="w-full px-3 py-2 border border-border rounded-md bg-background-primary text-primary text-sm tabular-nums focus:ring-2 focus:ring-yinmn-blue focus:border-transparent"
+                                />
+                                <p id="number-of-units-source" class="text-xs text-secondary-muted mt-1">Source: Page 3</p>
+                            </div>
+
+                            <!-- Total SF - Medium Confidence -->
+                            <div>
+                                <label for="total-sf" class="block text-sm font-medium text-secondary mb-1 flex items-center gap-2">
+                                    Total Square Footage
+                                    <span
+                                        aria-label="Medium confidence: 80%"
+                                        class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-brand-warning/20 text-[#EAB308] border border-brand-warning/50"
+                                    >
+                                        ⚠ 80%
+                                    </span>
+                                </label>
+                                <input
+                                    type="number"
+                                    id="total-sf"
+                                    name="total_sf"
+                                    value="120000"
+                                    aria-describedby="total-sf-source"
+                                    class="w-full px-3 py-2 border border-border rounded-md bg-background-primary text-primary text-sm tabular-nums focus:ring-2 focus:ring-yinmn-blue focus:border-transparent"
+                                />
+                                <p id="total-sf-source" class="text-xs text-secondary-muted mt-1">Source: Page 3</p>
+                            </div>
+
+                            <!-- Property Class - Low Confidence (Needs Review) -->
+                            <div class="bg-[#F97316]/5 border border-[#F97316]/30 rounded-md p-4">
+                                <label for="property-class" class="block text-sm font-medium text-secondary mb-1 flex items-center gap-2">
+                                    Property Class
+                                    <span
+                                        aria-label="Low confidence: 60%"
+                                        class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-[#F97316]/20 text-[#F97316] border border-[#F97316]/50"
+                                    >
+                                        ⚠ 60%
+                                    </span>
+                                </label>
+                                <!-- ShadCN Component: Select -->
+                                <select
+                                    id="property-class"
+                                    name="property_class"
+                                    aria-describedby="property-class-source property-class-note"
+                                    class="w-full px-3 py-2 border border-border rounded-md bg-background-primary text-primary text-sm focus:ring-2 focus:ring-yinmn-blue focus:border-transparent"
+                                >
+                                    <option value="">Select...</option>
+                                    <option value="A">Class A</option>
+                                    <option value="B" selected>Class B</option>
+                                    <option value="C">Class C</option>
+                                    <option value="D">Class D</option>
+                                </select>
+                                <p id="property-class-source" class="text-xs text-secondary-muted mt-1">Source: Page 4</p>
+                                <p id="property-class-note" class="text-xs text-[#F97316] mt-1 font-medium">Please verify this classification</p>
+                            </div>
+                        </fieldset>
+
+                        <!-- Financial Data Section -->
+                        <fieldset class="bg-background-primary border border-border rounded-lg p-6 space-y-4">
+                            <legend class="text-lg font-heading font-semibold text-primary px-2 mb-4">Financial Data</legend>
+
+                            <!-- Asking Price - High Confidence -->
+                            <div>
+                                <label for="asking-price" class="block text-sm font-medium text-secondary mb-1 flex items-center gap-2">
+                                    Asking Price
+                                    <span
+                                        aria-label="High confidence: 95%"
+                                        class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-brand-success/10 text-brand-success"
+                                    >
+                                        ✓ 95%
+                                    </span>
+                                </label>
+                                <input
+                                    type="text"
+                                    id="asking-price"
+                                    name="asking_price"
+                                    value="$15,000,000"
+                                    aria-describedby="asking-price-source"
+                                    class="w-full px-3 py-2 border border-border rounded-md bg-background-primary text-primary text-sm tabular-nums focus:ring-2 focus:ring-yinmn-blue focus:border-transparent"
+                                />
+                                <p id="asking-price-source" class="text-xs text-secondary-muted mt-1">Source: Page 1</p>
+                            </div>
+
+                            <!-- Price Per Unit - High Confidence -->
+                            <div>
+                                <label for="price-per-unit" class="block text-sm font-medium text-secondary mb-1 flex items-center gap-2">
+                                    Price Per Unit
+                                    <span
+                                        aria-label="High confidence: 90%"
+                                        class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-brand-success/10 text-brand-success"
+                                    >
+                                        ✓ 90%
+                                    </span>
+                                </label>
+                                <input
+                                    type="text"
+                                    id="price-per-unit"
+                                    name="price_per_unit"
+                                    value="$125,000"
+                                    aria-describedby="price-per-unit-source"
+                                    readonly
+                                    class="w-full px-3 py-2 border border-border rounded-md bg-background-tertiary text-primary text-sm tabular-nums"
+                                />
+                                <p id="price-per-unit-source" class="text-xs text-secondary-muted mt-1">Calculated</p>
+                            </div>
+
+                            <!-- In-Place NOI - Medium Confidence -->
+                            <div>
+                                <label for="in-place-noi" class="block text-sm font-medium text-secondary mb-1 flex items-center gap-2">
+                                    In-Place NOI
+                                    <span
+                                        aria-label="Medium confidence: 85%"
+                                        class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-brand-warning/20 text-[#EAB308] border border-brand-warning/50"
+                                    >
+                                        ⚠ 85%
+                                    </span>
+                                </label>
+                                <input
+                                    type="text"
+                                    id="in-place-noi"
+                                    name="in_place_noi"
+                                    value="$900,000"
+                                    aria-describedby="in-place-noi-source"
+                                    class="w-full px-3 py-2 border border-border rounded-md bg-background-primary text-primary text-sm tabular-nums focus:ring-2 focus:ring-yinmn-blue focus:border-transparent"
+                                />
+                                <p id="in-place-noi-source" class="text-xs text-secondary-muted mt-1">Source: Page 6</p>
+                            </div>
+
+                            <!-- Pro Forma NOI - Medium Confidence -->
+                            <div>
+                                <label for="pro-forma-noi" class="block text-sm font-medium text-secondary mb-1 flex items-center gap-2">
+                                    Pro Forma NOI
+                                    <span
+                                        aria-label="Medium confidence: 85%"
+                                        class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-brand-warning/20 text-[#EAB308] border border-brand-warning/50"
+                                    >
+                                        ⚠ 85%
+                                    </span>
+                                </label>
+                                <input
+                                    type="text"
+                                    id="pro-forma-noi"
+                                    name="pro_forma_noi"
+                                    value="$1,100,000"
+                                    aria-describedby="pro-forma-noi-source"
+                                    class="w-full px-3 py-2 border border-border rounded-md bg-background-primary text-primary text-sm tabular-nums focus:ring-2 focus:ring-yinmn-blue focus:border-transparent"
+                                />
+                                <p id="pro-forma-noi-source" class="text-xs text-secondary-muted mt-1">Source: Page 6</p>
+                            </div>
+                        </fieldset>
+
+                        <!-- Unit Mix Section -->
+                        <fieldset class="bg-background-primary border border-border rounded-lg p-6 space-y-4">
+                            <legend class="text-lg font-heading font-semibold text-primary px-2 mb-4">Unit Mix</legend>
+
+                            <!-- Unit Mix Table -->
+                            <div class="overflow-x-auto">
+                                <table class="w-full border-collapse">
+                                    <thead>
+                                        <tr class="border-b border-border">
+                                            <th class="text-left text-sm font-semibold text-secondary py-2 px-3">Unit Type</th>
+                                            <th class="text-right text-sm font-semibold text-secondary py-2 px-3 tabular-nums">Count</th>
+                                            <th class="text-right text-sm font-semibold text-secondary py-2 px-3 tabular-nums">Avg SF</th>
+                                            <th class="text-right text-sm font-semibold text-secondary py-2 px-3 tabular-nums">Market Rent</th>
+                                            <th class="text-right text-sm font-semibold text-secondary py-2 px-3 tabular-nums">In-Place Rent</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        <tr class="border-b border-border/50 hover:bg-background-tertiary transition-colors">
+                                            <td class="py-2 px-3 text-sm text-primary">1BR</td>
+                                            <td class="py-2 px-3 text-sm text-primary text-right tabular-nums">60</td>
+                                            <td class="py-2 px-3 text-sm text-primary text-right tabular-nums">750</td>
+                                            <td class="py-2 px-3 text-sm text-primary text-right tabular-nums">$1,200</td>
+                                            <td class="py-2 px-3 text-sm text-primary text-right tabular-nums">$1,150</td>
+                                        </tr>
+                                        <tr class="border-b border-border/50 hover:bg-background-tertiary transition-colors">
+                                            <td class="py-2 px-3 text-sm text-primary">2BR</td>
+                                            <td class="py-2 px-3 text-sm text-primary text-right tabular-nums">60</td>
+                                            <td class="py-2 px-3 text-sm text-primary text-right tabular-nums">1,100</td>
+                                            <td class="py-2 px-3 text-sm text-primary text-right tabular-nums">$1,600</td>
+                                            <td class="py-2 px-3 text-sm text-primary text-right tabular-nums">$1,550</td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </fieldset>
+
+                        <!-- Investment Highlights Section -->
+                        <fieldset class="bg-background-primary border border-border rounded-lg p-6 space-y-4">
+                            <legend class="text-lg font-heading font-semibold text-primary px-2 mb-4">Investment Highlights</legend>
+
+                            <div>
+                                <label for="investment-highlights" class="block text-sm font-medium text-secondary mb-1">Highlights</label>
+                                <!-- ShadCN Component: Textarea -->
+                                <textarea
+                                    id="investment-highlights"
+                                    name="investment_highlights"
+                                    rows="5"
+                                    aria-describedby="investment-highlights-source"
+                                    class="w-full px-3 py-2 border border-border rounded-md bg-background-primary text-primary text-sm focus:ring-2 focus:ring-yinmn-blue focus:border-transparent resize-y"
+                                >Prime location in growing Austin market
+Value-add opportunity with unit renovations
+Strong rental demand</textarea>
+                                <p id="investment-highlights-source" class="text-xs text-secondary-muted mt-1">Source: Page 1</p>
+                            </div>
+                        </fieldset>
+                    </form>
+                </section>
+            </div>
+
+            <!--
+                STATE: Error
+                - Error message
+                - Retry button
+            -->
+            <div role="alert" class="hidden bg-brand-danger/10 border border-brand-danger rounded-lg p-4">
+                <p class="text-brand-danger font-medium mb-2">Error loading extraction data. Please try again.</p>
+                <button
+                    type="button"
+                    class="px-4 py-2 bg-brand-danger text-white font-medium rounded-md hover:bg-brand-danger/90 transition-colors min-h-[44px]"
+                >
+                    Retry
+                </button>
+            </div>
+        </section>
+
+        <!-- Action Buttons -->
+        <section aria-label="Form actions" class="mt-8">
+            <!-- ShadCN Component: Button group -->
+            <div class="flex flex-col sm:flex-row gap-4 justify-end">
+                <button
+                    type="button"
+                    class="px-6 py-3 border border-border bg-background-primary text-primary font-medium rounded-md hover:bg-background-tertiary transition-colors min-h-[44px]"
+                >
+                    Save Changes
+                </button>
+                <button
+                    type="button"
+                    class="px-6 py-3 bg-yinmn-blue text-white font-medium rounded-md hover:bg-yinmn-blue-dark transition-colors min-h-[44px]"
+                >
+                    Looks Good ✓
+                </button>
+            </div>
+        </section>
+    </main>
+
+    <!-- Footer -->
+    <footer role="contentinfo" class="border-t border-border bg-background-primary py-6 mt-12">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center text-sm text-secondary-muted">
+            <p>&copy; 2025 DREAM AI. All rights reserved.</p>
+        </div>
+    </footer>
+</body>
+</html>
+

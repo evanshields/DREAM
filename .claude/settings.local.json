@@ -7,9 +7,37 @@
       "Bash(npm install:*)",
       "Bash(npx tailwindcss init -p)",
       "Bash(test:*)",
-      "Bash(npm run dev:*)"
+      "Bash(npm run dev:*)",
+      "Bash(git config:*)",
+      "Bash(cat:*)",
+      "WebSearch",
+      "Bash(git checkout:*)",
+      "Bash(start monochrome-pro-mockup.html)",
+      "Bash(start material-minimal-mockup.html)",
+      "Bash(start glassmorphism-mockup.html)",
+      "Bash(start material-you-mockup.html)"
     ],
     "deny": [],
     "ask": []
+  },
+  "extraKnownMarketplaces": {
+    "anthropic-agent-skills": {
+      "source": {
+        "source": "directory",
+        "path": ".claude-skills/repos/anthropics-skills"
+      }
+    },
+    "superpowers-dev": {
+      "source": {
+        "source": "directory",
+        "path": ".claude-skills/repos/obra-superpowers"
+      }
+    },
+    "obra-superpowers-skills": {
+      "source": {
+        "source": "directory",
+        "path": ".claude-skills/repos/obra-superpowers-skills"
+      }
+    }
   }
 }

@@ -1,0 +1,63 @@
+{
+  "property_name": "Park Vista Apartments",
+  "address": "456 Sunset Boulevard",
+  "city": "Tampa",
+  "state": "FL",
+  "county": "Hillsborough",
+  "zip_code": "33602",
+  "year_built": 1988,
+  "unit_count": 180,
+  "property_class": "B",
+  
+  "purchase_price": 12700000,
+  "current_noi": 980000,
+  "current_occupancy": 0.78,
+  "current_avg_rent": 1100,
+  "current_assessed_value": 9500000,
+  "current_annual_taxes": 137819,
+  
+  "market_tier": "secondary",
+  "submarket_type": "primary",
+  
+  "renovation_scope": "heavy",
+  "renovation_cost_per_unit": 26000,
+  "renovation_cost_total": 4680000,
+  "renovation_duration_months": 20,
+  
+  "target_stabilized_noi": 1420000,
+  "target_stabilized_occupancy": 0.94,
+  "target_avg_rent": 1250,
+  
+  "financing": {
+    "ltv": 0.65,
+    "interest_rate": 0.0575,
+    "io_period_months": 30,
+    "loan_term_years": 5,
+    "amortization_years": 30
+  },
+  
+  "projected_returns": {
+    "levered_irr": 0.185,
+    "stabilized_coc": 0.075,
+    "equity_multiple": 1.75,
+    "net_investor_irr": 0.16
+  },
+  
+  "screening_flags": {
+    "structural_issues": false,
+    "environmental_contamination": false,
+    "severe_flood_zone": false,
+    "code_violations_unresolved": false,
+    "high_crime_area": false,
+    "population_declining": false,
+    "single_employer_risk": false,
+    "title_defects": false,
+    "active_litigation": false,
+    "zoning_nonconformance": false
+  },
+  
+  "deferred_maintenance_per_unit": 3500,
+  "floating_rate_debt": false,
+  "market_distressed": false
+}
+

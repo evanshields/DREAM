@@ -1,0 +1,43 @@
+{
+  "version": "1.0",
+  "project": "Dream AI",
+  "tasks": [
+    {
+      "id": "DREAM-001",
+      "status": "open",
+      "priority": "medium",
+      "component": "src/components/MetricCard.tsx",
+      "file": "src/components/MetricCard.tsx",
+      "description": "Update button hover state to use YinMn Blue from design language",
+      "change_type": "style",
+      "design_token": "yinmn-blue-dark",
+      "value": "#1E3A6B",
+      "context": {
+        "selector": "button:hover",
+        "property": "background-color",
+        "current_value": "generic-blue",
+        "new_value": "#1E3A6B"
+      },
+      "created": "2025-12-20",
+      "notes": "Example task - remove after adding real tasks"
+    }
+  ],
+  "design_language_file": "design-language-dream.md",
+  "metadata": {
+    "last_updated": "2025-12-20",
+    "total_tasks": 1,
+    "open_tasks": 1,
+    "in_progress": 0,
+    "completed": 0,
+    "skipped": 0
+  }
+}
+
+
+
+
+
+
+
+
+

@@ -1,0 +1,12 @@
+[submodule ".claude-skills/repos/anthropics-skills"]
+	path = .claude-skills/repos/anthropics-skills
+	url = https://github.com/anthropics/skills
+[submodule ".claude-skills/repos/obra-superpowers"]
+	path = .claude-skills/repos/obra-superpowers
+	url = https://github.com/obra/superpowers
+[submodule ".claude-skills/repos/obra-superpowers-skills"]
+	path = .claude-skills/repos/obra-superpowers-skills
+	url = https://github.com/obra/superpowers-skills
+[submodule ".claude-skills/repos/tapestry-skills"]
+	path = .claude-skills/repos/tapestry-skills
+	url = https://github.com/michalparkola/tapestry-skills-for-claude-code

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { ViewState } from '../types';
+import type { ViewState } from '../types';
 import { LayoutDashboard, Trello, FileText, Upload, Bell, Search, Moon, Sun } from 'lucide-react';
 
 interface LayoutProps {

@@ -1,0 +1,119 @@
+# QA Agent Configuration for Dream Vision
+# Version: 1.0
+# Last Updated: 2025-12-25
+
+version: 1.0
+
+# Auto-invocation settings (triggered by file changes)
+auto_invoke:
+  enabled: true
+  watch_paths:
+    - "src/**/*.{ts,tsx,py}"
+    - "backend/**/*.py"
+    - "tests/**/*.py"
+  debounce_ms: 500  # Wait 500ms after last change before triggering
+
+# Test execution settings
+test_execution:
+  fast_fail: true  # Stop on first failure
+  parallel: false  # Run tests sequentially for now
+  timeout_seconds: 300
+  selection_strategy: "affected"  # "affected" | "all" | "smart"
+
+  # Test execution order
+  order:
+    - unit        # Run first (fastest, ~1s)
+    - integration # Run second (~2s)
+    - e2e         # Run last (slowest, ~30s)
+
+# Auto-fix settings
+auto_fix:
+  enabled: true
+  max_attempts: 3
+
+  # These errors will be auto-fixed
+  fixable_errors:
+    - import_error
+    - fixture_error
+    - snapshot_mismatch
+    - timeout_error
+
+  # These require human intervention
+  manual_review_required:
+    - assertion_error   # Business logic bugs
+    - type_error        # Type system issues
+    - database_error    # Data integrity
+
+# Test generation settings
+test_generation:
+  templates_dir: ".qa-agent/templates/"
+  follow_patterns: true
+  auto_run_generated: true
+
+  # Testing guide files to parse
+  guides:
+    - "TESTING_GUIDE_TASKS_1.0_TO_1.22.md"
+    - "TEST_ARCHITECTURE.md"
+
+# Reporting settings
+reporting:
+  output_dir: "reports/"
+  formats:
+    - html       # Interactive HTML report
+    - markdown   # Summary for PRs
+    - json       # Structured data
+
+  include_screenshots: true  # Include failure screenshots for E2E
+  include_coverage: true
+
+  # Metrics to track
+  metrics:
+    - pass_rate         # % of passing tests
+    - coverage_percent  # Code coverage %
+    - performance_ms    # Test execution time
+    - flakiness_rate    # % of intermittently failing tests
+    - trend_analysis    # Compare to previous runs
+
+# CI/CD integration
+ci_cd:
+  github_actions: true
+  report_to_pr: true        # Comment on PR with test results
+  block_on_failure: true
+  artifact_upload: true
+
+  # GitHub workflow settings
+  workflow_file: ".github/workflows/qa-agent.yml"
+
+# File impact mapping (determines which tests to run)
+impact_map:
+  "src/lib/shieldstone/*.py":
+    - unit
+    - integration
+  "src/lib/**/*.py":
+    - unit
+    - integration
+  "src/components/**/*.tsx":
+    - integration
+    - e2e
+  "src/pages/**/*.tsx":
+    - e2e
+  "backend/services/**/*.py":
+    - unit
+    - integration
+  "backend/api/**/*.py":
+    - integration
+    - e2e
+  "backend/**/*.py":
+    - unit
+    - integration
+  "tests/**/*.py":
+    - affected-test  # Re-run the changed test
+
+# Extensibility settings (for future frameworks)
+extensions:
+  frameworks:
+    pytest: true      # Python testing
+    jest: false       # JavaScript (future)
+    vitest: false     # Vite testing (future)
+
+  custom_test_frameworks: []

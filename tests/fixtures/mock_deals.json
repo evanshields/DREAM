@@ -1,0 +1,119 @@
+{
+  "base_case_deal": {
+    "id": "deal-001",
+    "name": "Pinewood Apartments",
+    "address": "123 Pine Street",
+    "city": "Atlanta",
+    "state": "GA",
+    "zip": "30303",
+    "units": 200,
+    "buildings": 8,
+    "year_built": 2010,
+    "property_class": "B",
+    "submarket": "Midtown",
+    "purchase_price": 10000000,
+    "price_per_unit": 50000,
+    "current_occupancy": 0.90,
+    "financials": {
+      "gross_potential_rent": 1500000,
+      "vacancy_rate": 0.05,
+      "other_income": 80000,
+      "operating_expenses": 600000,
+      "noi": 905000,
+      "going_in_cap": 0.0905
+    },
+    "assumptions": {
+      "rent_growth": 0.03,
+      "vacancy_rate": 0.05,
+      "opex_growth": 0.02,
+      "exit_cap": 0.05,
+      "hold_period_years": 5,
+      "total_capex": 2500000,
+      "interest_rate": 0.0575,
+      "ltv": 0.65
+    }
+  },
+  "small_deal": {
+    "id": "deal-002",
+    "name": "Oak Grove Commons",
+    "address": "456 Oak Avenue",
+    "city": "Nashville",
+    "state": "TN",
+    "zip": "37201",
+    "units": 75,
+    "buildings": 3,
+    "year_built": 2005,
+    "property_class": "B",
+    "submarket": "East Nashville",
+    "purchase_price": 4000000,
+    "price_per_unit": 53333,
+    "current_occupancy": 0.88,
+    "financials": {
+      "gross_potential_rent": 600000,
+      "vacancy_rate": 0.06,
+      "other_income": 30000,
+      "operating_expenses": 240000,
+      "noi": 354000,
+      "going_in_cap": 0.0885
+    }
+  },
+  "large_deal": {
+    "id": "deal-003",
+    "name": "Riverside Tower",
+    "address": "789 River Road",
+    "city": "Charlotte",
+    "state": "NC",
+    "zip": "28202",
+    "units": 350,
+    "buildings": 1,
+    "year_built": 2018,
+    "property_class": "A",
+    "submarket": "Uptown",
+    "purchase_price": 28000000,
+    "price_per_unit": 80000,
+    "current_occupancy": 0.95,
+    "financials": {
+      "gross_potential_rent": 3500000,
+      "vacancy_rate": 0.03,
+      "other_income": 200000,
+      "operating_expenses": 1400000,
+      "noi": 2395000,
+      "going_in_cap": 0.0855
+    }
+  },
+  "value_add_deal": {
+    "id": "deal-004",
+    "name": "Sunset Gardens",
+    "address": "321 Sunset Blvd",
+    "city": "Tampa",
+    "state": "FL",
+    "zip": "33602",
+    "units": 180,
+    "buildings": 9,
+    "year_built": 1985,
+    "property_class": "C",
+    "submarket": "Downtown",
+    "purchase_price": 7200000,
+    "price_per_unit": 40000,
+    "current_occupancy": 0.75,
+    "financials": {
+      "gross_potential_rent": 900000,
+      "vacancy_rate": 0.12,
+      "other_income": 40000,
+      "operating_expenses": 420000,
+      "noi": 412000,
+      "going_in_cap": 0.0572
+    },
+    "assumptions": {
+      "rent_growth": 0.05,
+      "vacancy_rate": 0.05,
+      "opex_growth": 0.02,
+      "exit_cap": 0.055,
+      "hold_period_years": 5,
+      "total_capex": 4500000,
+      "interest_rate": 0.065,
+      "ltv": 0.60
+    }
+  }
+}
+

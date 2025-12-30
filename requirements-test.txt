@@ -1,0 +1,32 @@
+# Dream AI Test Suite Requirements
+
+# Core Testing Framework
+pytest>=7.4.0
+pytest-cov>=4.1.0  # Coverage reporting
+pytest-asyncio>=0.21.0  # Async test support
+pytest-mock>=3.11.0  # Mocking utilities
+pytest-timeout>=2.2.0  # Test timeouts
+
+# Financial Calculation Dependencies
+numpy>=1.24.0
+scipy>=1.11.0
+
+# E2E Testing
+playwright>=1.40.0
+pytest-playwright>=0.4.0
+
+# Optional: Parallel Testing
+pytest-xdist>=3.3.0  # Run tests in parallel
+
+# Optional: Better Test Output
+pytest-html>=4.1.0  # HTML test reports
+pytest-json-report>=1.5.0  # JSON test reports
+
+# Optional: Performance Profiling
+pytest-benchmark>=4.0.0  # Performance benchmarks
+
+# Dev Dependencies (if running tests locally)
+black>=23.0.0  # Code formatting
+flake8>=6.0.0  # Linting
+mypy>=1.5.0  # Type checking
+

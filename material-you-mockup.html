@@ -1,0 +1,475 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DREAM AI - Material You (Material Design 3)</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700&display=swap" rel="stylesheet">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        :root {
+            /* Material You Dynamic Color Palette */
+            --md-primary: #006A6A;
+            --md-on-primary: #FFFFFF;
+            --md-primary-container: #6FF7F6;
+            --md-on-primary-container: #002020;
+
+            --md-secondary: #4A6363;
+            --md-on-secondary: #FFFFFF;
+            --md-secondary-container: #CCE8E7;
+            --md-on-secondary-container: #051F1F;
+
+            --md-tertiary: #4B607C;
+            --md-on-tertiary: #FFFFFF;
+            --md-tertiary-container: #D3E4FF;
+            --md-on-tertiary-container: #041C35;
+
+            --md-surface: #F4FBF9;
+            --md-on-surface: #161D1D;
+            --md-surface-variant: #DAE5E3;
+            --md-on-surface-variant: #3F4948;
+
+            --md-background: #F4FBF9;
+            --md-on-background: #161D1D;
+
+            --md-outline: #6F7978;
+            --md-outline-variant: #BEC9C7;
+        }
+
+        body {
+            font-family: 'Roboto', sans-serif;
+            background-color: var(--md-background);
+            color: var(--md-on-background);
+            line-height: 1.5;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 24px;
+        }
+
+        /* Material You Header */
+        .header-m3 {
+            background-color: var(--md-surface);
+            border-radius: 28px;
+            padding: 16px 24px;
+            margin-bottom: 24px;
+        }
+
+        .header-content {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .logo-m3 {
+            font-size: 22px;
+            font-weight: 500;
+            color: var(--md-on-surface);
+            letter-spacing: 0.5px;
+        }
+
+        .nav-m3 {
+            display: flex;
+            gap: 8px;
+        }
+
+        .nav-m3 a {
+            color: var(--md-on-surface-variant);
+            text-decoration: none;
+            font-size: 14px;
+            font-weight: 500;
+            padding: 10px 24px;
+            border-radius: 100px;
+            transition: all 0.2s cubic-bezier(0.2, 0, 0, 1);
+        }
+
+        .nav-m3 a:hover {
+            background-color: var(--md-secondary-container);
+            color: var(--md-on-secondary-container);
+        }
+
+        .nav-m3 a.active {
+            background-color: var(--md-secondary-container);
+            color: var(--md-on-secondary-container);
+        }
+
+        /* Typography */
+        h1 {
+            font-size: 45px;
+            font-weight: 400;
+            margin-bottom: 16px;
+            color: var(--md-on-background);
+            letter-spacing: 0px;
+        }
+
+        h2 {
+            font-size: 28px;
+            font-weight: 400;
+            margin-bottom: 20px;
+            color: var(--md-on-background);
+        }
+
+        h3 {
+            font-size: 22px;
+            font-weight: 500;
+            margin-bottom: 16px;
+            color: var(--md-on-surface);
+        }
+
+        /* Material You Cards - Filled */
+        .card-m3 {
+            background-color: var(--md-surface-variant);
+            border-radius: 28px;
+            padding: 24px;
+            margin-bottom: 24px;
+        }
+
+        .card-m3-elevated {
+            background-color: var(--md-surface);
+            border-radius: 28px;
+            padding: 24px;
+            margin-bottom: 24px;
+            box-shadow: 0 1px 3px 1px rgba(0, 0, 0, 0.15), 0 1px 2px 0 rgba(0, 0, 0, 0.3);
+        }
+
+        /* Metrics Grid */
+        .metrics-grid-m3 {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 16px;
+            margin-bottom: 24px;
+        }
+
+        .metric-m3 {
+            background-color: var(--md-primary-container);
+            color: var(--md-on-primary-container);
+            border-radius: 24px;
+            padding: 24px;
+            transition: all 0.3s cubic-bezier(0.2, 0, 0, 1);
+        }
+
+        .metric-m3:hover {
+            box-shadow: 0 1px 3px 1px rgba(0, 0, 0, 0.15), 0 1px 2px 0 rgba(0, 0, 0, 0.3);
+            transform: scale(1.02);
+        }
+
+        .metric-m3.secondary {
+            background-color: var(--md-secondary-container);
+            color: var(--md-on-secondary-container);
+        }
+
+        .metric-m3.tertiary {
+            background-color: var(--md-tertiary-container);
+            color: var(--md-on-tertiary-container);
+        }
+
+        .metric-label-m3 {
+            font-size: 12px;
+            font-weight: 500;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin-bottom: 12px;
+            opacity: 0.8;
+        }
+
+        .metric-value-m3 {
+            font-size: 36px;
+            font-weight: 400;
+            font-variant-numeric: tabular-nums;
+            line-height: 1.1;
+        }
+
+        .metric-change-m3 {
+            font-size: 14px;
+            margin-top: 8px;
+            opacity: 0.9;
+        }
+
+        /* Table */
+        .table-m3 {
+            background-color: var(--md-surface);
+            border-radius: 28px;
+            overflow: hidden;
+            box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.3), 0 1px 3px 1px rgba(0, 0, 0, 0.15);
+        }
+
+        .table-m3 table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        .table-m3 th {
+            background-color: var(--md-surface-variant);
+            text-align: left;
+            font-size: 12px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            font-weight: 500;
+            padding: 20px 24px;
+            color: var(--md-on-surface-variant);
+        }
+
+        .table-m3 td {
+            padding: 20px 24px;
+            font-size: 14px;
+            color: var(--md-on-surface);
+            border-bottom: 1px solid var(--md-outline-variant);
+        }
+
+        .table-m3 tbody tr:hover {
+            background-color: var(--md-surface-variant);
+        }
+
+        .table-m3 tbody tr:last-child td {
+            border-bottom: none;
+        }
+
+        .table-m3 th.right,
+        .table-m3 td.right {
+            text-align: right;
+        }
+
+        /* Buttons - Material You Style */
+        .btn-m3-filled {
+            background-color: var(--md-primary);
+            color: var(--md-on-primary);
+            border: none;
+            border-radius: 100px;
+            padding: 14px 32px;
+            font-size: 14px;
+            font-weight: 500;
+            letter-spacing: 0.5px;
+            cursor: pointer;
+            transition: all 0.2s cubic-bezier(0.2, 0, 0, 1);
+            font-family: 'Roboto', sans-serif;
+            box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.3), 0 1px 3px 1px rgba(0, 0, 0, 0.15);
+        }
+
+        .btn-m3-filled:hover {
+            box-shadow: 0 1px 3px 1px rgba(0, 0, 0, 0.15), 0 4px 8px 3px rgba(0, 0, 0, 0.15);
+        }
+
+        .btn-m3-tonal {
+            background-color: var(--md-secondary-container);
+            color: var(--md-on-secondary-container);
+            border: none;
+            border-radius: 100px;
+            padding: 14px 32px;
+            font-size: 14px;
+            font-weight: 500;
+            letter-spacing: 0.5px;
+            cursor: pointer;
+            transition: all 0.2s cubic-bezier(0.2, 0, 0, 1);
+            font-family: 'Roboto', sans-serif;
+        }
+
+        .btn-m3-tonal:hover {
+            box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.3), 0 1px 3px 1px rgba(0, 0, 0, 0.15);
+        }
+
+        .btn-m3-outlined {
+            background-color: transparent;
+            color: var(--md-primary);
+            border: 1px solid var(--md-outline);
+            border-radius: 100px;
+            padding: 14px 32px;
+            font-size: 14px;
+            font-weight: 500;
+            letter-spacing: 0.5px;
+            cursor: pointer;
+            transition: all 0.2s cubic-bezier(0.2, 0, 0, 1);
+            font-family: 'Roboto', sans-serif;
+        }
+
+        .btn-m3-outlined:hover {
+            background-color: rgba(0, 106, 106, 0.08);
+        }
+
+        /* Chips */
+        .chip-m3 {
+            background-color: var(--md-secondary-container);
+            color: var(--md-on-secondary-container);
+            padding: 6px 16px;
+            font-size: 13px;
+            font-weight: 500;
+            border-radius: 8px;
+            display: inline-block;
+        }
+
+        .chip-m3.primary {
+            background-color: var(--md-primary-container);
+            color: var(--md-on-primary-container);
+        }
+
+        .chip-m3.tertiary {
+            background-color: var(--md-tertiary-container);
+            color: var(--md-on-tertiary-container);
+        }
+
+        /* Color Palette */
+        .color-grid-m3 {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 16px;
+            margin-bottom: 24px;
+        }
+
+        .color-swatch-m3 {
+            border-radius: 24px;
+            padding: 32px 24px;
+            text-align: center;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- Header -->
+        <header class="header-m3">
+            <div class="header-content">
+                <div class="logo-m3">DREAM.ai</div>
+                <nav class="nav-m3">
+                    <a href="#">Dashboard</a>
+                    <a href="#">Pipeline</a>
+                    <a href="#" class="active">Analysis</a>
+                    <a href="#">Upload</a>
+                </nav>
+            </div>
+        </header>
+
+        <!-- Title -->
+        <h1>Material You</h1>
+        <p style="font-size: 16px; color: var(--md-on-surface-variant); margin-bottom: 40px; max-width: 700px;">
+            Google's Material Design 3 with dynamic color, expressive surfaces, and personalized design. Rounded corners and tonal color system.
+        </p>
+
+        <!-- Color Palette -->
+        <div class="card-m3-elevated">
+            <h3>Dynamic Color Palette</h3>
+            <div class="color-grid-m3">
+                <div class="color-swatch-m3" style="background-color: var(--md-primary); color: var(--md-on-primary);">
+                    <div style="font-size: 11px; opacity: 0.9; margin-bottom: 8px;">PRIMARY</div>
+                    <div style="font-size: 16px; font-weight: 500;">#006A6A</div>
+                </div>
+                <div class="color-swatch-m3" style="background-color: var(--md-primary-container); color: var(--md-on-primary-container);">
+                    <div style="font-size: 11px; opacity: 0.9; margin-bottom: 8px;">PRIMARY CONTAINER</div>
+                    <div style="font-size: 16px; font-weight: 500;">#6FF7F6</div>
+                </div>
+                <div class="color-swatch-m3" style="background-color: var(--md-secondary-container); color: var(--md-on-secondary-container);">
+                    <div style="font-size: 11px; opacity: 0.9; margin-bottom: 8px;">SECONDARY</div>
+                    <div style="font-size: 16px; font-weight: 500;">#CCE8E7</div>
+                </div>
+                <div class="color-swatch-m3" style="background-color: var(--md-tertiary-container); color: var(--md-on-tertiary-container);">
+                    <div style="font-size: 11px; opacity: 0.9; margin-bottom: 8px;">TERTIARY</div>
+                    <div style="font-size: 16px; font-weight: 500;">#D3E4FF</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Metrics -->
+        <div class="card-m3-elevated">
+            <h3>Key Metrics</h3>
+            <div class="metrics-grid-m3">
+                <div class="metric-m3">
+                    <div class="metric-label-m3">IRR</div>
+                    <div class="metric-value-m3">18.5%</div>
+                    <div class="metric-change-m3">Above target</div>
+                </div>
+                <div class="metric-m3 secondary">
+                    <div class="metric-label-m3">Equity Multiple</div>
+                    <div class="metric-value-m3">2.1x</div>
+                    <div class="metric-change-m3">On target</div>
+                </div>
+                <div class="metric-m3 tertiary">
+                    <div class="metric-label-m3">Cap Rate</div>
+                    <div class="metric-value-m3">5.8%</div>
+                    <div class="metric-change-m3">Market rate</div>
+                </div>
+                <div class="metric-m3">
+                    <div class="metric-label-m3">Deal Score</div>
+                    <div class="metric-value-m3">87</div>
+                    <div class="metric-change-m3">Strong</div>
+                </div>
+                <div class="metric-m3 secondary">
+                    <div class="metric-label-m3">Price</div>
+                    <div class="metric-value-m3">$8.5M</div>
+                    <div class="metric-change-m3">156 units</div>
+                </div>
+                <div class="metric-m3 tertiary">
+                    <div class="metric-label-m3">NOI</div>
+                    <div class="metric-value-m3">$495K</div>
+                    <div class="metric-change-m3">Year 1</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Table -->
+        <div class="card-m3-elevated">
+            <h3>Deal Pipeline</h3>
+            <div class="table-m3">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Property</th>
+                            <th>Market</th>
+                            <th class="right">Units</th>
+                            <th class="right">Price</th>
+                            <th class="right">IRR</th>
+                            <th>Status</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td>Sunset Gardens</td>
+                            <td>Austin, TX</td>
+                            <td class="right">156</td>
+                            <td class="right">$8,500,000</td>
+                            <td class="right">18.5%</td>
+                            <td><span class="chip-m3 primary">Proceed</span></td>
+                        </tr>
+                        <tr>
+                            <td>Oak Ridge Apartments</td>
+                            <td>Dallas, TX</td>
+                            <td class="right">224</td>
+                            <td class="right">$14,200,000</td>
+                            <td class="right">16.8%</td>
+                            <td><span class="chip-m3 tertiary">Pass</span></td>
+                        </tr>
+                        <tr>
+                            <td>Metro Plaza</td>
+                            <td>Phoenix, AZ</td>
+                            <td class="right">88</td>
+                            <td class="right">$5,100,000</td>
+                            <td class="right">15.2%</td>
+                            <td><span class="chip-m3">Review</span></td>
+                        </tr>
+                        <tr>
+                            <td>Riverside Commons</td>
+                            <td>Nashville, TN</td>
+                            <td class="right">192</td>
+                            <td class="right">$11,800,000</td>
+                            <td class="right">17.3%</td>
+                            <td><span class="chip-m3 primary">Proceed</span></td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Buttons -->
+        <div style="display: flex; gap: 16px; margin-top: 24px;">
+            <button class="btn-m3-filled">Analyze New Deal</button>
+            <button class="btn-m3-tonal">View Reports</button>
+            <button class="btn-m3-outlined">Export Data</button>
+        </div>
+    </div>
+</body>
+</html>

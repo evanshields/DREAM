@@ -1,0 +1,419 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DREAM AI - Corporate/Financial Minimal</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        :root {
+            --bg-dark: #1A1D21;
+            --bg-darker: #0F1114;
+            --bg-card: #23272F;
+            --text-primary: #E8EAED;
+            --text-secondary: #9AA0A6;
+            --accent: #4A9EFF;
+            --accent-green: #34A853;
+            --accent-red: #EA4335;
+            --border: #3C4043;
+        }
+
+        body {
+            font-family: 'IBM Plex Sans', sans-serif;
+            background-color: var(--bg-dark);
+            color: var(--text-primary);
+            line-height: 1.4;
+        }
+
+        .container {
+            max-width: 1600px;
+            margin: 0 auto;
+            padding: 0;
+        }
+
+        /* Terminal-style Header */
+        .header-corp {
+            background: var(--bg-darker);
+            border-bottom: 1px solid var(--border);
+            padding: 12px 20px;
+        }
+
+        .header-content {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .logo-corp {
+            font-family: 'IBM Plex Mono', monospace;
+            font-size: 16px;
+            font-weight: 600;
+            color: var(--accent);
+            letter-spacing: 1px;
+        }
+
+        .nav-corp {
+            display: flex;
+            gap: 30px;
+        }
+
+        .nav-corp a {
+            color: var(--text-secondary);
+            text-decoration: none;
+            font-size: 13px;
+            font-family: 'IBM Plex Mono', monospace;
+            transition: color 0.2s;
+        }
+
+        .nav-corp a:hover,
+        .nav-corp a.active {
+            color: var(--accent);
+        }
+
+        /* Content */
+        .content {
+            padding: 20px;
+        }
+
+        /* Typography - Terminal */
+        h1 {
+            font-family: 'IBM Plex Mono', monospace;
+            font-size: 28px;
+            font-weight: 600;
+            margin-bottom: 20px;
+            color: var(--text-primary);
+        }
+
+        h2 {
+            font-family: 'IBM Plex Mono', monospace;
+            font-size: 18px;
+            font-weight: 600;
+            margin-bottom: 15px;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        /* Dense Data Grid */
+        .data-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+
+        .data-cell {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            padding: 15px;
+        }
+
+        .data-cell-label {
+            font-family: 'IBM Plex Mono', monospace;
+            font-size: 10px;
+            color: var(--text-secondary);
+            margin-bottom: 8px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .data-cell-value {
+            font-family: 'IBM Plex Mono', monospace;
+            font-size: 28px;
+            font-weight: 600;
+            color: var(--text-primary);
+            font-variant-numeric: tabular-nums;
+            line-height: 1;
+        }
+
+        .data-cell-value.positive {
+            color: var(--accent-green);
+        }
+
+        .data-cell-value.highlight {
+            color: var(--accent);
+        }
+
+        .data-cell-change {
+            font-family: 'IBM Plex Mono', monospace;
+            font-size: 11px;
+            color: var(--text-secondary);
+            margin-top: 6px;
+        }
+
+        /* Table - High Density */
+        .table-corp {
+            width: 100%;
+            border-collapse: collapse;
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            margin-bottom: 20px;
+            font-family: 'IBM Plex Mono', monospace;
+        }
+
+        .table-corp th {
+            background: var(--bg-darker);
+            text-align: left;
+            font-size: 10px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            font-weight: 600;
+            padding: 10px 15px;
+            color: var(--text-secondary);
+            border-bottom: 1px solid var(--border);
+        }
+
+        .table-corp td {
+            padding: 10px 15px;
+            border-bottom: 1px solid var(--border);
+            font-size: 13px;
+            color: var(--text-primary);
+        }
+
+        .table-corp tbody tr:hover {
+            background: var(--bg-darker);
+        }
+
+        .table-corp tbody tr:last-child td {
+            border-bottom: none;
+        }
+
+        .table-corp th.right,
+        .table-corp td.right {
+            text-align: right;
+            font-variant-numeric: tabular-nums;
+        }
+
+        /* Buttons */
+        .btn-corp {
+            background: var(--accent);
+            color: var(--bg-darker);
+            border: none;
+            padding: 10px 20px;
+            font-size: 12px;
+            font-family: 'IBM Plex Mono', monospace;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+
+        .btn-corp:hover {
+            background: #6BB0FF;
+        }
+
+        .btn-corp-outline {
+            background: transparent;
+            color: var(--accent);
+            border: 1px solid var(--accent);
+            padding: 9px 19px;
+            font-size: 12px;
+            font-family: 'IBM Plex Mono', monospace;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            font-weight: 600;
+            cursor: pointer;
+        }
+
+        .btn-corp-outline:hover {
+            background: var(--accent);
+            color: var(--bg-darker);
+        }
+
+        /* Status */
+        .status {
+            font-family: 'IBM Plex Mono', monospace;
+            font-size: 10px;
+            padding: 4px 8px;
+            border: 1px solid;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .status.success {
+            color: var(--accent-green);
+            border-color: var(--accent-green);
+            background: rgba(52, 168, 83, 0.1);
+        }
+
+        .status.info {
+            color: var(--accent);
+            border-color: var(--accent);
+            background: rgba(74, 158, 255, 0.1);
+        }
+
+        .status.neutral {
+            color: var(--text-secondary);
+            border-color: var(--border);
+            background: var(--bg-darker);
+        }
+
+        /* Color Palette */
+        .color-blocks {
+            display: grid;
+            grid-template-columns: repeat(5, 1fr);
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+
+        .color-block-corp {
+            padding: 30px 20px;
+            border: 1px solid var(--border);
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- Header -->
+        <header class="header-corp">
+            <div class="header-content">
+                <div class="logo-corp">DREAM.AI | TERMINAL</div>
+                <nav class="nav-corp">
+                    <a href="#">DASHBOARD</a>
+                    <a href="#">PIPELINE</a>
+                    <a href="#" class="active">ANALYSIS</a>
+                    <a href="#">UPLOAD</a>
+                </nav>
+            </div>
+        </header>
+
+        <div class="content">
+            <!-- Title -->
+            <h1>CORPORATE / FINANCIAL MINIMAL</h1>
+            <p style="font-family: 'IBM Plex Mono', monospace; font-size: 12px; color: var(--text-secondary); margin-bottom: 30px;">
+                Bloomberg Terminal aesthetic. Maximum data density. Professional blues and grays. Monospace fonts for precision.
+            </p>
+
+            <!-- Color Palette -->
+            <h2>COLOR PALETTE</h2>
+            <div class="color-blocks">
+                <div class="color-block-corp" style="background: #1A1D21;">
+                    <div style="font-family: 'IBM Plex Mono', monospace; font-size: 10px; color: var(--text-secondary); margin-bottom: 8px;">BG DARK</div>
+                    <div style="font-family: 'IBM Plex Mono', monospace; font-size: 14px; color: var(--text-primary);">#1A1D21</div>
+                </div>
+                <div class="color-block-corp" style="background: #4A9EFF;">
+                    <div style="font-family: 'IBM Plex Mono', monospace; font-size: 10px; color: white; margin-bottom: 8px;">ACCENT</div>
+                    <div style="font-family: 'IBM Plex Mono', monospace; font-size: 14px; color: white;">#4A9EFF</div>
+                </div>
+                <div class="color-block-corp" style="background: #34A853;">
+                    <div style="font-family: 'IBM Plex Mono', monospace; font-size: 10px; color: white; margin-bottom: 8px;">SUCCESS</div>
+                    <div style="font-family: 'IBM Plex Mono', monospace; font-size: 14px; color: white;">#34A853</div>
+                </div>
+                <div class="color-block-corp" style="background: #E8EAED;">
+                    <div style="font-family: 'IBM Plex Mono', monospace; font-size: 10px; color: #1A1D21; margin-bottom: 8px;">TEXT</div>
+                    <div style="font-family: 'IBM Plex Mono', monospace; font-size: 14px; color: #1A1D21;">#E8EAED</div>
+                </div>
+                <div class="color-block-corp" style="background: #23272F;">
+                    <div style="font-family: 'IBM Plex Mono', monospace; font-size: 10px; color: var(--text-secondary); margin-bottom: 8px;">CARD</div>
+                    <div style="font-family: 'IBM Plex Mono', monospace; font-size: 14px; color: var(--text-primary);">#23272F</div>
+                </div>
+            </div>
+
+            <!-- Metrics - Dense -->
+            <h2>KEY METRICS</h2>
+            <div class="data-grid">
+                <div class="data-cell">
+                    <div class="data-cell-label">IRR</div>
+                    <div class="data-cell-value highlight">18.5%</div>
+                    <div class="data-cell-change">+2.3% TARGET</div>
+                </div>
+                <div class="data-cell">
+                    <div class="data-cell-label">EQ MULTIPLE</div>
+                    <div class="data-cell-value">2.1x</div>
+                    <div class="data-cell-change">ON TARGET</div>
+                </div>
+                <div class="data-cell">
+                    <div class="data-cell-label">CAP RATE</div>
+                    <div class="data-cell-value">5.8%</div>
+                    <div class="data-cell-change">MARKET RATE</div>
+                </div>
+                <div class="data-cell">
+                    <div class="data-cell-label">DEAL SCORE</div>
+                    <div class="data-cell-value positive">87</div>
+                    <div class="data-cell-change">STRONG PROCEED</div>
+                </div>
+                <div class="data-cell">
+                    <div class="data-cell-label">PRICE</div>
+                    <div class="data-cell-value">$8.5M</div>
+                    <div class="data-cell-change">156 UNITS</div>
+                </div>
+                <div class="data-cell">
+                    <div class="data-cell-label">NOI Y1</div>
+                    <div class="data-cell-value">$495K</div>
+                    <div class="data-cell-change">PROJECTED</div>
+                </div>
+            </div>
+
+            <!-- Table - High Density -->
+            <h2>DEAL PIPELINE</h2>
+            <table class="table-corp">
+                <thead>
+                    <tr>
+                        <th>PROPERTY</th>
+                        <th>MARKET</th>
+                        <th class="right">UNITS</th>
+                        <th class="right">PRICE</th>
+                        <th class="right">CAP</th>
+                        <th class="right">IRR</th>
+                        <th>STATUS</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td>SUNSET GARDENS</td>
+                        <td>AUSTIN, TX</td>
+                        <td class="right">156</td>
+                        <td class="right">8,500,000</td>
+                        <td class="right">5.8%</td>
+                        <td class="right">18.5%</td>
+                        <td><span class="status info">PROCEED</span></td>
+                    </tr>
+                    <tr>
+                        <td>OAK RIDGE APTS</td>
+                        <td>DALLAS, TX</td>
+                        <td class="right">224</td>
+                        <td class="right">14,200,000</td>
+                        <td class="right">6.2%</td>
+                        <td class="right">16.8%</td>
+                        <td><span class="status success">PASS</span></td>
+                    </tr>
+                    <tr>
+                        <td>METRO PLAZA</td>
+                        <td>PHOENIX, AZ</td>
+                        <td class="right">88</td>
+                        <td class="right">5,100,000</td>
+                        <td class="right">5.4%</td>
+                        <td class="right">15.2%</td>
+                        <td><span class="status neutral">REVIEW</span></td>
+                    </tr>
+                    <tr>
+                        <td>RIVERSIDE COMMONS</td>
+                        <td>NASHVILLE, TN</td>
+                        <td class="right">192</td>
+                        <td class="right">11,800,000</td>
+                        <td class="right">6.0%</td>
+                        <td class="right">17.3%</td>
+                        <td><span class="status info">PROCEED</span></td>
+                    </tr>
+                </tbody>
+            </table>
+
+            <!-- Buttons -->
+            <div style="display: flex; gap: 10px;">
+                <button class="btn-corp">ANALYZE DEAL</button>
+                <button class="btn-corp-outline">VIEW REPORTS</button>
+            </div>
+        </div>
+    </div>
+</body>
+</html>

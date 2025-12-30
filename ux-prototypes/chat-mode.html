@@ -1,0 +1,439 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chat Mode - DREAM AI</title>
+    <!--
+        UX Prototype: Chat Mode Interface
+        Task: 1.24 - Minimal Pro Styled UI
+        PRD Reference: Section 8.0.2
+        Design Language: Minimal Pro
+        CSS Framework: Tailwind CSS
+        Typography: Libre Franklin (body), Playfair Display (headings)
+        Mobile-first responsive design with 44pt minimum touch targets
+    -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Libre+Franklin:wght@400;500;600;700&family=Playfair+Display:wght@500;600;700&display=swap" rel="stylesheet">
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        primary: {
+                            DEFAULT: '#28323E',
+                            light: '#3C4856',
+                            dark: '#1A1F26',
+                        },
+                        secondary: {
+                            DEFAULT: '#3C4856',
+                            light: '#5C6876',
+                            muted: '#9DA3AA',
+                        },
+                        accent: {
+                            DEFAULT: '#005253',
+                            dark: '#003F3F',
+                            light: '#007A7C',
+                        },
+                        'yinmn-blue': {
+                            DEFAULT: '#2E5090',
+                            dark: '#1E3A6B',
+                            light: '#4A6BA8',
+                        },
+                        background: {
+                            primary: '#FFFFFF',
+                            secondary: '#F8F7F5',
+                            tertiary: '#EBE5DE',
+                        },
+                        border: '#D6C9BA',
+                        brand: {
+                            success: '#58ABA8',
+                            warning: '#F3B8A7',
+                            danger: '#C94A3E',
+                            info: '#95C9E6',
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Libre Franklin', 'sans-serif'],
+                        heading: ['Playfair Display', 'serif'],
+                    },
+                }
+            }
+        }
+    </script>
+    <style>
+        /* Ensure proper font application */
+        body {
+            @apply font-sans text-primary;
+        }
+        h1, h2, h3, h4, h5, h6 {
+            @apply font-heading;
+        }
+        .sr-only {
+            position: absolute;
+            width: 1px;
+            height: 1px;
+            padding: 0;
+            margin: -1px;
+            overflow: hidden;
+            clip: rect(0, 0, 0, 0);
+            white-space: nowrap;
+            border-width: 0;
+        }
+    </style>
+</head>
+<body class="bg-background-secondary text-primary h-screen flex flex-col">
+    <!--
+        NAVIGATION STRUCTURE:
+        - Header with mode toggle (Dashboard ↔ Chat)
+        - Extracted deal summary card (above chat)
+        - Chat messages area (scrollable)
+        - Input area (text input + file upload + send button)
+        - All states: empty, loading, populated, error
+    -->
+
+    <!-- Header Navigation -->
+    <header role="banner" class="sticky top-0 z-40 bg-background-primary border-b border-border shadow-sm">
+        <nav aria-label="Main navigation" class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
+            <h1 class="text-2xl font-heading font-bold text-primary">DREAM AI</h1>
+            <div class="flex items-center gap-4">
+                <!-- Mode Toggle -->
+                <div class="flex items-center bg-background-tertiary rounded-lg p-1" role="group" aria-label="Mode selection">
+                    <button
+                        type="button"
+                        aria-label="Switch to Dashboard mode"
+                        class="px-4 py-2 text-sm font-medium text-secondary hover:text-primary rounded-md transition-colors min-h-[44px]"
+                    >
+                        Dashboard
+                    </button>
+                    <button
+                        type="button"
+                        aria-pressed="true"
+                        aria-label="Current mode: Chat"
+                        class="px-4 py-2 text-sm font-medium bg-background-primary text-primary rounded-md shadow-sm min-h-[44px]"
+                    >
+                        Chat
+                    </button>
+                </div>
+                <button
+                    type="button"
+                    aria-label="User menu"
+                    class="px-4 py-2 text-sm font-medium text-secondary hover:text-primary hover:bg-background-tertiary rounded-md transition-colors min-h-[44px]"
+                >
+                    User Menu
+                </button>
+            </div>
+        </nav>
+    </header>
+
+    <!-- Main Content -->
+    <main role="main" class="flex-1 flex flex-col max-w-4xl mx-auto w-full px-4 sm:px-6 lg:px-8 py-6">
+        <!--
+            STATE: Empty (default for new conversation)
+            - Welcome message
+            - Example prompts
+            - File upload hint
+        -->
+        <section aria-label="Empty chat state" class="hidden flex-1 flex items-center justify-center">
+            <div class="text-center max-w-2xl">
+                <h2 class="text-3xl font-heading font-bold text-primary mb-4">Welcome to Chat Mode</h2>
+                <p class="text-lg text-secondary mb-8">I can help you create and evaluate deals. Try saying:</p>
+                <ul class="space-y-3 mb-8">
+                    <li>
+                        <button
+                            type="button"
+                            class="w-full px-6 py-4 bg-background-primary border border-border rounded-lg text-left hover:bg-background-tertiary hover:border-yinmn-blue transition-colors min-h-[44px]"
+                        >
+                            "I have a 96-unit property in Austin asking $12.5M"
+                        </button>
+                    </li>
+                    <li>
+                        <button
+                            type="button"
+                            class="w-full px-6 py-4 bg-background-primary border border-border rounded-lg text-left hover:bg-background-tertiary hover:border-yinmn-blue transition-colors min-h-[44px]"
+                        >
+                            "Upload my OM and extract the key information"
+                        </button>
+                    </li>
+                    <li>
+                        <button
+                            type="button"
+                            class="w-full px-6 py-4 bg-background-primary border border-border rounded-lg text-left hover:bg-background-tertiary hover:border-yinmn-blue transition-colors min-h-[44px]"
+                        >
+                            "Create a new deal for Oak Creek Apartments"
+                        </button>
+                    </li>
+                </ul>
+                <p class="text-sm text-secondary-muted">Or drag and drop documents here to get started.</p>
+            </div>
+        </section>
+
+        <!--
+            STATE: Populated (conversation in progress)
+            - Extracted deal summary card
+            - Chat messages
+            - Input area
+        -->
+        <section aria-label="Chat interface" class="flex-1 flex flex-col">
+            <!-- Extracted Deal Summary Card -->
+            <article aria-label="Extracted deal summary" class="mb-6">
+                <!-- ShadCN Component: Card -->
+                <div class="bg-background-primary border border-border rounded-lg p-6">
+                    <header class="flex items-center justify-between mb-4">
+                        <h2 class="text-xl font-heading font-semibold text-primary">Oak Creek Apartments</h2>
+                        <div class="flex items-center gap-2">
+                            <button
+                                type="button"
+                                aria-label="View full details"
+                                class="px-3 py-1.5 text-sm font-medium text-secondary hover:text-primary hover:bg-background-tertiary rounded-md transition-colors min-h-[44px]"
+                            >
+                                View Full Details
+                            </button>
+                            <button
+                                type="button"
+                                aria-label="Edit deal"
+                                class="px-3 py-1.5 text-sm font-medium text-secondary hover:text-primary hover:bg-background-tertiary rounded-md transition-colors min-h-[44px]"
+                            >
+                                Edit
+                            </button>
+                        </div>
+                    </header>
+                    <dl class="grid grid-cols-2 sm:grid-cols-3 gap-4">
+                        <div>
+                            <dt class="text-xs font-medium text-secondary-muted mb-1">Address</dt>
+                            <dd class="text-sm text-primary">1234 Oak Creek Dr, Austin, TX 78701</dd>
+                        </div>
+                        <div>
+                            <dt class="text-xs font-medium text-secondary-muted mb-1">Units</dt>
+                            <dd class="text-sm text-primary tabular-nums">96</dd>
+                        </div>
+                        <div>
+                            <dt class="text-xs font-medium text-secondary-muted mb-1">Asking Price</dt>
+                            <dd class="text-sm text-primary tabular-nums">$12,500,000</dd>
+                        </div>
+                        <div>
+                            <dt class="text-xs font-medium text-secondary-muted mb-1">Year Built</dt>
+                            <dd class="text-sm text-primary tabular-nums">1985</dd>
+                        </div>
+                        <div>
+                            <dt class="text-xs font-medium text-secondary-muted mb-1">Status</dt>
+                            <dd class="text-sm text-brand-success">Extraction Complete</dd>
+                        </div>
+                    </dl>
+                </div>
+            </article>
+
+            <!-- Chat Messages Area -->
+            <section aria-label="Chat messages" role="log" aria-live="polite" aria-relevant="additions" class="flex-1 overflow-y-auto space-y-4 mb-4">
+                <!-- AI Message -->
+                <article aria-label="AI message" class="flex items-start gap-3">
+                    <div class="flex-shrink-0 w-8 h-8 rounded-full bg-background-tertiary flex items-center justify-center">
+                        <span aria-label="AI" class="text-xs font-medium text-secondary">AI</span>
+                    </div>
+                    <div class="flex-1 max-w-[80%]">
+                        <div class="bg-background-tertiary rounded-2xl p-4">
+                            <p class="text-base text-primary">Great! Let me help you evaluate this deal. What's the property name?</p>
+                        </div>
+                        <time datetime="2025-12-25T10:30:00Z" class="text-xs text-secondary-muted mt-1 block">10:30 AM</time>
+                    </div>
+                </article>
+
+                <!-- User Message -->
+                <article aria-label="User message" class="flex items-start gap-3 justify-end">
+                    <div class="flex-1 max-w-[80%]">
+                        <div class="bg-yinmn-blue text-white rounded-2xl p-4 ml-auto">
+                            <p class="text-base">I have a 96-unit property in Austin asking $12.5M</p>
+                        </div>
+                        <time datetime="2025-12-25T10:29:45Z" class="text-xs text-secondary-muted mt-1 block text-right">10:29 AM</time>
+                    </div>
+                    <div class="flex-shrink-0 w-8 h-8 rounded-full bg-yinmn-blue flex items-center justify-center">
+                        <span aria-label="You" class="text-xs font-medium text-white">You</span>
+                    </div>
+                </article>
+
+                <!-- User Message with File -->
+                <article aria-label="User message with file attachment" class="flex items-start gap-3 justify-end">
+                    <div class="flex-1 max-w-[80%]">
+                        <div class="bg-yinmn-blue text-white rounded-2xl p-4 ml-auto">
+                            <p class="text-base mb-3">Here's the OM</p>
+                            <div class="bg-white/10 rounded-lg p-3">
+                                <!-- ShadCN Component: File attachment preview -->
+                                <div class="flex items-center gap-3">
+                                    <span class="text-2xl">📄</span>
+                                    <div class="flex-1">
+                                        <p class="text-sm font-medium">Oak_Creek_OM.pdf</p>
+                                        <p class="text-xs opacity-80">2.4 MB</p>
+                                    </div>
+                                    <span aria-label="Uploading" class="text-xs opacity-80">Uploading...</span>
+                                </div>
+                            </div>
+                        </div>
+                        <time datetime="2025-12-25T10:31:15Z" class="text-xs text-secondary-muted mt-1 block text-right">10:31 AM</time>
+                    </div>
+                    <div class="flex-shrink-0 w-8 h-8 rounded-full bg-yinmn-blue flex items-center justify-center">
+                        <span aria-label="You" class="text-xs font-medium text-white">You</span>
+                    </div>
+                </article>
+
+                <!-- AI Message with Extracted Data -->
+                <article aria-label="AI message with extracted data" class="flex items-start gap-3">
+                    <div class="flex-shrink-0 w-8 h-8 rounded-full bg-background-tertiary flex items-center justify-center">
+                        <span aria-label="AI" class="text-xs font-medium text-secondary">AI</span>
+                    </div>
+                    <div class="flex-1 max-w-[80%]">
+                        <div class="bg-background-tertiary rounded-2xl p-4">
+                            <p class="text-base text-primary mb-4">I've extracted the key information from the OM. Here's what I found:</p>
+                            <dl class="space-y-2 mb-4">
+                                <div class="flex items-center justify-between border-b border-border/50 pb-2">
+                                    <dt class="text-sm font-medium text-secondary">Address</dt>
+                                    <dd class="text-sm text-primary">1234 Oak Creek Dr, Austin, TX 78701</dd>
+                                </div>
+                                <div class="flex items-center justify-between border-b border-border/50 pb-2">
+                                    <dt class="text-sm font-medium text-secondary">Units</dt>
+                                    <dd class="text-sm text-primary tabular-nums">96</dd>
+                                </div>
+                                <div class="flex items-center justify-between border-b border-border/50 pb-2">
+                                    <dt class="text-sm font-medium text-secondary">Asking Price</dt>
+                                    <dd class="text-sm text-primary tabular-nums">$12,500,000</dd>
+                                </div>
+                                <div class="flex items-center justify-between pb-2">
+                                    <dt class="text-sm font-medium text-secondary">Year Built</dt>
+                                    <dd class="text-sm text-primary tabular-nums">1985</dd>
+                                </div>
+                            </dl>
+                            <p class="text-base text-primary">Would you like me to pull the T-12 and rent roll, or do you have those documents?</p>
+                        </div>
+                        <time datetime="2025-12-25T10:32:00Z" class="text-xs text-secondary-muted mt-1 block">10:32 AM</time>
+                    </div>
+                </article>
+
+                <!--
+                    STATE: Loading (AI typing)
+                    - Typing indicator
+                -->
+                <article aria-label="AI typing indicator" class="hidden flex items-start gap-3">
+                    <div class="flex-shrink-0 w-8 h-8 rounded-full bg-background-tertiary flex items-center justify-center">
+                        <span aria-label="AI" class="text-xs font-medium text-secondary">AI</span>
+                    </div>
+                    <div class="flex-1 max-w-[80%]">
+                        <div class="bg-background-tertiary rounded-2xl p-4">
+                            <div aria-label="Typing" class="flex items-center gap-1">
+                                <span class="w-2 h-2 bg-secondary rounded-full animate-bounce" style="animation-delay: 0ms"></span>
+                                <span class="w-2 h-2 bg-secondary rounded-full animate-bounce" style="animation-delay: 150ms"></span>
+                                <span class="w-2 h-2 bg-secondary rounded-full animate-bounce" style="animation-delay: 300ms"></span>
+                            </div>
+                        </div>
+                    </div>
+                </article>
+            </section>
+
+            <!-- Input Area -->
+            <section aria-label="Chat input" class="border-t border-border bg-background-primary">
+                <!-- ShadCN Component: Input group with file upload -->
+                <form class="flex items-end gap-2 p-4">
+                    <!-- File Upload Button -->
+                    <button
+                        type="button"
+                        aria-label="Attach file"
+                        class="px-4 py-3 text-secondary hover:text-primary hover:bg-background-tertiary rounded-md transition-colors min-h-[44px] min-w-[44px] flex items-center justify-center"
+                    >
+                        📎
+                    </button>
+
+                    <!-- Text Input -->
+                    <label for="chat-input" class="sr-only">Type your message</label>
+                    <textarea
+                        id="chat-input"
+                        name="message"
+                        rows="1"
+                        placeholder="Type your message..."
+                        aria-label="Type your message"
+                        class="flex-1 px-4 py-3 border border-border rounded-lg bg-background-primary text-primary text-base resize-none focus:ring-2 focus:ring-yinmn-blue focus:border-transparent min-h-[44px]"
+                    ></textarea>
+
+                    <!-- Send Button -->
+                    <button
+                        type="submit"
+                        aria-label="Send message"
+                        class="px-6 py-3 bg-yinmn-blue text-white font-medium rounded-lg hover:bg-yinmn-blue-dark transition-colors min-h-[44px]"
+                    >
+                        Send →
+                    </button>
+                </form>
+
+                <!-- File Upload Drop Zone (hidden, activated on drag) -->
+                <div role="region" aria-label="File upload drop zone" class="hidden border-2 border-dashed border-yinmn-blue rounded-lg p-8 m-4 bg-yinmn-blue/5 text-center">
+                    <p class="text-base font-medium text-primary mb-2">Drop files here to upload</p>
+                    <p class="text-sm text-secondary-muted">Supported: PDF, XLSX, XLS, PNG, JPG, DOCX (max 50MB)</p>
+                </div>
+
+                <!-- File Upload Options -->
+                <div role="menu" aria-label="File upload options" class="hidden bg-background-primary border border-border rounded-lg shadow-lg p-2 m-4">
+                    <button
+                        type="button"
+                        role="menuitem"
+                        class="w-full px-4 py-3 text-left text-sm text-primary hover:bg-background-tertiary rounded-md transition-colors min-h-[44px]"
+                    >
+                        📁 Browse Files
+                    </button>
+                    <button
+                        type="button"
+                        role="menuitem"
+                        class="w-full px-4 py-3 text-left text-sm text-primary hover:bg-background-tertiary rounded-md transition-colors min-h-[44px]"
+                    >
+                        📷 Take Photo
+                    </button>
+                    <button
+                        type="button"
+                        role="menuitem"
+                        class="w-full px-4 py-3 text-left text-sm text-primary hover:bg-background-tertiary rounded-md transition-colors min-h-[44px]"
+                    >
+                        ☁️ Google Drive
+                    </button>
+                    <button
+                        type="button"
+                        role="menuitem"
+                        class="w-full px-4 py-3 text-left text-sm text-primary hover:bg-background-tertiary rounded-md transition-colors min-h-[44px]"
+                    >
+                        ☁️ OneDrive
+                    </button>
+                    <button
+                        type="button"
+                        role="menuitem"
+                        class="w-full px-4 py-3 text-left text-sm text-primary hover:bg-background-tertiary rounded-md transition-colors min-h-[44px]"
+                    >
+                        ☁️ Dropbox
+                    </button>
+                </div>
+            </section>
+        </section>
+
+        <!--
+            STATE: Error
+            - Error message in chat
+            - Retry button
+        -->
+        <section role="alert" aria-label="Error state" class="hidden">
+            <div class="bg-brand-danger/10 border border-brand-danger rounded-lg p-4 m-4">
+                <p class="text-brand-danger font-medium mb-2">Something went wrong. Please try again.</p>
+                <button
+                    type="button"
+                    class="px-4 py-2 bg-brand-danger text-white font-medium rounded-md hover:bg-brand-danger/90 transition-colors min-h-[44px]"
+                >
+                    Retry
+                </button>
+            </div>
+        </section>
+    </main>
+
+    <!-- Footer -->
+    <footer role="contentinfo" class="border-t border-border bg-background-primary py-4">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center text-sm text-secondary-muted">
+            <p>&copy; 2025 DREAM AI. All rights reserved.</p>
+        </div>
+    </footer>
+</body>
+</html>
+

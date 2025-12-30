@@ -8,36 +8,41 @@ export default {
   theme: {
     extend: {
       colors: {
+        // Primary palette
         primary: {
           DEFAULT: 'var(--color-primary)',
-          light: 'var(--color-primary-light)',
           dark: 'var(--color-primary-dark)',
+          alt: 'var(--color-primary-alt)',
+          seafoam: 'var(--color-accent-teal)',
         },
+        // Secondary text colors
         secondary: {
-          DEFAULT: 'var(--color-secondary)',
-          light: 'var(--color-secondary-light)',
-          muted: 'var(--color-secondary-muted)',
+          DEFAULT: 'var(--color-primary)',
+          muted: 'var(--color-muted)',
+          gray: 'var(--color-muted)',
         },
+        // Accent colors
         accent: {
-          DEFAULT: 'var(--color-accent)',
-          light: 'var(--color-accent-light)',
+          DEFAULT: 'var(--color-accent-teal)',
+          teal: 'var(--color-accent-teal)',
+          blue: 'var(--color-accent-blue)',
+          coral: 'var(--color-accent-coral)',
+          tan: 'var(--color-accent-tan)',
         },
+        // Backgrounds
         background: {
-          primary: 'var(--color-bg-primary)',
-          secondary: 'var(--color-bg-secondary)',
-          tertiary: 'var(--color-bg-tertiary)',
+          primary: 'var(--color-background-primary)',
+          secondary: 'var(--color-background-secondary)',
+          tertiary: 'var(--color-background-tertiary)',
         },
-        border: 'var(--color-border)',
-        brand: {
-          success: 'var(--color-success)',
-          warning: 'var(--color-warning)',
-          danger: 'var(--color-danger)',
-          info: 'var(--color-info)',
-          'bg-success': 'var(--color-bg-success)',
-          'bg-warning': 'var(--color-bg-warning)',
-          'bg-danger': 'var(--color-bg-danger)',
-          'bg-info': 'var(--color-bg-info)',
-        }
+        // Semantic colors
+        success: 'var(--color-success)',
+        warning: 'var(--color-warning)',
+        danger: 'var(--color-danger)',
+        info: 'var(--color-info)',
+        // Border
+        border: 'var(--color-border-default)',
+        muted: 'var(--color-muted)',
       },
       fontFamily: {
         sans: ['Libre Franklin', 'sans-serif'],

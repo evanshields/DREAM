@@ -1,0 +1,35 @@
+# QA Agent Dependencies
+# Version: 1.0
+# Last Updated: 2025-12-25
+
+# Core testing framework (already installed)
+pytest>=7.4.0
+pytest-json-report>=1.5.0
+
+# Configuration
+PyYAML>=6.0
+
+# For failure analysis
+# (no additional dependencies - uses stdlib)
+
+# For test generation
+# (no additional dependencies - uses stdlib)
+
+# For reporting
+# (no additional dependencies - uses stdlib)
+
+# Optional: For enhanced reporting
+Jinja2>=3.1.0
+Markdown>=3.5.0
+
+# Optional: For API testing
+requests>=2.31.0
+
+# Development/testing dependencies (optional)
+pytest-cov>=4.1.0
+pytest-asyncio>=0.21.0
+pytest-timeout>=2.2.0
+
+# Playwright for E2E testing (required for E2E tests)
+playwright>=1.40.0
+pytest-playwright>=0.4.0

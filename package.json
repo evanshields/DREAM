@@ -7,17 +7,35 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "lint": "eslint .",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "test": "pytest tests/ -v",
+    "test:unit": "pytest tests/unit/ -v --cov=src",
+    "test:integration": "pytest tests/integration/ -v",
+    "test:e2e": "pytest tests/e2e/ -v",
+    "test:watch": "pytest tests/ -v --looponfail",
+    "test:coverage": "pytest tests/unit/ tests/integration/ --cov=src --cov-report=html",
+    "test:fast": "pytest tests/unit/ tests/integration/ -v -x",
+    "test:ci": "pytest tests/ -v --cov=src --cov-report=xml",
+    "qa:run": "python .qa-agent/scripts/runner.py --mode=auto",
+    "qa:debug": "python .qa-agent/scripts/analyzer.py --analyze --fix",
+    "qa:generate": "python .qa-agent/scripts/generator.py --guide=TESTING_GUIDE_TASKS_1.0_TO_1.22.md",
+    "qa:report": "python .qa-agent/scripts/reporter.py --generate"
   },
   "dependencies": {
+    "@hookform/resolvers": "^5.2.2",
     "@radix-ui/react-accordion": "^1.2.12",
+    "@radix-ui/react-select": "^2.2.6",
+    "@radix-ui/react-slot": "^1.2.4",
+    "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "lucide-react": "^0.555.0",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
+    "react-hook-form": "^7.69.0",
     "react-router-dom": "^7.9.6",
     "recharts": "^3.5.1",
-    "tailwind-merge": "^3.4.0"
+    "tailwind-merge": "^3.4.0",
+    "zod": "^4.2.1"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.1",

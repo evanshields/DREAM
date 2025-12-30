@@ -1,0 +1,940 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Manual Entry Form - DREAM AI</title>
+    
+    <!-- Tailwind CSS via CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- Google Fonts: Libre Franklin (sans-serif) and Playfair Display (serif) -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Libre+Franklin:wght@400;500;600;700&family=Playfair+Display:wght@500;600;700&display=swap" rel="stylesheet">
+    
+    <script>
+        // Configure Tailwind with Dream design tokens
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        primary: {
+                            DEFAULT: '#28323E',
+                            light: '#3C4856',
+                            dark: '#1A1F26',
+                        },
+                        secondary: {
+                            DEFAULT: '#3C4856',
+                            light: '#5C6876',
+                            muted: '#9DA3AA',
+                        },
+                        accent: {
+                            DEFAULT: '#005253',
+                            dark: '#003F3F',
+                            light: '#007A7C',
+                        },
+                        'yinmn-blue': {
+                            DEFAULT: '#2E5090',
+                            dark: '#1E3A6B',
+                            light: '#4A6BA8',
+                        },
+                        background: {
+                            primary: '#FFFFFF',
+                            secondary: '#F8F7F5',
+                            tertiary: '#EBE5DE',
+                        },
+                        border: '#D6C9BA',
+                        brand: {
+                            success: '#58ABA8',
+                            warning: '#F3B8A7',
+                            danger: '#C94A3E',
+                            info: '#95C9E6',
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Libre Franklin', 'sans-serif'],
+                        heading: ['Playfair Display', 'serif'],
+                    },
+                }
+            }
+        }
+        
+        // Set dynamic max year for year built field (evergreen)
+        document.addEventListener('DOMContentLoaded', function() {
+            const yearBuiltInput = document.getElementById('year-built');
+            if (yearBuiltInput) {
+                const currentYear = new Date().getFullYear();
+                yearBuiltInput.setAttribute('max', currentYear.toString());
+                yearBuiltInput.setAttribute('placeholder', `1800-${currentYear}`);
+            }
+            
+            // Auto-calculate price per unit
+            const askingPriceInput = document.getElementById('asking-price');
+            const unitsInput = document.getElementById('units');
+            const pricePerUnitInput = document.getElementById('price-per-unit');
+            
+            function calculatePricePerUnit() {
+                const price = parseFloat(askingPriceInput.value.replace(/[^0-9.]/g, '')) || 0;
+                const units = parseInt(unitsInput.value) || 0;
+                if (price > 0 && units > 0) {
+                    pricePerUnitInput.value = (price / units).toLocaleString('en-US', { 
+                        style: 'currency', 
+                        currency: 'USD',
+                        minimumFractionDigits: 0,
+                        maximumFractionDigits: 0
+                    });
+                } else {
+                    pricePerUnitInput.value = '';
+                }
+            }
+            
+            if (askingPriceInput && unitsInput && pricePerUnitInput) {
+                askingPriceInput.addEventListener('input', calculatePricePerUnit);
+                unitsInput.addEventListener('input', calculatePricePerUnit);
+            }
+            
+            // Auto-calculate cap rate
+            const noiInput = document.getElementById('noi-in-place');
+            const capRateInput = document.getElementById('cap-rate');
+            
+            function calculateCapRate() {
+                const noi = parseFloat(noiInput.value.replace(/[^0-9.]/g, '')) || 0;
+                const price = parseFloat(askingPriceInput.value.replace(/[^0-9.]/g, '')) || 0;
+                if (noi > 0 && price > 0) {
+                    const capRate = (noi / price) * 100;
+                    capRateInput.value = capRate.toFixed(2) + '%';
+                } else {
+                    capRateInput.value = '';
+                }
+            }
+            
+            if (noiInput && capRateInput && askingPriceInput) {
+                noiInput.addEventListener('input', calculateCapRate);
+                askingPriceInput.addEventListener('input', calculateCapRate);
+            }
+            
+            // Character count for notes
+            const notesTextarea = document.getElementById('notes');
+            const charCount = document.getElementById('notes-char-count');
+            if (notesTextarea && charCount) {
+                notesTextarea.addEventListener('input', function() {
+                    const count = this.value.length;
+                    charCount.textContent = `${count} / 2000 characters`;
+                    if (count > 2000) {
+                        charCount.classList.add('text-brand-danger');
+                    } else {
+                        charCount.classList.remove('text-brand-danger');
+                    }
+                });
+            }
+        });
+    </script>
+    
+    <style>
+        /* Custom styles for Minimal Pro theme */
+        body {
+            font-family: 'Libre Franklin', sans-serif;
+            background-color: #F8F7F5;
+            color: #28323E;
+        }
+        
+        /* Ensure 44pt minimum touch targets on mobile */
+        @media (max-width: 768px) {
+            button, input, select, textarea {
+                min-height: 44px;
+            }
+        }
+        
+        /* Input group styling for currency/percentage */
+        .input-group {
+            display: flex;
+            align-items: center;
+            border: 1px solid #D6C9BA;
+            border-radius: 6px;
+            background-color: #FFFFFF;
+            overflow: hidden;
+        }
+        
+        .input-group span {
+            padding: 0 12px;
+            color: #3C4856;
+            font-weight: 500;
+            background-color: #F8F7F5;
+            border-right: 1px solid #D6C9BA;
+        }
+        
+        .input-group input {
+            border: none;
+            flex: 1;
+        }
+        
+        .input-group:focus-within {
+            border-color: #2E5090;
+            box-shadow: 0 0 0 3px rgba(46, 80, 144, 0.1);
+        }
+        
+        /* Read-only input styling */
+        input[readonly] {
+            background-color: #F8F7F5;
+            color: #3C4856;
+            cursor: not-allowed;
+        }
+    </style>
+</head>
+<body class="bg-background-secondary min-h-screen">
+    <!-- 
+        UI Implementation: Manual Entry Form (Minimal Pro)
+        Task: 1.3
+        PRD Reference: Section 5.1, 8.1
+        Design Language: design-language-dream.md (Minimal Pro)
+        ShadCN Components: Card, Input, Select, Button, Textarea, Label
+    -->
+
+    <!-- Header Navigation -->
+    <header role="banner" class="bg-background-primary border-b border-border shadow-sm">
+        <nav aria-label="Main navigation" class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
+            <div class="flex items-center justify-between">
+                <h1 class="text-2xl font-heading font-bold text-primary">DREAM AI</h1>
+                <button 
+                    type="button" 
+                    aria-label="User menu"
+                    class="px-4 py-2 text-sm font-medium text-secondary hover:bg-background-tertiary rounded-md transition-colors min-h-[44px]"
+                >
+                    User Menu
+                </button>
+            </div>
+        </nav>
+    </header>
+
+    <!-- Main Content -->
+    <main role="main" class="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        <!-- Page Header -->
+        <header class="mb-8">
+            <h2 class="text-3xl font-heading font-semibold text-primary mb-2">New Deal - Manual Entry</h2>
+            <p class="text-base text-secondary">Quick Add: Enter basic deal information manually</p>
+        </header>
+
+        <!-- Form Progress Indicator -->
+        <nav aria-label="Form progress" class="mb-8">
+            <ol class="flex items-center gap-4 text-sm">
+                <li class="flex items-center gap-2">
+                    <span class="w-8 h-8 rounded-full bg-[#2E5090] text-white flex items-center justify-center font-semibold">1</span>
+                    <span class="font-medium text-primary">Property Info</span>
+                </li>
+                <li class="flex-1 h-px bg-border"></li>
+                <li class="flex items-center gap-2">
+                    <span class="w-8 h-8 rounded-full bg-background-tertiary text-secondary flex items-center justify-center font-semibold">2</span>
+                    <span class="font-medium text-secondary-muted">Financials</span>
+                </li>
+                <li class="flex-1 h-px bg-border"></li>
+                <li class="flex items-center gap-2">
+                    <span class="w-8 h-8 rounded-full bg-background-tertiary text-secondary flex items-center justify-center font-semibold">3</span>
+                    <span class="font-medium text-secondary-muted">Source</span>
+                </li>
+                <li class="flex-1 h-px bg-border"></li>
+                <li class="flex items-center gap-2">
+                    <span class="w-8 h-8 rounded-full bg-background-tertiary text-secondary flex items-center justify-center font-semibold">4</span>
+                    <span class="font-medium text-secondary-muted">Notes</span>
+                </li>
+            </ol>
+        </nav>
+
+        <!-- Form -->
+        <form id="manual-entry-form" aria-label="Manual deal entry form" novalidate class="space-y-6">
+            
+            <!-- ============================================================
+                 SECTION 1: PROPERTY IDENTIFICATION
+                 ShadCN Component: Card
+                 ============================================================ -->
+            <section 
+                aria-labelledby="section-1-heading"
+                class="bg-background-primary rounded-lg border border-border shadow-sm p-6"
+            >
+                <header class="mb-6 pb-4 border-b border-border">
+                    <h3 id="section-1-heading" class="text-2xl font-heading font-semibold text-primary mb-1">
+                        Property Identification
+                    </h3>
+                    <p class="text-sm text-secondary-muted">Basic property information</p>
+                </header>
+
+                <div class="space-y-5">
+                    <!-- Property Name -->
+                    <div class="space-y-2">
+                        <label for="property-name" class="flex items-center gap-1 text-sm font-medium text-secondary">
+                            Property Name
+                            <span aria-label="required" class="text-brand-danger">*</span>
+                        </label>
+                        <input 
+                            type="text" 
+                            id="property-name" 
+                            name="property_name" 
+                            required 
+                            minlength="3" 
+                            maxlength="100"
+                            aria-describedby="property-name-help property-name-error"
+                            aria-invalid="false"
+                            class="w-full h-10 px-3 py-2 border border-border rounded-md bg-background-primary text-primary placeholder:text-secondary-muted focus:ring-2 focus:ring-[#2E5090] focus:border-transparent transition-all text-sm"
+                            placeholder="e.g., Oak Creek Apartments"
+                        >
+                        <small id="property-name-help" class="text-xs text-secondary-muted">3-100 characters</small>
+                        <div id="property-name-error" role="alert" aria-live="polite" hidden class="text-xs text-brand-danger">
+                            Property name must be between 3 and 100 characters
+                        </div>
+                    </div>
+
+                    <!-- Street Address -->
+                    <div class="space-y-2">
+                        <label for="street-address" class="flex items-center gap-1 text-sm font-medium text-secondary">
+                            Street Address
+                            <span aria-label="required" class="text-brand-danger">*</span>
+                        </label>
+                        <input 
+                            type="text" 
+                            id="street-address" 
+                            name="address_street" 
+                            required 
+                            minlength="5"
+                            aria-describedby="street-address-help street-address-error"
+                            aria-invalid="false"
+                            class="w-full h-10 px-3 py-2 border border-border rounded-md bg-background-primary text-primary placeholder:text-secondary-muted focus:ring-2 focus:ring-[#2E5090] focus:border-transparent transition-all text-sm"
+                            placeholder="1234 Main Street"
+                        >
+                        <small id="street-address-help" class="text-xs text-secondary-muted">Full street address</small>
+                        <div id="street-address-error" role="alert" aria-live="polite" hidden class="text-xs text-brand-danger">
+                            Street address must be at least 5 characters
+                        </div>
+                    </div>
+
+                    <!-- City, State, ZIP (Grouped) -->
+                    <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                        <!-- City -->
+                        <div class="space-y-2">
+                            <label for="city" class="flex items-center gap-1 text-sm font-medium text-secondary">
+                                City
+                                <span aria-label="required" class="text-brand-danger">*</span>
+                            </label>
+                            <input 
+                                type="text" 
+                                id="city" 
+                                name="address_city" 
+                                required 
+                                minlength="2"
+                                aria-describedby="city-error"
+                                aria-invalid="false"
+                                class="w-full h-10 px-3 py-2 border border-border rounded-md bg-background-primary text-primary placeholder:text-secondary-muted focus:ring-2 focus:ring-[#2E5090] focus:border-transparent transition-all text-sm"
+                                placeholder="Austin"
+                            >
+                            <div id="city-error" role="alert" aria-live="polite" hidden class="text-xs text-brand-danger">
+                                City is required
+                            </div>
+                        </div>
+
+                        <!-- State -->
+                        <div class="space-y-2">
+                            <label for="state" class="flex items-center gap-1 text-sm font-medium text-secondary">
+                                State
+                                <span aria-label="required" class="text-brand-danger">*</span>
+                            </label>
+                            <select 
+                                id="state" 
+                                name="address_state" 
+                                required
+                                aria-describedby="state-error"
+                                aria-invalid="false"
+                                class="w-full h-10 px-3 py-2 border border-border rounded-md bg-background-primary text-primary focus:ring-2 focus:ring-[#2E5090] focus:border-transparent transition-all text-sm min-h-[44px]"
+                            >
+                                <option value="">Select state</option>
+                                <option value="AL">Alabama</option>
+                                <option value="AK">Alaska</option>
+                                <option value="AZ">Arizona</option>
+                                <option value="AR">Arkansas</option>
+                                <option value="CA">California</option>
+                                <option value="CO">Colorado</option>
+                                <option value="CT">Connecticut</option>
+                                <option value="DE">Delaware</option>
+                                <option value="FL">Florida</option>
+                                <option value="GA">Georgia</option>
+                                <option value="HI">Hawaii</option>
+                                <option value="ID">Idaho</option>
+                                <option value="IL">Illinois</option>
+                                <option value="IN">Indiana</option>
+                                <option value="IA">Iowa</option>
+                                <option value="KS">Kansas</option>
+                                <option value="KY">Kentucky</option>
+                                <option value="LA">Louisiana</option>
+                                <option value="ME">Maine</option>
+                                <option value="MD">Maryland</option>
+                                <option value="MA">Massachusetts</option>
+                                <option value="MI">Michigan</option>
+                                <option value="MN">Minnesota</option>
+                                <option value="MS">Mississippi</option>
+                                <option value="MO">Missouri</option>
+                                <option value="MT">Montana</option>
+                                <option value="NE">Nebraska</option>
+                                <option value="NV">Nevada</option>
+                                <option value="NH">New Hampshire</option>
+                                <option value="NJ">New Jersey</option>
+                                <option value="NM">New Mexico</option>
+                                <option value="NY">New York</option>
+                                <option value="NC">North Carolina</option>
+                                <option value="ND">North Dakota</option>
+                                <option value="OH">Ohio</option>
+                                <option value="OK">Oklahoma</option>
+                                <option value="OR">Oregon</option>
+                                <option value="PA">Pennsylvania</option>
+                                <option value="RI">Rhode Island</option>
+                                <option value="SC">South Carolina</option>
+                                <option value="SD">South Dakota</option>
+                                <option value="TN">Tennessee</option>
+                                <option value="TX">Texas</option>
+                                <option value="UT">Utah</option>
+                                <option value="VT">Vermont</option>
+                                <option value="VA">Virginia</option>
+                                <option value="WA">Washington</option>
+                                <option value="WV">West Virginia</option>
+                                <option value="WI">Wisconsin</option>
+                                <option value="WY">Wyoming</option>
+                                <option value="DC">District of Columbia</option>
+                                <option value="AS">American Samoa</option>
+                                <option value="GU">Guam</option>
+                                <option value="MP">Northern Mariana Islands</option>
+                                <option value="PR">Puerto Rico</option>
+                                <option value="VI">U.S. Virgin Islands</option>
+                            </select>
+                            <div id="state-error" role="alert" aria-live="polite" hidden class="text-xs text-brand-danger">
+                                State is required
+                            </div>
+                        </div>
+
+                        <!-- ZIP Code -->
+                        <div class="space-y-2">
+                            <label for="zip-code" class="flex items-center gap-1 text-sm font-medium text-secondary">
+                                ZIP Code
+                                <span aria-label="required" class="text-brand-danger">*</span>
+                            </label>
+                            <input 
+                                type="text" 
+                                id="zip-code" 
+                                name="address_zip" 
+                                required 
+                                pattern="[0-9]{5}(-[0-9]{4})?"
+                                placeholder="12345"
+                                aria-describedby="zip-code-help zip-code-error"
+                                aria-invalid="false"
+                                class="w-full h-10 px-3 py-2 border border-border rounded-md bg-background-primary text-primary placeholder:text-secondary-muted focus:ring-2 focus:ring-[#2E5090] focus:border-transparent transition-all text-sm tabular-nums"
+                            >
+                            <small id="zip-code-help" class="text-xs text-secondary-muted">5 or 9 digits</small>
+                            <div id="zip-code-error" role="alert" aria-live="polite" hidden class="text-xs text-brand-danger">
+                                ZIP code must be 5 or 9 digits
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Property Type -->
+                    <div class="space-y-2">
+                        <label for="property-type" class="flex items-center gap-1 text-sm font-medium text-secondary">
+                            Property Type
+                            <span aria-label="required" class="text-brand-danger">*</span>
+                        </label>
+                        <select 
+                            id="property-type" 
+                            name="property_type" 
+                            required
+                            aria-describedby="property-type-error"
+                            aria-invalid="false"
+                            class="w-full h-10 px-3 py-2 border border-border rounded-md bg-background-primary text-primary focus:ring-2 focus:ring-[#2E5090] focus:border-transparent transition-all text-sm min-h-[44px]"
+                        >
+                            <option value="MULTIFAMILY" selected>Multifamily</option>
+                            <option value="AFFORDABLE_HOUSING">Affordable Housing (Tax Credits)</option>
+                            <option value="SINGLE_FAMILY">Single Family</option>
+                            <option value="STUDENT_HOUSING">Student Housing</option>
+                            <option value="SENIOR_HOUSING">Senior Housing</option>
+                            <option value="MOBILE_HOME_PARK">Mobile Home Park</option>
+                            <option value="MIXED_USE">Mixed Use</option>
+                            <option value="OTHER">Other</option>
+                        </select>
+                        <div id="property-type-error" role="alert" aria-live="polite" hidden class="text-xs text-brand-danger">
+                            Property type is required
+                        </div>
+                    </div>
+
+                    <!-- Property Class -->
+                    <div class="space-y-2">
+                        <label for="property-class" class="text-sm font-medium text-secondary">
+                            Property Class
+                        </label>
+                        <select 
+                            id="property-class" 
+                            name="property_class"
+                            aria-describedby="property-class-help"
+                            class="w-full h-10 px-3 py-2 border border-border rounded-md bg-background-primary text-primary focus:ring-2 focus:ring-[#2E5090] focus:border-transparent transition-all text-sm min-h-[44px]"
+                        >
+                            <option value="">Select class</option>
+                            <option value="A">Class A</option>
+                            <option value="B">Class B</option>
+                            <option value="C">Class C</option>
+                            <option value="D">Class D</option>
+                        </select>
+                        <small id="property-class-help" class="text-xs text-secondary-muted">User estimate</small>
+                    </div>
+
+                    <!-- Year Built -->
+                    <div class="space-y-2">
+                        <label for="year-built" class="text-sm font-medium text-secondary">
+                            Year Built
+                        </label>
+                        <input 
+                            type="number" 
+                            id="year-built" 
+                            name="year_built" 
+                            min="1800" 
+                            aria-describedby="year-built-help year-built-error"
+                            aria-invalid="false"
+                            class="w-full h-10 px-3 py-2 border border-border rounded-md bg-background-primary text-primary placeholder:text-secondary-muted focus:ring-2 focus:ring-[#2E5090] focus:border-transparent transition-all text-sm tabular-nums"
+                            placeholder="1985"
+                        >
+                        <small id="year-built-help" class="text-xs text-secondary-muted">1800 to current year</small>
+                        <div id="year-built-error" role="alert" aria-live="polite" hidden class="text-xs text-brand-danger">
+                            Year must be between 1800 and current year
+                        </div>
+                    </div>
+
+                    <!-- Number of Units -->
+                    <div class="space-y-2">
+                        <label for="units" class="flex items-center gap-1 text-sm font-medium text-secondary">
+                            Number of Units
+                            <span aria-label="required" class="text-brand-danger">*</span>
+                        </label>
+                        <input 
+                            type="number" 
+                            id="units" 
+                            name="units" 
+                            required 
+                            min="1" 
+                            max="9999"
+                            aria-describedby="units-help units-error"
+                            aria-invalid="false"
+                            class="w-full h-10 px-3 py-2 border border-border rounded-md bg-background-primary text-primary placeholder:text-secondary-muted focus:ring-2 focus:ring-[#2E5090] focus:border-transparent transition-all text-sm tabular-nums"
+                            placeholder="96"
+                        >
+                        <small id="units-help" class="text-xs text-secondary-muted">1-9999 units</small>
+                        <div id="units-error" role="alert" aria-live="polite" hidden class="text-xs text-brand-danger">
+                            Number of units is required (1-9999)
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- ============================================================
+                 SECTION 2: FINANCIAL OVERVIEW
+                 ShadCN Component: Card
+                 ============================================================ -->
+            <section 
+                aria-labelledby="section-2-heading"
+                class="bg-background-primary rounded-lg border border-border shadow-sm p-6"
+            >
+                <header class="mb-6 pb-4 border-b border-border">
+                    <h3 id="section-2-heading" class="text-2xl font-heading font-semibold text-primary mb-1">
+                        Financial Overview
+                    </h3>
+                    <p class="text-sm text-secondary-muted">Key financial metrics</p>
+                </header>
+
+                <div class="space-y-5">
+                    <!-- Asking Price -->
+                    <div class="space-y-2">
+                        <label for="asking-price" class="text-sm font-medium text-secondary">
+                            Asking Price
+                        </label>
+                        <div class="input-group">
+                            <span aria-label="Currency">$</span>
+                            <input 
+                                type="text" 
+                                id="asking-price" 
+                                name="asking_price" 
+                                inputmode="decimal"
+                                pattern="[0-9,]*\.?[0-9]*"
+                                placeholder="0.00"
+                                aria-describedby="asking-price-help asking-price-error"
+                                aria-invalid="false"
+                                class="w-full h-10 px-3 py-2 text-primary placeholder:text-secondary-muted focus:outline-none text-sm tabular-nums font-heading"
+                            >
+                        </div>
+                        <small id="asking-price-help" class="text-xs text-secondary-muted">$0 - $999,999,999</small>
+                        <div id="asking-price-error" role="alert" aria-live="polite" hidden class="text-xs text-brand-danger">
+                            Invalid asking price
+                        </div>
+                    </div>
+
+                    <!-- Price Per Unit (Auto-calculated) -->
+                    <div class="space-y-2">
+                        <label for="price-per-unit" class="text-sm font-medium text-secondary">
+                            Price Per Unit
+                        </label>
+                        <div class="input-group">
+                            <span aria-label="Currency">$</span>
+                            <input 
+                                type="text" 
+                                id="price-per-unit" 
+                                name="price_per_unit" 
+                                readonly
+                                aria-describedby="price-per-unit-help"
+                                aria-label="Auto-calculated: Asking Price ÷ Units"
+                                class="w-full h-10 px-3 py-2 text-secondary placeholder:text-secondary-muted text-sm tabular-nums font-heading"
+                            >
+                        </div>
+                        <small id="price-per-unit-help" class="text-xs text-secondary-muted">Auto-calculated: Asking Price ÷ Units</small>
+                    </div>
+
+                    <!-- Current Occupancy -->
+                    <div class="space-y-2">
+                        <label for="occupancy" class="text-sm font-medium text-secondary">
+                            Current Occupancy
+                        </label>
+                        <div class="input-group">
+                            <input 
+                                type="number" 
+                                id="occupancy" 
+                                name="occupancy" 
+                                min="0" 
+                                max="100" 
+                                step="0.01"
+                                placeholder="0.00"
+                                aria-describedby="occupancy-help occupancy-error"
+                                aria-invalid="false"
+                                class="w-full h-10 px-3 py-2 text-primary placeholder:text-secondary-muted focus:outline-none text-sm tabular-nums font-heading"
+                            >
+                            <span aria-label="Percentage">%</span>
+                        </div>
+                        <small id="occupancy-help" class="text-xs text-secondary-muted">0-100%</small>
+                        <div id="occupancy-error" role="alert" aria-live="polite" hidden class="text-xs text-brand-danger">
+                            Occupancy must be between 0% and 100%
+                        </div>
+                    </div>
+
+                    <!-- In-Place NOI -->
+                    <div class="space-y-2">
+                        <label for="noi-in-place" class="text-sm font-medium text-secondary">
+                            In-Place NOI
+                        </label>
+                        <div class="input-group">
+                            <span aria-label="Currency">$</span>
+                            <input 
+                                type="text" 
+                                id="noi-in-place" 
+                                name="noi_in_place" 
+                                inputmode="decimal"
+                                pattern="[0-9,]*\.?[0-9]*"
+                                placeholder="0.00"
+                                aria-describedby="noi-in-place-help noi-in-place-error"
+                                aria-invalid="false"
+                                class="w-full h-10 px-3 py-2 text-primary placeholder:text-secondary-muted focus:outline-none text-sm tabular-nums font-heading"
+                            >
+                        </div>
+                        <small id="noi-in-place-help" class="text-xs text-secondary-muted">$0 - $99,999,999</small>
+                        <div id="noi-in-place-error" role="alert" aria-live="polite" hidden class="text-xs text-brand-danger">
+                            Invalid NOI amount
+                        </div>
+                    </div>
+
+                    <!-- Pro Forma NOI -->
+                    <div class="space-y-2">
+                        <label for="noi-pro-forma" class="text-sm font-medium text-secondary">
+                            Pro Forma NOI
+                        </label>
+                        <div class="input-group">
+                            <span aria-label="Currency">$</span>
+                            <input 
+                                type="text" 
+                                id="noi-pro-forma" 
+                                name="noi_pro_forma" 
+                                inputmode="decimal"
+                                pattern="[0-9,]*\.?[0-9]*"
+                                placeholder="0.00"
+                                aria-describedby="noi-pro-forma-help"
+                                class="w-full h-10 px-3 py-2 text-primary placeholder:text-secondary-muted focus:outline-none text-sm tabular-nums font-heading"
+                            >
+                        </div>
+                        <small id="noi-pro-forma-help" class="text-xs text-secondary-muted">Seller's projection</small>
+                    </div>
+
+                    <!-- In-Place Cap Rate (Auto-calculated) -->
+                    <div class="space-y-2">
+                        <label for="cap-rate" class="text-sm font-medium text-secondary">
+                            In-Place Cap Rate
+                        </label>
+                        <div class="input-group">
+                            <input 
+                                type="text" 
+                                id="cap-rate" 
+                                name="cap_rate_in_place" 
+                                readonly
+                                placeholder="0.00"
+                                aria-describedby="cap-rate-help"
+                                aria-label="Auto-calculated: NOI ÷ Price"
+                                class="w-full h-10 px-3 py-2 text-secondary placeholder:text-secondary-muted text-sm tabular-nums font-heading"
+                            >
+                            <span aria-label="Percentage">%</span>
+                        </div>
+                        <small id="cap-rate-help" class="text-xs text-secondary-muted">Auto-calculated: NOI ÷ Price</small>
+                    </div>
+                </div>
+            </section>
+
+            <!-- ============================================================
+                 SECTION 3: DEAL SOURCE
+                 ShadCN Component: Card
+                 ============================================================ -->
+            <section 
+                aria-labelledby="section-3-heading"
+                class="bg-background-primary rounded-lg border border-border shadow-sm p-6"
+            >
+                <header class="mb-6 pb-4 border-b border-border">
+                    <h3 id="section-3-heading" class="text-2xl font-heading font-semibold text-primary mb-1">
+                        Deal Source
+                    </h3>
+                    <p class="text-sm text-secondary-muted">How you received this deal</p>
+                </header>
+
+                <div class="space-y-5">
+                    <!-- Source Type -->
+                    <div class="space-y-2">
+                        <label for="source-type" class="text-sm font-medium text-secondary">
+                            Source Type
+                        </label>
+                        <select 
+                            id="source-type" 
+                            name="source_type"
+                            aria-describedby="source-type-help"
+                            class="w-full h-10 px-3 py-2 border border-border rounded-md bg-background-primary text-primary focus:ring-2 focus:ring-[#2E5090] focus:border-transparent transition-all text-sm min-h-[44px]"
+                        >
+                            <option value="BROKER" selected>Broker</option>
+                            <option value="DIRECT_OWNER">Direct from Owner</option>
+                            <option value="AUCTION">Auction</option>
+                            <option value="WHOLESALER">Wholesaler</option>
+                            <option value="NETWORK">Network/Referral</option>
+                            <option value="LOOPNET_COSTAR">LoopNet/CoStar</option>
+                            <option value="OTHER">Other</option>
+                        </select>
+                        <small id="source-type-help" class="text-xs text-secondary-muted">How you received this deal</small>
+                    </div>
+
+                    <!-- Source Name -->
+                    <div class="space-y-2">
+                        <label for="source-name" class="text-sm font-medium text-secondary">
+                            Source Name
+                        </label>
+                        <input 
+                            type="text" 
+                            id="source-name" 
+                            name="source_name" 
+                            maxlength="100"
+                            placeholder="Broker/contact name"
+                            aria-describedby="source-name-help"
+                            class="w-full h-10 px-3 py-2 border border-border rounded-md bg-background-primary text-primary placeholder:text-secondary-muted focus:ring-2 focus:ring-[#2E5090] focus:border-transparent transition-all text-sm"
+                        >
+                        <small id="source-name-help" class="text-xs text-secondary-muted">Broker/contact name (max 100 chars)</small>
+                    </div>
+
+                    <!-- Source Company -->
+                    <div class="space-y-2">
+                        <label for="source-company" class="text-sm font-medium text-secondary">
+                            Source Company
+                        </label>
+                        <input 
+                            type="text" 
+                            id="source-company" 
+                            name="source_company" 
+                            maxlength="100"
+                            placeholder="Brokerage firm"
+                            aria-describedby="source-company-help"
+                            class="w-full h-10 px-3 py-2 border border-border rounded-md bg-background-primary text-primary placeholder:text-secondary-muted focus:ring-2 focus:ring-[#2E5090] focus:border-transparent transition-all text-sm"
+                        >
+                        <small id="source-company-help" class="text-xs text-secondary-muted">Brokerage firm (max 100 chars)</small>
+                    </div>
+
+                    <!-- Source Email -->
+                    <div class="space-y-2">
+                        <label for="source-email" class="text-sm font-medium text-secondary">
+                            Source Email
+                        </label>
+                        <input 
+                            type="email" 
+                            id="source-email" 
+                            name="source_email" 
+                            placeholder="email@example.com"
+                            aria-describedby="source-email-help source-email-error"
+                            aria-invalid="false"
+                            class="w-full h-10 px-3 py-2 border border-border rounded-md bg-background-primary text-primary placeholder:text-secondary-muted focus:ring-2 focus:ring-[#2E5090] focus:border-transparent transition-all text-sm"
+                        >
+                        <small id="source-email-help" class="text-xs text-secondary-muted">Valid email address</small>
+                        <div id="source-email-error" role="alert" aria-live="polite" hidden class="text-xs text-brand-danger">
+                            Please enter a valid email address
+                        </div>
+                    </div>
+
+                    <!-- Source Phone -->
+                    <div class="space-y-2">
+                        <label for="source-phone" class="text-sm font-medium text-secondary">
+                            Source Phone
+                        </label>
+                        <input 
+                            type="tel" 
+                            id="source-phone" 
+                            name="source_phone" 
+                            placeholder="(555) 123-4567"
+                            pattern="[0-9\s\(\)\-]+"
+                            aria-describedby="source-phone-help source-phone-error"
+                            aria-invalid="false"
+                            class="w-full h-10 px-3 py-2 border border-border rounded-md bg-background-primary text-primary placeholder:text-secondary-muted focus:ring-2 focus:ring-[#2E5090] focus:border-transparent transition-all text-sm tabular-nums"
+                        >
+                        <small id="source-phone-help" class="text-xs text-secondary-muted">Valid phone number</small>
+                        <div id="source-phone-error" role="alert" aria-live="polite" hidden class="text-xs text-brand-danger">
+                            Please enter a valid phone number
+                        </div>
+                    </div>
+
+                    <!-- How Received -->
+                    <div class="space-y-2">
+                        <label for="how-received" class="text-sm font-medium text-secondary">
+                            How Received
+                        </label>
+                        <select 
+                            id="how-received" 
+                            name="how_received"
+                            aria-describedby="how-received-help"
+                            class="w-full h-10 px-3 py-2 border border-border rounded-md bg-background-primary text-primary focus:ring-2 focus:ring-[#2E5090] focus:border-transparent transition-all text-sm min-h-[44px]"
+                        >
+                            <option value="EMAIL" selected>Email</option>
+                            <option value="PHONE">Phone Call</option>
+                            <option value="IN_PERSON">In Person</option>
+                            <option value="WEBSITE">Website/Portal</option>
+                            <option value="REFERRAL">Referral</option>
+                            <option value="OTHER">Other</option>
+                        </select>
+                        <small id="how-received-help" class="text-xs text-secondary-muted">How you received this deal</small>
+                    </div>
+
+                    <!-- Market Status -->
+                    <div class="space-y-2">
+                        <label for="market-status" class="text-sm font-medium text-secondary">
+                            Market Status
+                        </label>
+                        <select 
+                            id="market-status" 
+                            name="market_status"
+                            aria-describedby="market-status-help"
+                            class="w-full h-10 px-3 py-2 border border-border rounded-md bg-background-primary text-primary focus:ring-2 focus:ring-[#2E5090] focus:border-transparent transition-all text-sm min-h-[44px]"
+                        >
+                            <option value="LISTED" selected>Listed</option>
+                            <option value="OFF_MARKET">Off-Market</option>
+                            <option value="PRE_MARKET">Pre-Market</option>
+                            <option value="POCKET_LISTING">Pocket Listing</option>
+                            <option value="REO">REO/Foreclosure</option>
+                        </select>
+                        <small id="market-status-help" class="text-xs text-secondary-muted">Current market status</small>
+                    </div>
+                </div>
+            </section>
+
+            <!-- ============================================================
+                 SECTION 4: NOTES & TAGS
+                 ShadCN Component: Card
+                 ============================================================ -->
+            <section 
+                aria-labelledby="section-4-heading"
+                class="bg-background-primary rounded-lg border border-border shadow-sm p-6"
+            >
+                <header class="mb-6 pb-4 border-b border-border">
+                    <h3 id="section-4-heading" class="text-2xl font-heading font-semibold text-primary mb-1">
+                        Notes & Tags
+                    </h3>
+                    <p class="text-sm text-secondary-muted">Additional information and organization</p>
+                </header>
+
+                <div class="space-y-5">
+                    <!-- Initial Notes -->
+                    <div class="space-y-2">
+                        <label for="notes" class="text-sm font-medium text-secondary">
+                            Initial Notes
+                        </label>
+                        <textarea 
+                            id="notes" 
+                            name="notes" 
+                            rows="5" 
+                            maxlength="2000"
+                            placeholder="Free-form notes about this deal..."
+                            aria-describedby="notes-help notes-char-count"
+                            class="w-full px-3 py-2 border border-border rounded-md bg-background-primary text-primary placeholder:text-secondary-muted focus:ring-2 focus:ring-[#2E5090] focus:border-transparent transition-all text-sm resize-y min-h-[120px]"
+                        ></textarea>
+                        <div class="flex items-center justify-between">
+                            <small id="notes-help" class="text-xs text-secondary-muted">Free-form notes (max 2000 characters)</small>
+                            <div id="notes-char-count" aria-live="polite" class="text-xs text-secondary-muted">0 / 2000 characters</div>
+                        </div>
+                    </div>
+
+                    <!-- Tags -->
+                    <div class="space-y-2">
+                        <label for="tags-input" class="text-sm font-medium text-secondary">
+                            Tags
+                        </label>
+                        <div class="space-y-2">
+                            <input 
+                                type="text" 
+                                id="tags-input" 
+                                placeholder="Type to add tags, press Enter"
+                                aria-describedby="tags-help tags-list"
+                                class="w-full h-10 px-3 py-2 border border-border rounded-md bg-background-primary text-primary placeholder:text-secondary-muted focus:ring-2 focus:ring-[#2E5090] focus:border-transparent transition-all text-sm"
+                            >
+                            <div id="tags-list" role="list" aria-label="Selected tags" class="flex flex-wrap gap-2 min-h-[44px]">
+                                <!-- Selected tags will appear here -->
+                            </div>
+                        </div>
+                        <small id="tags-help" class="text-xs text-secondary-muted">Custom tags for organization</small>
+                    </div>
+
+                    <!-- Priority -->
+                    <div class="space-y-2">
+                        <label for="priority" class="text-sm font-medium text-secondary">
+                            Priority
+                        </label>
+                        <select 
+                            id="priority" 
+                            name="priority"
+                            aria-describedby="priority-help"
+                            class="w-full h-10 px-3 py-2 border border-border rounded-md bg-background-primary text-primary focus:ring-2 focus:ring-[#2E5090] focus:border-transparent transition-all text-sm min-h-[44px]"
+                        >
+                            <option value="LOW">Low</option>
+                            <option value="MEDIUM" selected>Medium</option>
+                            <option value="HIGH">High</option>
+                        </select>
+                        <small id="priority-help" class="text-xs text-secondary-muted">Deal priority level</small>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Form Actions -->
+            <footer class="form-actions flex flex-col sm:flex-row gap-4 pt-6 border-t border-border">
+                <button 
+                    type="button" 
+                    aria-label="Cancel and go back"
+                    class="w-full sm:w-auto px-6 py-3 bg-transparent border border-border text-secondary hover:bg-background-tertiary rounded-md text-sm font-medium transition-colors min-h-[44px]"
+                >
+                    Cancel
+                </button>
+                <button 
+                    type="submit" 
+                    aria-label="Create deal"
+                    class="w-full sm:w-auto px-6 py-3 bg-[#2E5090] hover:bg-[#1E3A6B] text-white rounded-md text-sm font-medium transition-colors min-h-[44px] focus:ring-2 focus:ring-[#2E5090] focus:ring-offset-2"
+                >
+                    Create Deal
+                </button>
+            </footer>
+
+        </form>
+
+    </main>
+
+</body>
+</html>

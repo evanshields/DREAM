@@ -1,0 +1,361 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DREAM AI - Brutalist/Neo-Brutalist</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;700&display=swap" rel="stylesheet">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        :root {
+            --black: #0A0A0A;
+            --white: #FAFAFA;
+            --accent: #00FF00;
+            --border: #0A0A0A;
+        }
+
+        body {
+            font-family: 'Space Grotesk', monospace;
+            background-color: var(--white);
+            color: var(--black);
+            line-height: 1.2;
+        }
+
+        .container {
+            padding: 0;
+        }
+
+        /* Brutal Header */
+        .header-brutal {
+            background: var(--black);
+            color: var(--white);
+            padding: 40px;
+            border-bottom: 8px solid var(--accent);
+        }
+
+        .logo-brutal {
+            font-size: 64px;
+            font-weight: 700;
+            text-transform: uppercase;
+            line-height: 1;
+            letter-spacing: -2px;
+        }
+
+        .nav-brutal {
+            margin-top: 30px;
+            display: flex;
+            gap: 0;
+        }
+
+        .nav-brutal a {
+            color: var(--white);
+            text-decoration: none;
+            font-size: 18px;
+            font-weight: 700;
+            text-transform: uppercase;
+            padding: 15px 30px;
+            border-right: 3px solid var(--white);
+        }
+
+        .nav-brutal a:last-child {
+            border-right: none;
+        }
+
+        .nav-brutal a.active {
+            background: var(--accent);
+            color: var(--black);
+        }
+
+        /* Content */
+        .content {
+            padding: 60px 40px;
+        }
+
+        /* Typography - Oversized */
+        h1 {
+            font-size: 120px;
+            font-weight: 700;
+            line-height: 0.9;
+            margin-bottom: 40px;
+            text-transform: uppercase;
+        }
+
+        h2 {
+            font-size: 48px;
+            font-weight: 700;
+            margin-bottom: 30px;
+            text-transform: uppercase;
+            border-bottom: 6px solid var(--black);
+            padding-bottom: 20px;
+            display: inline-block;
+        }
+
+        /* Brutal Boxes */
+        .brutal-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 30px;
+            margin-bottom: 60px;
+        }
+
+        .brutal-box {
+            border: 6px solid var(--black);
+            padding: 40px;
+            background: var(--white);
+            position: relative;
+        }
+
+        .brutal-box.accent {
+            background: var(--accent);
+            border-color: var(--black);
+        }
+
+        .brutal-box.dark {
+            background: var(--black);
+            color: var(--white);
+        }
+
+        .metric-label-brutal {
+            font-size: 14px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 3px;
+            margin-bottom: 15px;
+        }
+
+        .metric-value-brutal {
+            font-size: 72px;
+            font-weight: 700;
+            line-height: 1;
+            font-variant-numeric: tabular-nums;
+        }
+
+        /* Table - Raw */
+        .table-brutal {
+            width: 100%;
+            border: 6px solid var(--black);
+            border-collapse: collapse;
+            margin-bottom: 60px;
+        }
+
+        .table-brutal th {
+            background: var(--black);
+            color: var(--white);
+            text-align: left;
+            font-size: 14px;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            font-weight: 700;
+            padding: 25px;
+            border: 3px solid var(--black);
+        }
+
+        .table-brutal td {
+            padding: 25px;
+            border: 3px solid var(--black);
+            font-size: 18px;
+            font-weight: 400;
+        }
+
+        .table-brutal th.right,
+        .table-brutal td.right {
+            text-align: right;
+        }
+
+        .table-brutal tbody tr:nth-child(even) {
+            background: #F0F0F0;
+        }
+
+        /* Buttons - Harsh */
+        .btn-brutal {
+            background: var(--black);
+            color: var(--white);
+            border: 6px solid var(--black);
+            padding: 25px 50px;
+            font-size: 18px;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            font-weight: 700;
+            cursor: pointer;
+            font-family: 'Space Grotesk', monospace;
+        }
+
+        .btn-brutal:hover {
+            background: var(--accent);
+            color: var(--black);
+            border-color: var(--black);
+        }
+
+        .btn-brutal-outline {
+            background: var(--white);
+            color: var(--black);
+            border: 6px solid var(--black);
+            padding: 25px 50px;
+            font-size: 18px;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            font-weight: 700;
+            cursor: pointer;
+            font-family: 'Space Grotesk', monospace;
+        }
+
+        .btn-brutal-outline:hover {
+            background: var(--black);
+            color: var(--white);
+        }
+
+        /* Status Badge */
+        .badge-brutal {
+            background: var(--black);
+            color: var(--white);
+            padding: 8px 16px;
+            font-size: 12px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            border: 3px solid var(--black);
+        }
+
+        .badge-brutal.success {
+            background: var(--accent);
+            color: var(--black);
+        }
+
+        /* Color Swatches */
+        .color-brutal {
+            display: flex;
+            gap: 0;
+            margin-bottom: 60px;
+            border: 6px solid var(--black);
+        }
+
+        .color-swatch-brutal {
+            flex: 1;
+            padding: 80px 40px;
+            border-right: 6px solid var(--black);
+        }
+
+        .color-swatch-brutal:last-child {
+            border-right: none;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- Header -->
+        <header class="header-brutal">
+            <div class="logo-brutal">DREAM.AI</div>
+            <nav class="nav-brutal">
+                <a href="#">DASHBOARD</a>
+                <a href="#">PIPELINE</a>
+                <a href="#" class="active">ANALYSIS</a>
+                <a href="#">UPLOAD</a>
+            </nav>
+        </header>
+
+        <div class="content">
+            <!-- Title -->
+            <h1>BRUTALIST<br>DESIGN</h1>
+
+            <!-- Color Palette -->
+            <div class="color-brutal">
+                <div class="color-swatch-brutal" style="background: #0A0A0A; color: white;">
+                    <div style="font-size: 14px; font-weight: 700; text-transform: uppercase; letter-spacing: 2px; margin-bottom: 15px;">BLACK</div>
+                    <div style="font-size: 42px; font-weight: 700;">#0A0A0A</div>
+                </div>
+                <div class="color-swatch-brutal" style="background: #00FF00; color: black;">
+                    <div style="font-size: 14px; font-weight: 700; text-transform: uppercase; letter-spacing: 2px; margin-bottom: 15px;">NEON GREEN</div>
+                    <div style="font-size: 42px; font-weight: 700;">#00FF00</div>
+                </div>
+                <div class="color-swatch-brutal" style="background: #FAFAFA; color: black;">
+                    <div style="font-size: 14px; font-weight: 700; text-transform: uppercase; letter-spacing: 2px; margin-bottom: 15px;">OFF-WHITE</div>
+                    <div style="font-size: 42px; font-weight: 700;">#FAFAFA</div>
+                </div>
+            </div>
+
+            <!-- Metrics -->
+            <h2>KEY METRICS</h2>
+            <div class="brutal-grid">
+                <div class="brutal-box accent">
+                    <div class="metric-label-brutal">IRR</div>
+                    <div class="metric-value-brutal">18.5%</div>
+                </div>
+                <div class="brutal-box">
+                    <div class="metric-label-brutal">EQUITY MULTIPLE</div>
+                    <div class="metric-value-brutal">2.1x</div>
+                </div>
+                <div class="brutal-box dark">
+                    <div class="metric-label-brutal">CAP RATE</div>
+                    <div class="metric-value-brutal">5.8%</div>
+                </div>
+                <div class="brutal-box">
+                    <div class="metric-label-brutal">DEAL SCORE</div>
+                    <div class="metric-value-brutal">87</div>
+                </div>
+                <div class="brutal-box">
+                    <div class="metric-label-brutal">PRICE</div>
+                    <div class="metric-value-brutal" style="font-size: 48px;">$8.5M</div>
+                </div>
+                <div class="brutal-box">
+                    <div class="metric-label-brutal">NOI</div>
+                    <div class="metric-value-brutal" style="font-size: 48px;">$495K</div>
+                </div>
+            </div>
+
+            <!-- Table -->
+            <h2>PIPELINE</h2>
+            <table class="table-brutal">
+                <thead>
+                    <tr>
+                        <th>PROPERTY</th>
+                        <th>MARKET</th>
+                        <th class="right">UNITS</th>
+                        <th class="right">PRICE</th>
+                        <th class="right">IRR</th>
+                        <th>STATUS</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td>Sunset Gardens</td>
+                        <td>Austin, TX</td>
+                        <td class="right">156</td>
+                        <td class="right">$8,500,000</td>
+                        <td class="right">18.5%</td>
+                        <td><span class="badge-brutal success">PROCEED</span></td>
+                    </tr>
+                    <tr>
+                        <td>Oak Ridge Apts</td>
+                        <td>Dallas, TX</td>
+                        <td class="right">224</td>
+                        <td class="right">$14,200,000</td>
+                        <td class="right">16.8%</td>
+                        <td><span class="badge-brutal success">PASS</span></td>
+                    </tr>
+                    <tr>
+                        <td>Metro Plaza</td>
+                        <td>Phoenix, AZ</td>
+                        <td class="right">88</td>
+                        <td class="right">$5,100,000</td>
+                        <td class="right">15.2%</td>
+                        <td><span class="badge-brutal">REVIEW</span></td>
+                    </tr>
+                </tbody>
+            </table>
+
+            <!-- Buttons -->
+            <div style="display: flex; gap: 30px;">
+                <button class="btn-brutal">ANALYZE DEAL</button>
+                <button class="btn-brutal-outline">VIEW REPORTS</button>
+            </div>
+        </div>
+    </div>
+</body>
+</html>

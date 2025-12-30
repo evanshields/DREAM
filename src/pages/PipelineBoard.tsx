@@ -1,6 +1,6 @@
 import React from 'react';
 import { PIPELINE_DEALS, PIPELINE_STAGES } from '../constants';
-import { Deal } from '../types';
+import type { Deal } from '../types';
 import { Badge, Button } from '../components/UIComponents';
 import { Plus, Filter, Search, MoreHorizontal, Clock } from 'lucide-react';
 
