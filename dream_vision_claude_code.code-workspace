@@ -1,9 +1,11 @@
 {
 	"folders": [
 		{
+			"name": "dream_vision_claude_code",
 			"path": "."
 		},
 		{
+			"name": "_PRDs",
 			"path": "I:/Shared drives/USDV MASTER Drive/6. SaaS/INSPIRE/_PRDs"
 		}
 	],
