@@ -161,10 +161,52 @@ A: Yes! Most time is waiting for LLM APIs, not CPU. Single server handles 10K-50
 **Q: What if we need to scale beyond 500 customers?**
 A: Migrate to Pattern 3 (Celery workers) with background task queue.
 
+## Agent Progress Tracker
+
+**Total agents planned:** 100
+**Agents built:** 0
+**Agents in progress:** None
+
+### By Phase:
+- **Phase 1 (Property Fundamentals):** 0/15 built
+- **Phase 2 (Market Analysis):** 0/12 built
+- **Phase 3 (Financial Modeling):** 0/10 built
+- **Phase 4 (Risk Assessment):** 0/15 built
+- **Phase 5 (Value-Add Strategy):** 0/8 built
+- **Phase 6 (Financing Structure):** 0/8 built
+- **Phase 7 (Investment Returns):** 0/10 built
+- **Phase 8 (Exit Strategy):** 0/6 built
+- **Cross-Phase:** 0/10 built
+- **Utilities:** 0/6 built
+
+---
+
+## Agents Built
+
+*This section will be updated as each agent is completed. Use `/dreamagent` to build new agents and automatically update this section.*
+
+<!-- Example entry format:
+### RentRollAnalyzer (Phase 1) - Built on January 15, 2026
+- **Model:** Gemini Flash 2.0
+- **Purpose:** Analyzes rent rolls to extract unit mix, occupancy, and revenue metrics
+- **Cost per run:** ~$0.01
+- **Location:** `agents/phase1_property_fundamentals/rent_roll_analyzer.py`
+- **Key decisions:**
+  - Use Flash for extraction since it's primarily data parsing
+  - Return structured JSON with unit_mix, revenue_analysis, red_flags, metrics
+  - Integrate with Shieldstone Phase 1 methodology
+- **Dependencies:** None (entry point agent)
+- **Used by:** Full underwriting workflow, screening workflow
+-->
+
+---
+
 ## Conversation ID (for reference)
 
 This conversation happened in Claude Code (desktop) on January 11, 2026.
 All decisions and architecture are captured in the markdown files in this directory.
+
+**Skill created:** `/dreamagent` - Use this command to build new agents with full context loaded automatically.
 
 ---
 

@@ -1,0 +1,210 @@
+---
+name: dreamagent
+description: Load Dream multi-agent architecture context and help build a new agent
+tags: [dream, agents, architecture]
+---
+
+# Dream Agent Builder
+
+You are helping build a new agent for the Dream real estate underwriting platform's multi-agent architecture.
+
+## Step 1: Load Context
+
+First, read these files from the repository to understand the architecture:
+
+1. **agent_architecture/CONVERSATION_CONTEXT.md** - Key decisions and model selection strategy
+2. **agent_architecture/DREAM_MULTI_AGENT_ARCHITECTURE.md** - Complete architecture specification
+3. **agent_architecture/STRUCTURE.md** - Directory structure and organization
+
+## Step 2: Understand Requirements
+
+Ask the user which agent they want to build. Get clarity on:
+- **Agent name** (e.g., "PropertyConditionAssessor", "RentRollAnalyzer")
+- **Shieldstone phase** (1-8) this agent belongs to
+- **Primary function** (what does this agent do?)
+- **Input data** (what data does it need?)
+- **Output format** (what should it return?)
+
+## Step 3: Model Selection
+
+Based on agent complexity, recommend the appropriate LLM:
+
+- **Gemini Flash 2.0** ($0.10/1M tokens) - Use for:
+  - Simple data extraction (parsing PDFs, Excel files)
+  - Format conversions
+  - Template-based outputs
+  - **~40% of agent tasks**
+
+- **Claude Haiku** ($0.25/$1.25 per 1M tokens) - Use for:
+  - Structured data analysis
+  - Moderate complexity reasoning
+  - Classification tasks
+  - **~30% of agent tasks**
+
+- **Claude Sonnet 4.5** ($3/$15 per 1M tokens) - Use for:
+  - Complex multi-step reasoning
+  - Investment recommendations
+  - Synthesis across data sources
+  - **~30% of agent tasks (reserve for high-value)**
+
+## Step 4: Follow Architecture Patterns
+
+Build the agent following these patterns from the architecture docs:
+
+### File Structure
+```
+agent_architecture/agents/phase{N}_{phase_name}/{agent_name}.py
+```
+
+### Agent Template
+```python
+from agents.base_agent import BaseAgent
+from typing import Dict, Any
+import json
+
+class {AgentName}Agent(BaseAgent):
+    """[Description of what this agent does]"""
+
+    def get_shieldstone_phase(self) -> int:
+        return {1-8}  # Which Shieldstone phase
+
+    def get_recommended_model(self) -> str:
+        """Which model to use: 'flash', 'haiku', or 'sonnet'"""
+        return "haiku"  # or "flash" or "sonnet"
+
+    def get_system_prompt(self) -> str:
+        phase_guidance = self.shieldstone_manual_phase
+        rules = self.config.get('underwriting_rules', {})
+
+        return f"""You are a [role description].
+
+# SHIELDSTONE PHASE {self.get_shieldstone_phase()}
+
+{phase_guidance}
+
+# CUSTOMER CRITERIA
+
+{json.dumps(rules, indent=2)}
+
+# YOUR TASK
+
+[Specific instructions]
+
+Return JSON with these keys: [key1, key2, key3]
+"""
+
+    def execute(self, input_data: dict) -> dict:
+        """Main execution method"""
+        prompt = f"Analyze: {json.dumps(input_data, indent=2)}"
+        result = self.run(prompt)
+
+        try:
+            parsed = json.loads(result['result'])
+            result['parsed_result'] = parsed
+        except:
+            result['parsed_result'] = None
+
+        return result
+```
+
+### Registry Entry
+```python
+# In agents/agent_registry.py
+"{agent_name}": {
+    "class": {AgentName}Agent,
+    "description": "One sentence description",
+    "shieldstone_phase": {1-8},
+    "model": "{flash|haiku|sonnet}",
+    "inputs": ["what it needs"],
+    "outputs": ["what it produces"],
+    "typical_runtime": "X seconds",
+    "cost_per_run": "$X.XX",
+    "state_key": "{agent_name}_result"
+}
+```
+
+### Test Template
+```python
+# In tests/test_{agent_name}.py
+from agents.phase{N}_{phase_name}.{agent_name} import {AgentName}Agent
+
+def test_{agent_name}():
+    agent = {AgentName}Agent(customer_config={})
+
+    test_input = {
+        "field1": "test_value",
+        "field2": 12345
+    }
+
+    result = agent.execute(test_input)
+
+    assert result['parsed_result'] is not None
+    assert 'expected_key' in result['parsed_result']
+```
+
+## Step 5: Implementation
+
+After gathering requirements:
+
+1. **Create the agent file** in the appropriate phase directory
+2. **Implement the agent class** following the template
+3. **Register the agent** in agent_registry.py
+4. **Create the test file**
+5. **Verify it works** by running the test
+
+## Step 6: Update CONVERSATION_CONTEXT.md
+
+**CRITICAL:** After successfully building the agent, update the conversation context:
+
+Read `agent_architecture/CONVERSATION_CONTEXT.md` and add a new entry under "## Agents Built" section:
+
+```markdown
+### [Agent Name] (Phase [N]) - Built on [Date]
+- **Model:** [Flash/Haiku/Sonnet]
+- **Purpose:** [One sentence description]
+- **Cost per run:** ~$[X.XX]
+- **Location:** `agents/phase{N}_{phase_name}/{agent_name}.py`
+- **Key decisions:**
+  - [Decision 1]
+  - [Decision 2]
+- **Dependencies:** [Which agents does it depend on?]
+- **Used by:** [Which workflows use this agent?]
+```
+
+Then update the agent count:
+```markdown
+## Agent Progress Tracker
+
+Total agents planned: 100
+Agents built: [increment this number]
+Agents in progress: [list any partially complete]
+
+By phase:
+- Phase 1: [X/15] built
+- Phase 2: [X/12] built
+- ...
+```
+
+**Always commit this update** after building an agent so the context stays current!
+
+## Step 7: Integration
+
+Explain how this agent fits into the orchestration:
+- Which other agents does it depend on?
+- Which agents use its output?
+- In which workflows (screening/underwriting/memo/diligence) is it used?
+
+## Important Reminders
+
+- ✅ **Multi-tenant safe** - Get customer config from database, create fresh agent per request
+- ✅ **Cost optimized** - Use cheapest model that can do the job
+- ✅ **Shieldstone compliant** - Follow phase methodology from manual
+- ✅ **Structured output** - Return JSON with clear, documented keys
+- ✅ **Testable** - Write tests that verify core functionality
+- ✅ **Update CONVERSATION_CONTEXT.md** - Keep the context file current!
+
+## Ask the User
+
+Now ask: **"Which agent would you like to build?"**
+
+Then follow the steps above to help them create it!
