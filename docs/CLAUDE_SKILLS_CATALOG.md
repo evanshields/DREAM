@@ -1,6 +1,6 @@
 # Claude Skills Catalog
 
-**Total Available Skills: 65**
+**Total Available Skills: 52**
 
 This document catalogs all Claude Code skills available in this project. Skills extend Claude's capabilities with specialized knowledge, workflows, and tool integrations.
 
@@ -718,5 +718,5 @@ Skills are automatically triggered when relevant to your request, or you can exp
 
 ---
 
-*Last updated: 2025-12-26*
-*Total Skills: 65*
+*Last updated: 2026-01-11*
+*Total Skills: 52*
