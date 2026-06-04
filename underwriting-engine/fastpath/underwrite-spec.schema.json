@@ -1,0 +1,148 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://shieldstone.co/schemas/underwrite-spec.json",
+  "title": "Dream Underwrite Spec",
+  "description": "The durable contract between the analytical fan-out (Wave 1), the synthesis + calc engine (Wave 2), the openpyxl populator + reconciliation (Wave 3), and the Phase-12 memo. One file per deal at shieldstone_acquisitions/underwrites/<slug>/underwrite-spec.json. Every value that lands in a Mini Model cell appears in cells[] with a target address and a source citation.",
+  "type": "object",
+  "required": ["meta", "qa", "cells"],
+  "additionalProperties": false,
+  "properties": {
+    "meta": {
+      "type": "object",
+      "required": ["deal_name", "slug", "routing", "template"],
+      "additionalProperties": true,
+      "properties": {
+        "deal_name": {"type": "string"},
+        "slug": {"type": "string", "pattern": "^[a-z0-9-]+$"},
+        "routing": {"enum": ["ACQ", "EFB"]},
+        "routing_basis": {"type": "string", "description": "Why this routing (auto-detect signals or user choice)"},
+        "template": {"type": "string", "description": "Mini Model filename/path the populator writes a copy of"},
+        "generated": {"type": "string", "description": "ISO timestamp, stamped after the workflow returns (scripts cannot call Date.now())"},
+        "freshness": {"type": "object", "description": "Mission Driven API /freshness payload at run time"},
+        "mode": {"enum": ["HITL", "HOTL"], "description": "Set by Avery when invoking Dream; controls which gate Dream stops at"}
+      }
+    },
+    "qa": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "t12_unmapped": {"type": "integer", "description": "Count of T-12 line items not in the mapping dict; MUST be 0 to proceed"},
+        "rr_vs_t12_gpr_gap_pct": {"type": "number", "description": "Rent-roll-implied GPR vs T-12 GPR gap; >5% must be explained"},
+        "formula_audit": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["cell", "status"],
+            "properties": {
+              "cell": {"type": "string"},
+              "status": {"enum": ["ok", "bug"]},
+              "expected": {"type": "string"},
+              "actual": {"type": "string"},
+              "patch": {"type": "string"},
+              "applied": {"type": "boolean"}
+            }
+          }
+        },
+        "whisper_flag": {
+          "type": "object",
+          "properties": {
+            "median_ppu": {"type": "number"},
+            "price": {"type": "number"},
+            "delta_pct": {"type": "number"},
+            "flagged": {"type": "boolean"}
+          }
+        },
+        "reconcile": {
+          "type": "array",
+          "description": "Populated at CP-2: Python engine vs Excel data_only re-read, per headline metric",
+          "items": {
+            "type": "object",
+            "required": ["metric", "python", "excel", "delta_pct", "flag"],
+            "properties": {
+              "metric": {"type": "string"},
+              "python": {"type": "number"},
+              "excel": {"type": ["number", "null"]},
+              "delta_pct": {"type": ["number", "null"]},
+              "tolerance": {"type": "number"},
+              "flag": {"type": "boolean", "description": "true if outside tolerance band"}
+            }
+          }
+        },
+        "gates": {"type": "object", "description": "Per-phase QA gate results (phaseN -> list of {item, pass})"}
+      }
+    },
+    "cells": {
+      "type": "array",
+      "description": "Flat list keyed by cell address. The populator loops this and writes blue INPUT cells only; phase is logging metadata.",
+      "items": {
+        "type": "object",
+        "required": ["cell", "value", "source"],
+        "additionalProperties": false,
+        "properties": {
+          "cell": {"type": "string", "description": "e.g. 'Pro Forma!B10' or 'B10' (sheet defaults to Pro Forma)"},
+          "value": {"type": ["number", "string", "boolean", "null"]},
+          "type": {"enum": ["currency", "percent", "decimal", "integer", "text", "year"], "description": "for formatting/validation only; openpyxl writes the raw value"},
+          "source": {"type": "string", "description": "citation: 'OM p.3', 'T-12 + 3%', 'FMR Orange FL 2026', etc. (Universal Rule 7)"},
+          "phase": {"type": "integer", "description": "logging metadata only"},
+          "input_only": {"type": "boolean", "default": true, "description": "asserts this is a blue cell; populator refuses to write a FORMULA cell"}
+        }
+      }
+    },
+    "headline_metrics": {
+      "type": "object",
+      "description": "Python engine outputs (the reconciliation source of truth at CP-2)",
+      "additionalProperties": true,
+      "properties": {
+        "noi_series": {"type": "array", "items": {"type": "number"}},
+        "dscr_series": {"type": "array", "items": {"type": "number"}},
+        "year1_noi": {"type": "number"},
+        "year1_dscr": {"type": "number"},
+        "exit_value": {"type": "number"},
+        "irr": {"type": ["number", "null"], "description": "ACQ only"},
+        "equity_multiple": {"type": ["number", "null"], "description": "ACQ only"},
+        "coc_stabilized": {"type": ["number", "null"], "description": "ACQ only"},
+        "bond_amount": {"type": ["number", "null"], "description": "EFB only"},
+        "tax_savings_10yr": {"type": ["number", "null"], "description": "EFB only"}
+      }
+    },
+    "comps": {
+      "type": "object",
+      "properties": {
+        "sales": {"type": "array"},
+        "rent": {"type": "array"},
+        "pipeline": {"type": "array"},
+        "median_ppu": {"type": "number"}
+      }
+    },
+    "forensic": {
+      "type": "object",
+      "description": "agent-t12 output: the unprompted T-12 forensic block",
+      "properties": {
+        "t12_t6_t3": {"type": "object"},
+        "vacancy_trend": {"type": "object"},
+        "concessions": {"type": "object"},
+        "loss_to_lease": {"type": "object"},
+        "bad_debt": {"type": "object"},
+        "anomalies": {"type": "array"},
+        "lease_up_flag": {"type": "boolean"},
+        "takeaways": {"type": "array", "items": {"type": "string"}}
+      }
+    },
+    "narrative": {
+      "type": "object",
+      "description": "color for the memo (Phase 12) and IC",
+      "properties": {
+        "ami_upside": {"type": "string"},
+        "hap_reliability": {"type": "string"},
+        "tax_exemption_value": {"type": "string"},
+        "dscr_margin": {"type": "string"},
+        "in_place_lift": {"type": "string"},
+        "going_in_cap_vs_comps": {"type": "string"}
+      }
+    },
+    "memo_vars": {
+      "type": "object",
+      "description": "the Phase-12 deal-variable block (shape mirrors build_esplanade_acq.py:22-107) so the memo builds from the spec, not by re-reading the xlsx"
+    }
+  }
+}
