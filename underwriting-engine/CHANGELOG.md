@@ -17,6 +17,57 @@ Acceptance: [CONFIRMED N transcripts | CANDIDATE 1 transcript]
 
 ---
 
+## 2026-06-05 — Wave 1: hard-gate layer (Envy 3-way forensic — the autonomy floor)
+
+Source: `shieldstone_acquisitions/underwrites/envy-pompano/_compare/` (SKILL_IMPROVEMENT_PLAN.md +
+skill-backlog.json, 19 items). The Envy three-way forensic proved the bug is **process discipline,
+not analytical skill** — the same skill produced 214 vs 244 units, opposite OpEx signs, a 9.5pp IRR
+spread; nearly every shipped defect was a skill-fixable hard-gate miss. Wave 1 lands the 6 gate
+items (5 of them autonomy prerequisites): the DREAM app / Shieldstone Hermes cannot safely run
+unattended without these.
+
+**Two decisions locked with Evan 2026-06-05:** (1) BL-01 unit gate = pass-with-flag on summary-tab
+match when no 2nd source (single-source WARNING at CP-1), hard-block only on segment/exclusion/
+disagreement; (2) BL-07 auto-patch = S40 + row-78 ONLY (the rest verdict-only).
+
+Backlog items closed: **BL-01/09** (rent-roll unit-count reconcile), **BL-02/14** (deal-identity
+hard gate), **BL-03** (fee-bounds), **BL-05** (CP-2 identity gate + self-render), **BL-06**
+(non-collapsible gates), **BL-07** (named formula audit + S40/row-78 auto-patch).
+
+Files:
+- `engine/acq_engine.py` (+316) — NEW stateless validators, no edit to the validated classes:
+  `assert_fee_bounds`/`FeeBoundsResult` (BL-03: 0.05 sentinel + [0.005,0.01] bounds);
+  `UnitCountReconciler`/`UnitCountResult` (BL-01/09: status+use classify, 2nd-source/summary-tab
+  reconcile, segment + user-exclusion block); `formula_integrity_check`/`FormulaAuditResult` (BL-07:
+  named PASS/PATCH verdict for S40/B66/B67/rows31-32/row78 every run; S40+row-78 auto-patch).
+- `fastpath/populator.py` (+292) — extended `deal_identity_check` (foreign-tab via KNOWN prior-deal
+  tokens, #REF!/#NUM! literal sweep skipping Claude Log prose, vintage-note check; `strict_residuals`
+  for Phase-11 re-verify — calibrated to NOT false-positive on the Rayzor template's seller-doc tabs
+  + blank-Checks #REF!); `populate()` guards (identity-block, fee-bounds refuse, unit-count refuse,
+  patch_log) + new WriteReport fields; `reconcile()` identity gate (raises `IdentityMismatchError`,
+  never a transcript fallback) + `reconcile_self_render()` (BL-05 HOTL floor).
+- `fastpath/underwrite-spec.schema.json` (+40) — `meta.deal_identity`, `qa.fee_bounds`, `qa.unit_count`.
+- `SKILL.md` (+57) — Phase 2 unit-count HARD GATE; Phase 3 fee-bounds gate + 5 named formula
+  verdicts; Universal Rule 3 non-collapsible-gates rule (BL-06); Phase 11 identity re-verify + comps
+  carryover promoted advisory→HARD block; Wave-0 identity-gated ground-truth + CP-2 self-render prose.
+- `fastpath/agent-contracts.md` (+35) — agent-rentroll (classify+reconcile+exclusions), agent-
+  assumptions (FAIL on 0.05), Wave-2 (formula verdicts, identity-gated CP-2, self-render, non-collapse).
+- `templates/field-mapping-{acq,efb}.md` — BL-07 named-verdict + auto-patch note; B45/B6 gate notes.
+- Tests: NEW `test_fee_bounds.py` (5), `test_unit_count_reconcile.py` (7), `test_formula_audit.py`
+  (7), `test_deal_identity_sweep.py` (7), `test_self_render_reconcile.py` (4); extended
+  `test_populator.py` (+6). **Full suite 61/61** (was 25; ground-truth Esplanade/Rayzor tests
+  unchanged — no engine regression).
+
+Acceptance: CANDIDATE — validated against Envy forensic data + the real Rayzor ACQ template (no
+false-positive on its seller-doc tabs / blank-Checks #REF!). Behavioral: a marina-slip segment
+BLOCKS (not 244); a 0.05 ACQ fee is refused; an Aviara/foreign-tab/#REF! workbook fails identity;
+a no-external-ground-truth run self-renders, never transcript-compares.
+
+**Leanness audit:** net additive (~+5KB doc, new gate code + tests). Explicit accept on the growth —
+these are recurring per-deal HARD gates that each prevent a defect that actually shipped in the
+forensic (244 count, 5% fee, Aviara contamination, collapsed single-pass), and three are the
+prerequisites for any unattended HOTL run. Higher-leverage than any byte they cost.
+
 ## 2026-06-03 — Phase-12 memo reconciliation to canonical GS Residential format
 
 Source: Evan meta-prompt. The Phase-12 reference documented an older memo layout (Sections I–VII,

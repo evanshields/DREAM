@@ -115,6 +115,107 @@ def test_deal_identity_check_catches_wrong_deal():
     assert any("does not match" in s or "units" in s for s in r["reasons"])
 
 
+# --------------------------------------------------------------------------- #
+# Wave-1 hard-gate enforcement in populate()
+# --------------------------------------------------------------------------- #
+
+def _spec_with(tmpdir, cells, meta_extra=None, qa_extra=None):
+    spec = {
+        "meta": {"deal_name": "Test Deal", "slug": "testdeal", "routing": "ACQ", "template": TEMPLATE},
+        "qa": {"t12_unmapped": 0, "formula_audit": []},
+        "cells": cells,
+    }
+    if meta_extra:
+        spec["meta"].update(meta_extra)
+    if qa_extra:
+        spec["qa"].update(qa_extra)
+    sp = os.path.join(tmpdir, "underwrite-spec.json")
+    with open(sp, "w", encoding="utf-8") as f:
+        json.dump(spec, f)
+    return sp
+
+
+def test_populate_refuses_sentinel_fee():
+    # BL-03: B45 = 0.05 on an ACQ deal must be refused (unread Esplanade carryover).
+    with tempfile.TemporaryDirectory() as tmp:
+        sp = _spec_with(tmp, [
+            {"cell": "Pro Forma!B45", "value": 0.05, "type": "percent", "source": "template default", "phase": 3},
+        ])
+        rep = P.populate(sp, TEMPLATE)
+        refused = [c for c, _ in rep.refused_fee_bounds]
+        assert "Pro Forma!B45" in refused
+        assert rep.ok is False
+        assert "Pro Forma!B45" not in rep.written
+
+
+def test_populate_allows_fee_with_override_note():
+    with tempfile.TemporaryDirectory() as tmp:
+        sp = _spec_with(tmp, [
+            {"cell": "Pro Forma!B45", "value": 0.05, "type": "percent",
+             "source": "OVERRIDE: EFB structure, 5% intentional", "phase": 3},
+        ])
+        rep = P.populate(sp, TEMPLATE)
+        assert not rep.refused_fee_bounds
+        assert "Pro Forma!B45" in rep.written
+
+
+def test_populate_allows_in_bounds_fee():
+    with tempfile.TemporaryDirectory() as tmp:
+        sp = _spec_with(tmp, [
+            {"cell": "Pro Forma!B45", "value": 0.0075, "type": "percent", "source": "ACQ $25-50M band", "phase": 3},
+        ])
+        rep = P.populate(sp, TEMPLATE)
+        assert not rep.refused_fee_bounds
+        assert "Pro Forma!B45" in rep.written
+
+
+def test_populate_refuses_unit_mix_when_count_blocked():
+    # BL-01: a blocked unit count refuses the S3:S21 unit-mix inputs that feed S22.
+    with tempfile.TemporaryDirectory() as tmp:
+        sp = _spec_with(
+            tmp,
+            [{"cell": "Pro Forma!S10", "value": 244, "type": "integer", "source": "raw parse", "phase": 2}],
+            qa_extra={"unit_count": {"blocked": True, "counted": 244, "reasons": ["marina segment"]}},
+        )
+        rep = P.populate(sp, TEMPLATE)
+        assert "Pro Forma!S10" in rep.refused_unit_count
+        assert "Pro Forma!S10" not in rep.written
+        assert rep.ok is False
+
+
+def test_populate_blocks_on_identity_mismatch():
+    # BL-02: a recorded identity mismatch refuses populate entirely (no wrong-deal workbook).
+    with tempfile.TemporaryDirectory() as tmp:
+        sp = _spec_with(
+            tmp,
+            [{"cell": "Pro Forma!B10", "value": 75000000, "type": "currency", "source": "OM", "phase": 3}],
+            meta_extra={"deal_identity": {"match": False, "reasons": ["B2 'Aviara' != Envy"]}},
+        )
+        rep = P.populate(sp, TEMPLATE)
+        assert rep.identity_blocked is True
+        assert rep.ok is False
+        assert rep.written == []
+
+
+def test_populate_patch_log_records_verdicts():
+    # BL-07: every audited cell produces a patch_log line; an applied patch is logged.
+    with tempfile.TemporaryDirectory() as tmp:
+        sp = _spec_with(
+            tmp,
+            [{"cell": "Pro Forma!B10", "value": 75000000, "type": "currency", "source": "OM", "phase": 3}],
+            qa_extra={"formula_audit": [
+                {"cell": "Pro Forma!S40", "status": "bug", "expected": "=U36*12",
+                 "actual": "=U36", "patch": "=U36*12", "applied": True},
+                {"cell": "Pro Forma!B66", "status": "ok"},
+            ]},
+        )
+        rep = P.populate(sp, TEMPLATE)
+        joined = " | ".join(rep.patch_log)
+        assert "S40" in joined and "PATCH applied" in joined
+        assert "B66" in joined and "PASS" in joined
+        assert "Pro Forma!S40" in rep.patches_applied
+
+
 if __name__ == "__main__":
     with tempfile.TemporaryDirectory() as tmp:
         sp = _write_spec(tmp)

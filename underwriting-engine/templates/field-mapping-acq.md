@@ -25,6 +25,8 @@ Blue-text cells are inputs; black-text cells are formulas, never overwrite formu
 
 The ACQ Mini Model was forked from the same scaffold as the EFB Mini Model and inherits the same 5 known formula bugs. Per Universal Rule 8, the skill MUST audit these cells BEFORE populating any input that depends on them. Audit procedure and expected formulas are identical to the EFB version — see [templates/field-mapping-efb.md](.skills/dream-underwrite/templates/field-mapping-efb.md) §Pre-Population Formula Audit. The same 5 bug-prone cells apply: **S40, B66, B67, rows 31-32, row 78**.
 
+**BL-07 enforcement:** `acq_engine.formula_integrity_check` emits a **named PASS/PATCH verdict for all 5 cells EVERY run**. **S40 (`=U36`→`=U36*12`) and row 78 (bridge→refi DSCR pointer) AUTO-PATCH** (printed patch + one-line human confirm → populator applies via `applied=true`); B66/B67/rows 31-32 are flag-only. Only place the skill mutates black-text formula cells.
+
 **Esplanade ACQ 2026-05-15:** All 5 bugs present in the Rayzor-derived ACQ template. S40 understated Other Income by ~$1.5M cumulative. Row 78 zeroed Senior DSCR from Year 3+ (bridge-pointer never switched to refi). Rows 31-32 mis-thresholded refi P+I (B70 treated as absolute year). All 5 patches applied with user confirmation pre-Phase-3.
 
 Two additional bug candidates surfaced in Phase 10 that may belong in the catalog (pending 2nd-deal confirmation per the leanness 2-deal rule):
@@ -91,7 +93,7 @@ The Pro Forma sheet's assumptions stack lives in columns A (labels) and B (value
 | B3 | Address | INPUT | OM |
 | B4 | City, State & ZIP | INPUT | OM |
 | B5 | Year Built | INPUT | OM / tax records |
-| B6 | Number of Units | FORMULA | `=S22` |
+| B6 | Number of Units | FORMULA | `=S22`. **BL-01 GATE:** guard the S3:S21 unit-mix inputs that feed S22, NOT B6 — populator refuses S-cells when `qa.unit_count.blocked` (244-defect). |
 | B7 | Rentable SF | FORMULA | `=T22*S22` |
 | B8 | Price Per Unit | FORMULA | `=B10/B6` |
 | B9 | Whisper/Asking Price | INPUT | OM |
@@ -138,7 +140,7 @@ These three cells are what the Python engine's IRR / EM / CoC reconcile against 
 
 | Cell | Label | ACQ Default |
 |---|---|---|
-| B45 | Acquisition Fee (% of PP) | **0.005 ($50M+), 0.0075 ($25–50M), 0.01 (<$25M)** — NOT 0.05 |
+| B45 | Acquisition Fee (% of PP) | **0.005 ($50M+), 0.0075 ($25–50M), 0.01 (<$25M)** — NOT 0.05. **BL-03 GATE:** `assert_fee_bounds` FAILS on 0.05 (EFB/Esplanade sentinel) or outside [0.005, 0.01]; populator refuses the write w/o an override note. |
 | B46 | Asset Management Fee (% of EGI) | 0.005 |
 | B47 | Disposition Fee | per deal |
 | B48 | Construction Mgmt (% of Budget) | 0 if no reno |

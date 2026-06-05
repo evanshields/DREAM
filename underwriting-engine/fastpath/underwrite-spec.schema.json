@@ -19,7 +19,20 @@
         "template": {"type": "string", "description": "Mini Model filename/path the populator writes a copy of"},
         "generated": {"type": "string", "description": "ISO timestamp, stamped after the workflow returns (scripts cannot call Date.now())"},
         "freshness": {"type": "object", "description": "Mission Driven API /freshness payload at run time"},
-        "mode": {"enum": ["HITL", "HOTL"], "description": "Set by Avery when invoking Dream; controls which gate Dream stops at"}
+        "mode": {"enum": ["HITL", "HOTL"], "description": "Set by Avery when invoking Dream; controls which gate Dream stops at"},
+        "deal_identity": {
+          "type": "object",
+          "description": "BL-02/14 HARD GATE: deal_identity_check result for the ground-truth workbook. match==false BLOCKS populate and CP-2 reconcile. Set at Wave 0 and re-verified at Phase 11.",
+          "properties": {
+            "match": {"type": "boolean", "description": "false => template-fork carryover; refuse to populate/reconcile"},
+            "reasons": {"type": "array", "items": {"type": "string"}},
+            "foreign_tabs": {"type": "array", "items": {"type": "string"}, "description": "prior-deal tabs (e.g. 'Rayzor Ranch' in an Envy file)"},
+            "residual_errors": {"type": "array", "items": {"type": "string"}, "description": "#REF!/#NUM! carryover cell addresses"},
+            "vintage_mismatch": {"type": "boolean", "description": "an assumption note's build year != confirmed year_built"},
+            "ground_truth_selected": {"type": "string", "description": "BL-14: which model/transcript the parent selected as ground truth"},
+            "ground_truth_match": {"type": "boolean", "description": "BL-14: did the selected ground truth pass the identity fingerprint (auditable selection)"}
+          }
+        }
       }
     },
     "qa": {
@@ -50,6 +63,31 @@
             "price": {"type": "number"},
             "delta_pct": {"type": "number"},
             "flagged": {"type": "boolean"}
+          }
+        },
+        "fee_bounds": {
+          "type": "object",
+          "description": "BL-03 HARD GATE: acquisition-fee (B45) bounds assertion. ok==false (the 0.05 EFB/Esplanade sentinel, or outside 0.5-1.0% on the ACQ route) => populator refuses to write B45 unless override is set.",
+          "properties": {
+            "value": {"type": "number"},
+            "ok": {"type": "boolean"},
+            "is_sentinel": {"type": "boolean", "description": "true if value == 0.05 (the EFB/Esplanade default)"},
+            "override": {"type": "boolean", "description": "explicit human override note to keep 5% on an ACQ deal"},
+            "reason": {"type": "string"}
+          }
+        },
+        "unit_count": {
+          "type": "object",
+          "description": "BL-01/09 HARD GATE: rent-roll unit-count reconcile. blocked==true => populator refuses the S3:S21 unit-mix inputs that feed S22 (=B6). single_source_warning is a non-collapsible CP-1 flag (passed on the roll's own summary tab, no independent 2nd source).",
+          "properties": {
+            "counted": {"type": "integer"},
+            "summary_tab": {"type": ["integer", "null"]},
+            "second_source": {"type": ["integer", "null"]},
+            "excluded_segments": {"type": "array", "items": {"type": "string"}},
+            "reconciled": {"type": "boolean"},
+            "blocked": {"type": "boolean"},
+            "single_source_warning": {"type": "boolean"},
+            "reasons": {"type": "array", "items": {"type": "string"}}
           }
         },
         "reconcile": {

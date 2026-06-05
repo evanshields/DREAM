@@ -674,3 +674,319 @@ class HurdleCalculator:
         else:
             rec = "PASS"
         return HurdleResult(base, total, adjusted, rec, comps)
+
+
+# =============================================================================
+# WAVE-1 HARD GATES (Envy 3-way forensic — process-discipline floor)
+# =============================================================================
+# These are deterministic validators, not analytical models. They move the
+# mechanical, error-prone checks (fee bounds, unit-count reconcile, named
+# formula-bug sweep) out of "the human notices" and into "the engine asserts."
+# The forensic proved each one prevents a defect that actually shipped:
+#   - assert_fee_bounds      -> Fahd's unread 5% Esplanade acq fee (~$3M basis)
+#   - UnitCountReconciler    -> Fahd's 244-unit parse (no status/use filter)
+#   - formula_integrity_check-> reactive-only bug handling (S40, row-78 by luck)
+# They are the autonomy floor: HOTL must not run unattended without them.
+
+
+# ------------------------------------------------------------------------- #
+# BL-03 — Fee/cost-cell bounds assertion (B45 acquisition fee)
+# ------------------------------------------------------------------------- #
+
+SENTINEL_ACQ_FEE = D("0.05")              # the EFB/Esplanade 5% template default
+ACQ_FEE_BOUNDS = (D("0.005"), D("0.01"))  # ACQ rule: 0.5%-1.0% per size band
+
+
+@dataclass
+class FeeBoundsResult:
+    ok: bool
+    value: Decimal
+    is_sentinel: bool
+    reason: str
+
+
+def assert_fee_bounds(
+    acq_fee: Decimal,
+    routing: str = "ACQ",
+    override: bool = False,
+) -> FeeBoundsResult:
+    """Assert the acquisition fee is in-bounds for the deal routing.
+
+    Fahd's B45 stayed at 0.05 (the EFB/Esplanade default) across 183 messages —
+    never read, never overwritten — overstating acquisition basis by ~$3M on a
+    $74M deal. On the ACQ route the rule is 0.5-1.0%; a 0.05 sentinel is the
+    smoking gun of an unexamined template carryover.
+
+    Rules (ACQ route, no override):
+      - FAIL if acq_fee == 0.05 (the sentinel) — this is the carryover signal.
+      - FAIL if acq_fee outside [0.005, 0.01].
+    EFB route, or override=True, always passes (5% IS the EFB default).
+    """
+    fee = D(str(acq_fee))
+    is_sentinel = fee == SENTINEL_ACQ_FEE
+    if routing.upper() != "ACQ" or override:
+        why = "override flag present" if override else f"{routing} route (no ACQ fee bound)"
+        return FeeBoundsResult(ok=True, value=fee, is_sentinel=is_sentinel, reason=why)
+    lo, hi = ACQ_FEE_BOUNDS
+    if is_sentinel:
+        return FeeBoundsResult(
+            ok=False, value=fee, is_sentinel=True,
+            reason=f"acq fee {fee} == 0.05 EFB/Esplanade template sentinel — unexamined "
+                   f"carryover; ACQ must be {lo}-{hi}. Set an explicit override note to keep 5%.")
+    if not (lo <= fee <= hi):
+        return FeeBoundsResult(
+            ok=False, value=fee, is_sentinel=False,
+            reason=f"acq fee {fee} outside ACQ bounds [{lo}, {hi}] (0.5%-1.0% per size band)")
+    return FeeBoundsResult(ok=True, value=fee, is_sentinel=False,
+                           reason=f"acq fee {fee} within ACQ bounds [{lo}, {hi}]")
+
+
+# ------------------------------------------------------------------------- #
+# BL-01 + BL-09 — Rent-roll unit-count reconcile gate
+# ------------------------------------------------------------------------- #
+
+# Status values that still count as a unit (a unit exists whether or not it is
+# leased). Non-residential / excluded segments are the ones that inflate counts.
+NON_RESIDENTIAL_TOKENS = (
+    "condo", "marina", "slip", "boat", "storage", "office", "retail",
+    "commercial", "garage", "parking",
+)
+
+
+@dataclass
+class UnitCountResult:
+    counted: int                       # status+use-classified residential count
+    summary_tab: Optional[int]         # the roll's own summary-tab total
+    second_source: Optional[int]       # CoStar/ISG if available at parse time
+    excluded_segments: List[str]       # non-residential / user-excluded segments detected
+    reconciled: bool                   # count agrees with the best available source
+    blocked: bool                      # HARD gate: refuse to populate the unit-mix S-cells
+    single_source_warning: bool        # passed on the roll's own summary tab only (no 2nd source)
+    reasons: List[str]
+
+
+class UnitCountReconciler:
+    """Classify-then-reconcile the rent-roll unit count before it lands in S22.
+
+    Fahd's pandas read (header=5, all SQFT>0) counted 244 — including the condo +
+    marina-slip rows the user explicitly said to exclude ("Just focus on EB5
+    Multifamily part"). No status filter, no use filter, no second source. Evan
+    and Dream independently got 214 (Dream validated vs the roll's own summary tab
+    214u/188 occ/87.85%). The 30 phantom units (14%) inflated GPR, EGI, and every
+    per-unit denominator.
+
+    Locked behavior (Evan 2026-06-05 — "pass-with-flag on summary-tab match"):
+      - second source present -> BLOCK if |counted - 2nd| / 2nd > tol.
+      - else summary tab present -> pass within tol but set single_source_warning;
+        BLOCK if it disagrees > tol.
+      - BLOCK if a non-residential segment is detected but not excluded, or an
+        explicit user exclusion is violated.
+    B6 is the formula =S22, so the populator guards the S3:S21 unit-mix inputs that
+    feed S22 — never B6 directly.
+    """
+
+    def reconcile(
+        self,
+        classified_units: List[Dict],          # [{"bedroom","status","use_type"|"segment", ...}]
+        summary_tab_count: Optional[int] = None,
+        second_source_count: Optional[int] = None,
+        user_exclusions: Optional[List[str]] = None,
+        tol: Decimal = D("0.02"),
+    ) -> UnitCountResult:
+        user_exclusions = [e.lower() for e in (user_exclusions or [])]
+        reasons: List[str] = []
+        excluded_segments: List[str] = []
+        blocked = False
+
+        def _segment(u: Dict) -> str:
+            return str(u.get("use_type") or u.get("segment") or u.get("building") or "").lower()
+
+        counted = 0
+        for u in classified_units:
+            seg = _segment(u)
+            is_non_res = any(tok in seg for tok in NON_RESIDENTIAL_TOKENS)
+            violates_user = any(ex in seg for ex in user_exclusions) if user_exclusions else False
+            if is_non_res or violates_user:
+                label = seg or "(unlabeled)"
+                if label not in excluded_segments:
+                    excluded_segments.append(label)
+                # A detected-but-present non-residential/excluded segment is a hard block:
+                # the roll mixes use types and the parse must not silently include them.
+                blocked = True
+                if violates_user:
+                    reasons.append(f"segment '{label}' violates explicit user exclusion")
+                else:
+                    reasons.append(f"non-residential segment '{label}' present in roll — must be excluded")
+                continue
+            counted += 1
+
+        def _off(a: int, b: int) -> Decimal:
+            return abs(D(a) - D(b)) / D(b) if b else (D("0") if a == 0 else D("1"))
+
+        reconciled = False
+        single_source_warning = False
+        if second_source_count is not None:
+            off = _off(counted, second_source_count)
+            if off > tol:
+                blocked = True
+                reasons.append(f"counted {counted} vs 2nd source {second_source_count} "
+                               f"({float(off)*100:.1f}% > {float(tol)*100:.0f}% tol)")
+            else:
+                reconciled = True
+                reasons.append(f"reconciled to 2nd source {second_source_count} "
+                               f"({float(off)*100:.1f}% within tol)")
+        elif summary_tab_count is not None:
+            off = _off(counted, summary_tab_count)
+            if off > tol:
+                blocked = True
+                reasons.append(f"counted {counted} vs roll summary tab {summary_tab_count} "
+                               f"({float(off)*100:.1f}% > {float(tol)*100:.0f}% tol)")
+            else:
+                reconciled = True
+                single_source_warning = True
+                reasons.append(f"single-source WARNING: reconciled to roll's own summary tab "
+                               f"{summary_tab_count} only (no independent 2nd source at parse time)")
+        else:
+            # No reconciliation source at all -> cannot validate -> block & escalate.
+            blocked = True
+            reasons.append("no reconciliation source (neither 2nd source nor summary tab) — "
+                           "cannot validate unit count")
+
+        return UnitCountResult(
+            counted=counted,
+            summary_tab=summary_tab_count,
+            second_source=second_source_count,
+            excluded_segments=excluded_segments,
+            reconciled=reconciled,
+            blocked=blocked,
+            single_source_warning=single_source_warning,
+            reasons=reasons,
+        )
+
+
+# ------------------------------------------------------------------------- #
+# BL-07 — Named formula-integrity sweep (S40, B66, B67, rows 31-32, row 78)
+# ------------------------------------------------------------------------- #
+
+# The canonical 5 fragile cells from the Rayzor-derived templates. S40 and row-78
+# are AUTO-PATCH (detect -> patch string -> printed -> human-confirm -> applied=true);
+# the rest are verdict-only (flag for human, no mutation). Per Evan 2026-06-05.
+AUTO_PATCH_CELLS = ("S40", "row78")
+
+
+@dataclass
+class FormulaVerdict:
+    cell: str
+    status: str            # "ok" | "bug"
+    expected: str          # expected/canonical formula (or "" if none asserted)
+    actual: str
+    patch: str             # the patch to apply if status=="bug" and auto (else "")
+    auto: bool             # True if in the auto-patch set
+
+
+@dataclass
+class FormulaAuditResult:
+    verdicts: List[FormulaVerdict]
+    patch_log: List[str]   # one printed line per cell verdict (PASS/PATCH ...)
+
+    @property
+    def any_bug(self) -> bool:
+        return any(v.status == "bug" for v in self.verdicts)
+
+    @property
+    def auto_patches(self) -> List[FormulaVerdict]:
+        return [v for v in self.verdicts if v.status == "bug" and v.auto and v.patch]
+
+
+def _norm_formula(f: Optional[str]) -> str:
+    return ("" if f is None else str(f)).replace(" ", "").upper()
+
+
+def formula_integrity_check(formulas: Dict[str, str]) -> FormulaAuditResult:
+    """Emit a NAMED PASS/PATCH verdict for each of the 5 fragile template cells,
+    EVERY run — regardless of whether they surface downstream.
+
+    Both humans fixed these reactively (Evan diagnosed row-78 only as a one-off
+    #NUM! IRR symptom; Fahd fixed row78=D48 only as a comps-grid ref repair).
+    Neither ran the canonical sweep, so success was by luck, not protocol.
+
+    `formulas` is {cell -> actual formula string} read from the template by the
+    orchestrator (the engine is pure — it does not open the workbook). Keys this
+    function recognizes: "S40", "B66", "B67", "row31", "row32", "row78". Missing
+    keys yield a verdict noting the cell was not read (status "ok", actual "").
+
+    Auto-patch set (S40, row78): returns a `patch` string. The populator applies it
+    ONLY when the spec marks it applied=true (printed-patch + human-confirm gate).
+    The other three are verdict-only (flag for human; no patch).
+    """
+    verdicts: List[FormulaVerdict] = []
+    patch_log: List[str] = []
+
+    def _add(cell: str, status: str, expected: str, actual: str, patch: str, auto: bool):
+        verdicts.append(FormulaVerdict(cell, status, expected, actual, patch, auto))
+        tag = "PASS" if status == "ok" else ("PATCH(auto)" if auto and patch else "PATCH(flag)")
+        detail = f" -> {patch}" if patch else (f" (expected {expected})" if expected and status == "bug" else "")
+        patch_log.append(f"{cell}: {tag}{detail}")
+
+    # --- S40 (auto): Other Income annualization. ships =U36, should be =U36*12 ---
+    s40 = formulas.get("S40")
+    s40n = _norm_formula(s40)
+    if s40 is None:
+        _add("S40", "ok", "=U36*12", "", "", auto=True)
+    elif s40n == "=U36":
+        _add("S40", "bug", "=U36*12", str(s40), "=U36*12", auto=True)
+    elif "U36" in s40n and "*12" not in s40n and "U36*12" not in s40n:
+        # any non-annualized reference to U36 (e.g. =U36+0) is the same defect class
+        _add("S40", "bug", "=U36*12", str(s40), "=U36*12", auto=True)
+    else:
+        _add("S40", "ok", "=U36*12", str(s40), "", auto=True)
+
+    # --- row78 (auto): Senior DSCR bridge->refi pointer ---
+    # Buggy form points the DSCR denominator at the BRIDGE balance/DS past the refi
+    # switch (zeroing / mis-stating Senior DSCR Y3+). The repointed form references
+    # the refi debt service. We can't know the exact column layout per template, so
+    # the patch is supplied by the orchestrator if it read one; otherwise we emit the
+    # canonical repoint and let the populator's applied=true gate hold it.
+    r78 = formulas.get("row78")
+    r78n = _norm_formula(r78)
+    if r78 is None:
+        _add("row78", "ok", "<refi-DSCR pointer>", "", "", auto=True)
+    elif "D48" in r78n or "BRIDGE" in r78n or r78n in ("=0", "0"):
+        # bridge-pointer / comps-ref-repair / zeroed forms are all the known defect
+        patch = formulas.get("row78_patch", "")  # orchestrator-supplied repoint, if read
+        _add("row78", "bug", "<refi-DSCR pointer>", str(r78), patch, auto=True)
+    else:
+        _add("row78", "ok", "<refi-DSCR pointer>", str(r78), "", auto=True)
+
+    # --- B66 (flag-only): combined LTV ---
+    b66 = formulas.get("B66")
+    expected_b66 = '=IFERROR(SUM(B52,B67)/B10,"N/A")'
+    if b66 is None:
+        _add("B66", "ok", expected_b66, "", "", auto=False)
+    elif _norm_formula(b66) == _norm_formula(expected_b66):
+        _add("B66", "ok", expected_b66, str(b66), "", auto=False)
+    else:
+        _add("B66", "bug", expected_b66, str(b66), "", auto=False)
+
+    # --- B67 (flag-only): refi loan amount (INPUT in current templates) ---
+    b67 = formulas.get("B67")
+    if b67 is None:
+        _add("B67", "ok", "<refi loan input>", "", "", auto=False)
+    elif str(b67).startswith("="):
+        # B67 should be an INPUT, not a formula; a formula here is suspicious -> flag
+        _add("B67", "bug", "<refi loan input (not a formula)>", str(b67), "", auto=False)
+    else:
+        _add("B67", "ok", "<refi loan input>", str(b67), "", auto=False)
+
+    # --- rows 31-32 (flag-only): refi P+I thresholds ---
+    for key in ("row31", "row32"):
+        r = formulas.get(key)
+        if r is None:
+            _add(key, "ok", "<refi P+I threshold>", "", "", auto=False)
+        elif "B70" in _norm_formula(r) and "+B69" not in _norm_formula(r) and "B69" not in _norm_formula(r):
+            # B70 (IO period) treated as an absolute year instead of relative to B69 (orig year)
+            _add(key, "bug", "<refi P+I threshold relative to B69 orig year>", str(r), "", auto=False)
+        else:
+            _add(key, "ok", "<refi P+I threshold>", str(r), "", auto=False)
+
+    return FormulaAuditResult(verdicts=verdicts, patch_log=patch_log)

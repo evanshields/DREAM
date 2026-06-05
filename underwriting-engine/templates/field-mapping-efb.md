@@ -10,6 +10,8 @@ This guide maps every input cell in the Shieldstone EFB Mini Model to the data s
 
 The EFB Mini Model template has historically shipped with formula bugs that, if left in place, corrupt every downstream output (DSCR, IRR, refi sizing, exit metrics). Per Universal Rule 8, the skill must audit these cells BEFORE populating any input that depends on them. For each cell below, read the actual formula via openpyxl, compare to the expected formula, and if there is a mismatch, surface it in chat with the proposed patch:
 
+**BL-07 enforcement:** run `acq_engine.formula_integrity_check({cell: actual_formula})` to emit a **named PASS/PATCH verdict for all 5 cells EVERY run** (not just when one breaks downstream — both humans fixed these reactively, never by name). **S40 (`=U36`→`=U36*12`) and row 78 (bridge→refi DSCR pointer) are the AUTO-PATCH set** — printed patch + one-line human confirm, then the populator applies them via the `applied=true` flag. B66/B67/rows 31-32 stay flag-only. This is the only place the skill mutates black-text formula cells.
+
 ```
 Formula Audit (EFB Mini Model):
   S40 (Other Income annual): expected =U36*12, actual =U36  [BUG, will undercount by 12x]

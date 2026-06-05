@@ -38,7 +38,7 @@ The serial 12-phase Claude-for-Excel flow takes 90 min–2 hrs because it does o
 
 ### Three waves
 
-**Wave 0 — Routing + intake.** Run Phase-0 ACQ-vs-EFB auto-detection ([references/01-deal-routing.md](.skills/dream-underwrite/references/01-deal-routing.md)). If ambiguous, ask once and STOP — never guess. Stage docs into `shieldstone_acquisitions/underwrites/<slug>/`.
+**Wave 0 — Routing + intake + identity gate.** Run Phase-0 ACQ-vs-EFB auto-detection ([references/01-deal-routing.md](.skills/dream-underwrite/references/01-deal-routing.md)). If ambiguous, ask once and STOP — never guess. Stage docs into `shieldstone_acquisitions/underwrites/<slug>/`. **Ground-truth selection is identity-gated (BL-02/14):** never accept a folder file as the deal's model without passing `deal_identity_check` (B2 name + B6 units + foreign-tab + #REF! + vintage sweep, with the KNOWN prior-deal tokens for this estate passed as `foreign_deal_tokens`); **log which model/transcript was selected and its match result** so selection is auditable. A False match BLOCKS — the populator refuses to write a wrong-deal workbook (`meta.deal_identity.match=false`). This is the #1 autonomy prerequisite: the Envy run inherited the Aviara fork as ground truth and every downstream gate then validated against contaminated truth.
 
 **Wave 1 — 5 parallel analytical subagents.** Dispatch concurrently (single message, `.skills/dispatching-parallel-agents/` pattern). Each is a pure function: deal-package paths + ONE scoped reference + a strict output slice → JSON only, writes nothing to the workbook. Full prompts + output schemas: [fastpath/agent-contracts.md](.skills/dream-underwrite/fastpath/agent-contracts.md).
 - `agent-t12` — T-12 spread + forensic block (+ OpEx actuals)
@@ -51,7 +51,7 @@ The serial 12-phase Claude-for-Excel flow takes 90 min–2 hrs because it does o
 
 **Wave 3 — Populate + reconcile + memo.**
 1. [fastpath/populator.py](.skills/dream-underwrite/fastpath/populator.py) `populate()` writes the spec's INPUT cells into a COPY of the template (never the original, never a FORMULA cell — it refuses and reports), runs the formula audit, does a before/after structural diff, and flags the workbook PENDING EXCEL RECALC.
-2. **Reconciliation gate:** the user opens the draft in Excel once (native recalc — also the file partners need), then `reconcile()` re-reads with `data_only=True` and diffs Excel headline values vs the Python engine at tiered tolerance (headlines ~0.5%, line items ~2%); anything outside band auto-flags a side-by-side diff. **→ CP-2.**
+2. **Reconciliation gate (BL-05 — identity-gated, with self-render fallback):** CP-2 runs the deal-identity gate FIRST. The user opens the draft in Excel once (native recalc — also the file partners need), then `reconcile()` re-reads with `data_only=True` and diffs Excel headline values vs the Python engine at tiered tolerance (headlines ~0.5%, line items ~2%); anything outside band auto-flags a side-by-side diff. If the supplied external ground truth fails the identity check, `reconcile()` **raises and escalates the fork to the parent — it never silently degrades to a transcript comparison** (the Envy failure). When no valid external Excel ground truth exists, `reconcile_self_render()` reconciles the engine against the openpyxl-populated workbook it just wrote (Python-vs-its-own-render, always available). Self-render catches populator bugs, NOT engine-logic bugs (no independent oracle) — it is the HOTL floor, not a substitute for an external model. **→ CP-2.**
 3. Phase-12 HTML memo built from the spec's `memo_vars` (not by re-reading the xlsx). **→ CP-3.**
 
 ### Checkpoint collapse: 12 → 3
@@ -84,7 +84,7 @@ These rules apply to every phase in every environment. Read them first.
 
 1. **Blue text cells are inputs.** Never overwrite formula cells (black text). If you cannot tell, ask.
 2. **Never modify formatting.** No column widths, fonts, borders, conditional formatting, merged cells, or sheet names.
-3. **Run the phase QA gate before declaring complete.** Every phase ends with a self-check list (see "QA Gate" block in each Phase section below). The skill MUST run every gate item, output `✅` or `❌` per item in chat, and ONLY pass to the human checkpoint after all gates show `✅` or you've explicitly surfaced the `❌` with a proposed remediation. Do NOT silently skip a gate. Do NOT declare a phase complete with `❌` items unresolved. The QA gate is the assistant's self-check; the human checkpoint is the user's review.
+3. **Run the phase QA gate before declaring complete.** Every phase ends with a self-check list (see "QA Gate" block in each Phase section below). The skill MUST run every gate item, output `✅` or `❌` per item in chat, and ONLY pass to the human checkpoint after all gates show `✅` or you've explicitly surfaced the `❌` with a proposed remediation. Do NOT silently skip a gate. Do NOT declare a phase complete with `❌` items unresolved. The QA gate is the assistant's self-check; the human checkpoint is the user's review. **Gates are non-collapsible (BL-06): never bulk-write multiple phases in one pass and bolt on a retroactive end-of-session audit — that is exactly how Fahd's 244 units, 5% fee, and unexamined exemption shipped. Each gate is a blocking artifact emitted at its own phase; Phase 0 (routing), Phase 4 (unit mix), and Phase 11 (audit) MUST surface individually. In the fast path the gates run inside the agents/synthesis and every one surfaces at CP-1 — no silent collapse.**
 4. **EFB standing assumptions are firm.** Non-profit partner exists. Tax exemption obtained. Bond counsel engaged. QMC-compliant project administration. Do NOT re-ask on every EFB deal.
 5. **Phase 12 HTML memo is a single self-contained file.** Embedded CSS, embedded JS via CDN, base64 images inline. Never split, never reference remote URLs for images.
 6. **Read at most one new reference per question.** The references are scoped, see the When to Read table below.
@@ -206,13 +206,25 @@ If any gate item is `❌`, do NOT declare the phase complete. Either remediate n
 5. Identify renovation status if labeled (SLV/GLD/RENO/CLASSIC/UPGRADED). If unlabeled, compare rents within bedroom type, a $1,324 unit in a sea of $1,195 units was likely renovated.
 6. Skip storage/office/non-residential units from unit count.
 
+**Unit-count HARD GATE (BL-01/09 — the 244 defect).** Classify EVERY row by Status AND by
+building/use-type, then reconcile the count through `acq_engine.UnitCountReconciler`: against a
+second source (CoStar Full UW / ISG pricing sheet) AND the roll's own summary tab. **BLOCK** the
+unit-mix write (the S3:S21 inputs that feed S22 = B6) if the count is >2% off the second source, if
+a non-residential/excluded segment (condo, marina-slip, storage, office) is detected and not
+excluded, or if an explicit user exclusion ("just the EB5 multifamily part") is violated. If only
+the roll's own summary tab is available (no CoStar/ISG at parse time) and it reconciles within 2%,
+PASS with a non-collapsible single-source WARNING surfaced at CP-1. **Never hardcode a raw count
+into the model** — route unit-mix derivation exclusively through this classification + reconcile
+step; refuse a raw pandas/office-js count that lacks a documented status/building filter + an
+independent second source.
+
 **Phase 2 QA gate (run BEFORE the checkpoint):**
 - [ ] SF backfilled for every unit type missing SF in the source (cite CoStar Property Summary lookup)
 - [ ] RR GPR vs T-12 GPR within 5% (or gap explained: snapshot date / unit mix / new turns)
-- [ ] Unit count reconciles to T-12 unit count
+- [ ] **Unit count reconciled via `UnitCountReconciler` to a 2nd source within 2% (or summary-tab single-source WARNING flagged); NOT blocked**
 - [ ] Status column populated for EVERY unit row (Vacant / Model / Notice / Down / Occupied)
 - [ ] Renovation cohort split identified (or "no split observed" stated explicitly)
-- [ ] Storage/office/non-residential units excluded from unit count
+- [ ] Storage/office/non-residential/excluded segments excluded from unit count (no raw count)
 
 **Checkpoint:** Present total units, occupied count, physical occupancy, by-bedroom average rents, any renovation status splits identified. Reconcile unit count to T-12 (avg rent × occupied × 12 should roughly tie to T-12 GPR). Wait for confirmation.
 
@@ -236,7 +248,13 @@ If any gate item is `❌`, do NOT declare the phase complete. Either remediate n
 
 Exact cell map: [templates/field-mapping-efb.md](.skills/dream-underwrite/templates/field-mapping-efb.md) for EFB, [templates/field-mapping-acq.md](.skills/dream-underwrite/templates/field-mapping-acq.md) for ACQ.
 
-**Critical fee gotcha:** the EFB Mini Model template ships with a 5% acquisition fee default. For an ACQ deal on the same workbook structure, override to 0.5% ($50M+), 0.75% ($25–50M), or 1.0% (<$25M).
+**Fee-bounds HARD GATE (BL-03 — the unread 5% fee).** The EFB Mini Model template ships with a 5%
+acquisition fee default at B45. For an ACQ deal, override to 0.5% ($50M+), 0.75% ($25–50M), or 1.0%
+(<$25M). This is enforced, not advised: `acq_engine.assert_fee_bounds` FAILS the gate when B45 ==
+0.05 (the EFB/Esplanade sentinel) or falls outside [0.005, 0.01] on the ACQ route, and the populator
+**refuses to write a sentinel/out-of-bounds fee** unless an explicit override note is present on the
+cell. Fahd's B45 sat at 0.05 unread for 183 messages — a ~$3M basis overstatement. Read every
+fee/cost cell (B45 acq fee, dev fee, COI) by address before populating.
 
 **Whisper bid sanity check (immediately after writing B10):** As soon as the purchase price hits B10, compute the median PPU from the sales comps you intend to populate at Phase 11 (or from the CoStar Sales Comps file that should already be on the workbook), multiply by subject units, and compare to the whisper bid. Flag in chat if `whisper > median + 10%`. Example:
 
@@ -244,15 +262,22 @@ Exact cell map: [templates/field-mapping-efb.md](.skills/dream-underwrite/templa
 
 This is a directional gut-check, not a binding rule. Many deals legitimately price above median (renovated comps, EFB tax-exemption premium, supply-constrained submarket). The point is to surface the spread so the user makes an informed call rather than discovering it at IC.
 
-**Pre-population formula audit (Universal Rule 8):** Before writing the first value into cols A-B, run the formula audit per [templates/field-mapping-efb.md](.skills/dream-underwrite/templates/field-mapping-efb.md) §Pre-Population Formula Audit. Read the 5 known-buggy cells (S40, B66, B67, rows 31-32, row 78), compare actual vs. expected formulas, flag mismatches in chat with proposed patches. Wait for user confirmation before patching.
+**Pre-population formula audit (Universal Rule 8 — BL-07).** Before writing the first value into
+cols A-B, run `acq_engine.formula_integrity_check` over the 5 known-fragile cells and emit a
+**named PASS/PATCH verdict for each — S40, B66, B67, rows 31-32, row 78 — EVERY run**, regardless of
+whether they surface downstream (both humans fixed these reactively, never by name). **S40
+(`=U36`→`=U36*12` annualization) and row 78 (bridge→refi DSCR pointer) are the AUTO-PATCH set:**
+detect, print the patch, require a one-line human confirm; on confirm the orchestrator marks the
+audit entry `applied=true` and the populator applies it. B66/B67/rows 31-32 stay flag-only (no
+auto-mutation). This is the ONLY place the skill mutates black-text formula cells — triple-gated by
+the 2-cell limit, the printed-patch + confirm, and the `applied=true` flag.
 
 **Phase 3 QA gate (run BEFORE the checkpoint):**
-- [ ] Pre-population formula audit complete: all 5 known-buggy cells (S40, B66, B67, rows 31-32, row 78) read and reported
-- [ ] Each formula bug found surfaced in chat with proposed patch; user-approved patches applied
+- [ ] **5 named formula verdicts emitted (S40, B66, B67, rows 31-32, row 78) via `formula_integrity_check`; S40/row-78 patches printed + human-confirmed before apply**
 - [ ] Whisper bid sanity check fired (median PPU × units vs whisper, flagged if > median + 10%)
 - [ ] Sources cited for EVERY input cell touched in cols A-B (broker OM, lender term sheet, comp analysis)
 - [ ] Sources = Uses test nets to zero in Year 0
-- [ ] Fee gotcha checked: ACQ deals override 5% EFB default to 0.5-1.0% per size band
+- [ ] **B45 fee-bounds assertion PASSED (or explicit override note present); the 0.05 EFB sentinel FAILS on ACQ**
 
 **Checkpoint:** Present full assumptions stack with sources cited. Sources = Uses test should net to zero in Year 0. Note any formula patches applied or declined. Wait for confirmation.
 
@@ -503,7 +528,7 @@ The Comps tab has **four** sections. **Never auto-populate without explicit user
 4. **Market Upcoming Construction Pipeline (rows 88–101)**: 10 data slots (rows 90–99) for under-construction deliveries in the subject's submarket. Source from the CoStar Full UW Report Construction section (typically pp. 54–66 for the immediate submarket; pp. 100+ for broader MSA if the immediate submarket has < 5 deliveries). Sort ascending by Expected Delivery Date. Cell map: B = sequence (`1` literal at B90, `=B(n-1)+1` formulas B91–B99, **do not modify**), C = empty separator (do not write), D = project name + address, E = expected delivery date as datetime, F = unit count. **Do not modify row 101** (Total/Average formulas).
    - **Submarket discipline**: if the immediate submarket has fewer than 10 deliveries, leave excess rows BLANK rather than padding with broader-MSA projects. Mixing submarkets undercuts the supply analysis. Only expand to broader MSA if the user explicitly opts in.
    - **Proximity / type annotations** (append to col D): ` — Affordable` for income-restricted product, ` — SAME SUBMARKET` for direct competitors, ` — X.X mi from subject` for proximity bands. The memo renderer uses these flags to identify directly competitive deliveries.
-   - **Template-fork carryover check (REQUIRED before writing)**: Read D90:F99 first. If ALL 10 existing rows reference an MSA outside the subject's state (e.g., subject is in FL but rows list TX addresses), flag this loudly to the user as a likely template-fork carryover, then proceed to overwrite once confirmed. This bit Esplanade and Aviara — both shipped with Denton TX leftovers from a Rayzor Ranch template fork that survived two deal forks and fed false supply data into IC review.
+   - **Template-fork carryover check (HARD BLOCK before writing — BL-02)**: Read D90:F99 first. If ALL 10 existing rows reference an MSA outside the subject's state (e.g., subject is in FL but rows list TX addresses), this is a template-fork carryover — **BLOCK and require explicit repointing of every carryover row before proceeding** (do not just "flag and proceed"). This bit Esplanade and Aviara — both shipped with Denton TX leftovers from a Rayzor Ranch template fork that survived two deal forks and fed false supply data into IC review. Pairs with the workbook-wide `deal_identity_check` (foreign-tab + #REF! + vintage sweep).
 
 **Total/Median row SUMIF check**: J86/K86/N86/O86 SUMIF criteria range MUST be $C$70:$C$84 (the weight column), NOT the bedroom column. Old templates have a known bug here. Verify after edits.
 
@@ -511,7 +536,12 @@ The Comps tab has **four** sections. **Never auto-populate without explicit user
 
 1. Reconcile T-12 / T-6 / T-3 annualized NOI in the snapshot.
 2. **With-tax vs. without-tax pulls**: the snapshot pulls Pro Forma NOI two ways, full pro forma (with tax) and EFB-equivalent (without tax). Verify the tax exemption breaker drives the correct value.
-3. Sanity check list:
+3. **Deal-identity re-verify (BL-02 HARD GATE).** Before delivering the model, re-run
+   `deal_identity_check` with `strict_residuals=True` (a populated model must carry NO surviving
+   `#REF!`/`#NUM!`, no foreign tab, no name/unit mismatch, no stale-vintage note). A False match
+   BLOCKS "deliver the model" — repoint every carryover cell first. This is the Phase-11 catch Evan's
+   audit made by hand (Aviara 66/33 hardcodes, Esplanade #REF! in Checks, the Rayzor Ranch tab).
+4. Sanity check list:
    - Sources = Uses at Year 0 (should be ~$0)
    - DSCR >= floor in every year (1.15x EFB, 1.25x agency refi)
    - Going-in cap rate within ±15% of submarket sales comps
@@ -528,7 +558,8 @@ The Comps tab has **four** sections. **Never auto-populate without explicit user
 - [ ] Methodology cell on Comps tab populated with prose explanation
 - [ ] Vintage anchor 10-mile backfill if submarket has < 3 modern-vintage comps (anchors at weight = 0)
 - [ ] **Construction pipeline (rows 88–101) refreshed from this deal's CoStar Full UW Report Construction section**
-- [ ] **No pipeline rows reference an MSA outside the subject's state (template-fork carryover check passed)**
+- [ ] **No pipeline rows reference an MSA outside the subject's state (template-fork carryover HARD BLOCK passed)**
+- [ ] **Deal-identity re-verify passed (`deal_identity_check` strict: no #REF!/#NUM!, no foreign tab, no name/unit/vintage mismatch)**
 - [ ] **Row 101 SUM / MAX / AVERAGE formulas left intact (values written to D90:F99 only)**
 - [ ] UW Snapshot tab: T-12/T-6/T-3 reconciliation shown, with-tax vs. without-tax pulls visible
 
