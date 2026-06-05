@@ -2,7 +2,7 @@
 
 ## Purpose
 
-The UW Snapshot tab is the deliverable artifact. It pulls every key output from the Pro Forma and Comps tabs into a single page summarizing the deal: revenue, expenses, NOI, debt, returns. Phase 11b runs the snapshot finalization for both EFB and ACQ models, with the critical distinction being **with-tax vs. without-tax pulls** for EFB deals (the snapshot displays both views). This reference encodes the reconciliation logic, sanity check list, and final metrics audit the skill must run before declaring the model "delivered."
+The UW Snapshot tab is the deliverable artifact. It pulls revenue, expense, and NOI outputs from the Pro Forma into a single page summarizing the deal through the cap-rate block. **The Snapshot ends at the cap-rate/NOI block by design.** DSCR is verified on the Checks tab; returns and exit metrics live on the Pro Forma. Phase 11b runs the snapshot finalization for both EFB and ACQ models, with the critical distinction being **with-tax vs. without-tax pulls** for EFB deals (the snapshot displays both views). This reference encodes the reconciliation logic, sanity check list, and final metrics audit the skill must run before declaring the model "delivered."
 
 ---
 
@@ -13,17 +13,13 @@ The Snapshot tab typically contains:
 | Section | Content |
 |---|---|
 | Deal Identity | Asset name, address, units, year built, $/unit, $/SF |
-| Capital Stack | Purchase price, bond amount (EFB) or loan amount (ACQ), LTV, equity (ACQ only) |
 | Revenue Summary | GPR (year 1, year 10), Vacancy, Other Income, RUBS, EGI |
 | Expense Summary | Total OpEx, OpEx/unit, OpEx ratio (% of EGI) |
 | NOI | Year 1, Year 3, Year 5, Year 10 |
-| Debt Service | Annual DS, DSCR Y1/Y3/Y5/Y10 |
-| Returns (ACQ) | Levered IRR, Equity Multiple, Cash-on-Cash Y1/Y5, net investor IRR |
-| Bond Metrics (EFB) | Bond proceeds vs TPC, sources = uses test, ROFR exit value |
-| Exit | Sale year, exit cap, exit price, $/unit at exit |
-| Sensitivity | DSCR / IRR at rate ± 50 bps, exit cap ± 50 bps |
 
-Exact cell map varies by model template. See [templates/field-mapping-efb.md](.skills/dream-underwrite/templates/field-mapping-efb.md) and [templates/field-mapping-acq.md](.skills/dream-underwrite/templates/field-mapping-acq.md).
+> **Scope boundary:** The Snapshot ends at the cap-rate block. DSCR is verified on the Checks tab (not the Snapshot). Returns (IRR, EM, CoC, net investor IRR) and exit metrics (sale year, exit cap, exit price) live on the Pro Forma. The Final Metrics Audit in chat (see §Final Metrics Audit below) reports all of these by reading Checks + Pro Forma directly — it is a chat summary, not a Snapshot pull.
+
+Exact cell map for the four Snapshot sections above varies by model template. See [templates/field-mapping-efb.md](.skills/dream-underwrite/templates/field-mapping-efb.md) and [templates/field-mapping-acq.md](.skills/dream-underwrite/templates/field-mapping-acq.md).
 
 ---
 
@@ -110,7 +106,9 @@ Before declaring the model delivered, work through this checklist. Surface any f
 - [ ] **Total expense ratio 40–55% of EGI** for Class B; flag if outside.
 - [ ] **Phase 8 agency triangulation cited** per category per [references/15-opex-agency-triangulation.md](.skills/dream-underwrite/references/15-opex-agency-triangulation.md).
 
-### Financing Sanity
+### CHECKS-TAB: Financing / DSCR Verification
+
+> These checks live on the **Checks tab**, not the Snapshot. Verify them there; surface failures in chat.
 
 #### EFB
 - [ ] **Year 1 DSCR >= 1.15x** (or interest reserve sized + verified per [references/08-efb-financing.md](.skills/dream-underwrite/references/08-efb-financing.md))
@@ -126,7 +124,9 @@ Before declaring the model delivered, work through this checklist. Surface any f
 - [ ] **HUD 223(f) alternative sized** (per [references/09-acq-financing.md](.skills/dream-underwrite/references/09-acq-financing.md))
 - [ ] **Refi proceeds at NOI -10% stress** still close out bridge with cushion
 
-### Returns Sanity (ACQ)
+### PRO-FORMA-TAB: Returns Verification (ACQ)
+
+> These checks read from the **Pro Forma tab** (rows B14–B17 formula outputs). Verify them there; surface failures in chat.
 
 - [ ] **Levered IRR vs. hurdle**: per market tier per [references/13-manual-standards.md](.skills/dream-underwrite/references/13-manual-standards.md) (Gateway 14–16%, Secondary 16–19%, Tertiary 18–22%) PLUS adjustments
 - [ ] **Stabilized CoC vs. vintage floor**: 6.0% (2020+) / 7.0% (2000–2019) / 7.5–8.0% (pre-2000)
@@ -135,7 +135,9 @@ Before declaring the model delivered, work through this checklist. Surface any f
 - [ ] **Going-in cap rate within ±15% of submarket sales comp median**
 - [ ] **Exit cap >= entry cap** (never embed compression)
 
-### Exit Sanity
+### PRO-FORMA-TAB: Exit Verification
+
+> These checks read from the **Pro Forma tab** (rows B79–B82 inputs/formulas). Verify them there; surface failures in chat.
 
 - [ ] **Exit cap from three-method triangulation** per [references/13-manual-standards.md](.skills/dream-underwrite/references/13-manual-standards.md): take HIGHEST of (Treasury spread, comp $/unit validation, entry + 100 bps)
 - [ ] **Costs of sale: 2%**
@@ -152,9 +154,9 @@ Before declaring the model delivered, work through this checklist. Surface any f
 
 ---
 
-## Final Metrics Audit (Headline Numbers to Present)
+## Final Metrics Audit (Chat Summary — Sources: Checks Tab + Pro Forma)
 
-When delivering the model, present these headline numbers in chat in this order:
+When delivering the model, present these headline numbers in chat in this order. This block is the **chat-level summary**: the DSCR figures are read from the Checks tab; returns and exit figures are read from the Pro Forma tab formula outputs. Nothing in this block is sourced from the Snapshot tab.
 
 ```
 DEAL: [Property Name], [EFB or ACQ]

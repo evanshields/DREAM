@@ -320,7 +320,7 @@ Per [references/12-uw-snapshot.md](.skills/dream-underwrite/references/12-uw-sna
 
 - T-12 / T-6 / T-3 reconciliation
 - For EFB: with-tax vs. without-tax pulls (display both views)
-- For ACQ: full return metrics (IRR, EM, CoC, net investor IRR)
+- **Snapshot scope: Deal Identity + Revenue + Expense + NOI blocks only.** DSCR is verified on the Checks tab (sheet 11); returns (IRR/EM/CoC) and exit metrics are read from Pro Forma rows B14–B17 and B79–B82. Neither DSCR nor returns/exit rows belong on the Snapshot sheet.
 - Sanity check list per Reference 12
 
 ---
