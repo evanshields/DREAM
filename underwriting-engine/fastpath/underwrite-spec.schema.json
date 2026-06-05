@@ -1,0 +1,327 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://shieldstone.co/schemas/underwrite-spec.json",
+  "title": "Dream Underwrite Spec",
+  "description": "The durable contract between the analytical fan-out (Wave 1), the synthesis + calc engine (Wave 2), the openpyxl populator + reconciliation (Wave 3), and the Phase-12 memo. One file per deal at shieldstone_acquisitions/underwrites/<slug>/underwrite-spec.json. Every value that lands in a Mini Model cell appears in cells[] with a target address and a source citation.",
+  "type": "object",
+  "required": ["meta", "qa", "cells"],
+  "additionalProperties": false,
+  "properties": {
+    "meta": {
+      "type": "object",
+      "required": ["deal_name", "slug", "routing", "template"],
+      "additionalProperties": true,
+      "properties": {
+        "deal_name": {"type": "string"},
+        "slug": {"type": "string", "pattern": "^[a-z0-9-]+$"},
+        "routing": {"enum": ["ACQ", "EFB"]},
+        "routing_basis": {"type": "string", "description": "Why this routing (auto-detect signals or user choice)"},
+        "template": {"type": "string", "description": "Mini Model filename/path the populator writes a copy of"},
+        "generated": {"type": "string", "description": "ISO timestamp, stamped after the workflow returns (scripts cannot call Date.now())"},
+        "freshness": {"type": "object", "description": "Mission Driven API /freshness payload at run time"},
+        "mode": {"enum": ["HITL", "HOTL"], "description": "Set by Avery when invoking Dream; controls which gate Dream stops at"},
+        "deal_identity": {
+          "type": "object",
+          "description": "BL-02/14 HARD GATE: deal_identity_check result for the ground-truth workbook. match==false BLOCKS populate and CP-2 reconcile. Set at Wave 0 and re-verified at Phase 11.",
+          "properties": {
+            "match": {"type": "boolean", "description": "false => template-fork carryover; refuse to populate/reconcile"},
+            "reasons": {"type": "array", "items": {"type": "string"}},
+            "foreign_tabs": {"type": "array", "items": {"type": "string"}, "description": "prior-deal tabs (e.g. 'Rayzor Ranch' in an Envy file)"},
+            "residual_errors": {"type": "array", "items": {"type": "string"}, "description": "#REF!/#NUM! carryover cell addresses"},
+            "vintage_mismatch": {"type": "boolean", "description": "an assumption note's build year != confirmed year_built"},
+            "ground_truth_selected": {"type": "string", "description": "BL-14: which model/transcript the parent selected as ground truth"},
+            "ground_truth_match": {"type": "boolean", "description": "BL-14: did the selected ground truth pass the identity fingerprint (auditable selection)"}
+          }
+        },
+        "efb_route_signal": {
+          "type": "object",
+          "description": "BL-04: NOAH/EFB-structural detection + routing RECOMMENDATION. The fast path STOPS at CP-1 for a human glance (stop_at_cp1 is always true); the engine NEVER auto-builds the EFB four-tier. routing stays the Wave-0 value until a human flips it.",
+          "additionalProperties": false,
+          "properties": {
+            "noah_detected": {"type": "boolean", "description": "true if NOAH / EFB-structural signals tripped (in-place deep below the 80%-AMI ceiling per bedroom)"},
+            "efb_recommended": {"type": "boolean", "description": "engine's recommendation to re-route ACQ->EFB; advisory only"},
+            "reason": {"type": "string"},
+            "signals": {"type": "array", "items": {"type": "string"}, "description": "the individual triggers that fired (audit trail for the CP-1 glance)"},
+            "stop_at_cp1": {"type": "boolean", "const": true, "description": "BL-04 LOCKED: the fast path halts here; no unattended EFB build"}
+          }
+        },
+        "critical_inputs": {
+          "type": "object",
+          "description": "BL-17: the three inputs Phase 0 MUST capture before any spread begins. Mirrors the durable underwrite-state.json ledger (fastpath/state_ledger.py). All three present => Phase 0 may proceed; a missing one BLOCKS (prevents the mid-stream price interruption + silent hold/exit-cap divergence the Envy run hit).",
+          "additionalProperties": false,
+          "properties": {
+            "purchase_price": {"type": ["number", "null"], "description": "B10 purchase price — BLOCKING Phase-0 input"},
+            "hold_years": {"type": ["integer", "null"], "description": "hold period (e.g. 7 / 10) — BLOCKING; Evan/Fahd silently diverged 7 vs 10"},
+            "exit_cap": {"type": ["number", "null"], "description": "exit cap rate — BLOCKING; Evan/Fahd silently diverged 6.5 vs 6.25"}
+          }
+        }
+      }
+    },
+    "qa": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "t12_unmapped": {"type": "integer", "description": "Count of T-12 line items not in the mapping dict; MUST be 0 to proceed"},
+        "rr_vs_t12_gpr_gap_pct": {"type": "number", "description": "Rent-roll-implied GPR vs T-12 GPR gap; >5% must be explained"},
+        "formula_audit": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["cell", "status"],
+            "properties": {
+              "cell": {"type": "string"},
+              "status": {"enum": ["ok", "bug"]},
+              "expected": {"type": "string"},
+              "actual": {"type": "string"},
+              "patch": {"type": "string"},
+              "applied": {"type": "boolean"}
+            }
+          }
+        },
+        "whisper_flag": {
+          "type": "object",
+          "properties": {
+            "median_ppu": {"type": "number"},
+            "price": {"type": "number"},
+            "delta_pct": {"type": "number"},
+            "flagged": {"type": "boolean"}
+          }
+        },
+        "fee_bounds": {
+          "type": "object",
+          "description": "BL-03 HARD GATE: acquisition-fee (B45) bounds assertion. ok==false (the 0.05 EFB/Esplanade sentinel, or outside 0.5-1.0% on the ACQ route) => populator refuses to write B45 unless override is set.",
+          "properties": {
+            "value": {"type": "number"},
+            "ok": {"type": "boolean"},
+            "is_sentinel": {"type": "boolean", "description": "true if value == 0.05 (the EFB/Esplanade default)"},
+            "override": {"type": "boolean", "description": "explicit human override note to keep 5% on an ACQ deal"},
+            "reason": {"type": "string"}
+          }
+        },
+        "unit_count": {
+          "type": "object",
+          "description": "BL-01/09 HARD GATE: rent-roll unit-count reconcile. blocked==true => populator refuses the S3:S21 unit-mix inputs that feed S22 (=B6). single_source_warning is a non-collapsible CP-1 flag (passed on the roll's own summary tab, no independent 2nd source).",
+          "properties": {
+            "counted": {"type": "integer"},
+            "summary_tab": {"type": ["integer", "null"]},
+            "second_source": {"type": ["integer", "null"]},
+            "excluded_segments": {"type": "array", "items": {"type": "string"}},
+            "reconciled": {"type": "boolean"},
+            "blocked": {"type": "boolean"},
+            "single_source_warning": {"type": "boolean"},
+            "reasons": {"type": "array", "items": {"type": "string"}}
+          }
+        },
+        "exit_cap_gate": {
+          "type": "object",
+          "description": "BL-10 HARD GATE: ExitCapTriangulator output + assertion that the value staged for B79 (INPUT) equals the HIGHEST of the methods. ok==false => populator refuses B79 (writing a non-max exit cap embeds compression).",
+          "properties": {
+            "methods": {"type": "object", "description": "treasury_spread / comp_validation / entry_strategy (null = method not run)", "properties": {
+              "treasury_spread": {"type": ["number", "null"]},
+              "comp_validation": {"type": ["number", "null"]},
+              "entry_strategy": {"type": "number"}
+            }},
+            "selected": {"type": "string", "description": "ExitCapResult.binding_method"},
+            "max": {"type": "number", "description": "ExitCapResult.exit_cap (the HIGHEST); must land in B79"},
+            "b79_value": {"type": ["number", "null"]},
+            "ok": {"type": "boolean"}
+          }
+        },
+        "ltv_gate": {
+          "type": "object",
+          "description": "BL-15 HARD GATE: LTV integrity. B52 Loan Amount is a FORMULA (=B51*B10); B66 combined LTV is a FORMULA. ok==false (B52 a literal, or computed LTV diverges from target) flags a hardcoded loan amount overwriting B52.",
+          "properties": {
+            "target_ltv": {"type": "number"},
+            "computed_ltv": {"type": "number"},
+            "loan_amount": {"type": ["number", "null"]},
+            "b52_is_formula": {"type": "boolean"},
+            "b66_is_formula": {"type": "boolean"},
+            "ok": {"type": "boolean"}
+          }
+        },
+        "rubs_sign": {
+          "type": "object",
+          "description": "BL-16 HARD GATE: Utility Reimbursements (S54) sign + plausibility. S54 is an INPUT entered NEGATIVE (contra). ok==false (positive value, or recovery jumps > max_jump_pp vs T-12 with no justification).",
+          "properties": {
+            "reimbursement_value": {"type": "number"},
+            "is_negative": {"type": "boolean"},
+            "recovery_pct": {"type": "number"},
+            "t12_recovery_pct": {"type": ["number", "null"]},
+            "jump_pp": {"type": "number"},
+            "max_jump_pp": {"type": "number", "default": 15},
+            "justification": {"type": "string"},
+            "ok": {"type": "boolean"}
+          }
+        },
+        "reconcile": {
+          "type": "array",
+          "description": "Populated at CP-2: Python engine vs Excel data_only re-read, per headline metric",
+          "items": {
+            "type": "object",
+            "required": ["metric", "python", "excel", "delta_pct", "flag"],
+            "properties": {
+              "metric": {"type": "string"},
+              "python": {"type": "number"},
+              "excel": {"type": ["number", "null"]},
+              "delta_pct": {"type": ["number", "null"]},
+              "tolerance": {"type": "number"},
+              "flag": {"type": "boolean", "description": "true if outside tolerance band"}
+            }
+          }
+        },
+        "gates": {"type": "object", "description": "Per-phase QA gate results (phaseN -> list of {item, pass})"}
+      }
+    },
+    "cells": {
+      "type": "array",
+      "description": "Flat list keyed by cell address. The populator loops this and writes blue INPUT cells only; phase is logging metadata.",
+      "items": {
+        "type": "object",
+        "required": ["cell", "value", "source"],
+        "additionalProperties": false,
+        "properties": {
+          "cell": {"type": "string", "description": "e.g. 'Pro Forma!B10' or 'B10' (sheet defaults to Pro Forma)"},
+          "value": {"type": ["number", "string", "boolean", "null"]},
+          "type": {"enum": ["currency", "percent", "decimal", "integer", "text", "year"], "description": "for formatting/validation only; openpyxl writes the raw value"},
+          "source": {"type": "string", "description": "citation: 'OM p.3', 'T-12 + 3%', 'FMR Orange FL 2026', etc. (Universal Rule 7)"},
+          "phase": {"type": "integer", "description": "logging metadata only"},
+          "input_only": {"type": "boolean", "default": true, "description": "asserts this is a blue cell; populator refuses to write a FORMULA cell"}
+        }
+      }
+    },
+    "headline_metrics": {
+      "type": "object",
+      "description": "Python engine outputs (the reconciliation source of truth at CP-2)",
+      "additionalProperties": true,
+      "properties": {
+        "noi_series": {"type": "array", "items": {"type": "number"}},
+        "dscr_series": {"type": "array", "items": {"type": "number"}},
+        "year1_noi": {"type": "number"},
+        "year1_dscr": {"type": "number"},
+        "exit_value": {"type": "number"},
+        "irr": {"type": ["number", "null"], "description": "ACQ only"},
+        "equity_multiple": {"type": ["number", "null"], "description": "ACQ only"},
+        "coc_stabilized": {"type": ["number", "null"], "description": "ACQ only"},
+        "bond_amount": {"type": ["number", "null"], "description": "EFB only"},
+        "tax_savings_10yr": {"type": ["number", "null"], "description": "EFB only"},
+        "tier_allocation": {
+          "type": "object",
+          "description": "BL-04: FourTierOptimizer.allocate() result — market-max GPR allocation across Market/100AMI/HAP/80AMI. Feeds the unit-mix W-column rents.",
+          "properties": {
+            "allocations": {"type": "array", "items": {
+              "type": "object",
+              "required": ["tier", "bedroom", "units", "rent", "inplace"],
+              "properties": {
+                "tier": {"type": "string", "description": "'Market' | '100AMI' | 'HAP' | '80AMI'"},
+                "bedroom": {"type": "string"},
+                "units": {"type": "integer"},
+                "rent": {"type": "number", "description": "per-unit/month net-to-owner rent"},
+                "inplace": {"type": "number"}
+              }
+            }},
+            "gpr": {"type": "number"},
+            "pure_market_gpr": {"type": "number"},
+            "gpr_delta": {"type": "number"},
+            "gpr_delta_pct": {"type": "number"},
+            "tier_targets": {"type": "object", "additionalProperties": {"type": "integer"}}
+          }
+        },
+        "interest_reserve": {
+          "type": "object",
+          "description": "BL-11: InterestReserveSizer.size() — reserve covering the lease-up/ramp debt-service shortfall; adds to equity/TPC.",
+          "properties": {
+            "shortfall_years": {"type": "array", "items": {"type": "integer"}},
+            "gross_shortfall": {"type": "number"},
+            "buffer": {"type": "number"},
+            "reserve_sized": {"type": "number"},
+            "covered_dscr_floor": {"type": "number"}
+          }
+        },
+        "lease_up_ramp": {
+          "type": "object",
+          "description": "BL-12: LeaseUpRamp.noi_series() + the forensic-derived vacancy/concession curves it consumed (replaces a flat manual ramp).",
+          "properties": {
+            "noi_series": {"type": "array", "items": {"type": "number"}},
+            "vacancy_curve": {"type": "array", "items": {"type": "number"}},
+            "concession_curve": {"type": "array", "items": {"type": "number"}},
+            "stabilized_noi": {"type": "number"},
+            "stabilized_egi": {"type": "number"},
+            "stabilized_vacancy": {"type": "number"},
+            "stabilized_concession": {"type": "number"},
+            "stabilizes_year": {"type": "integer"},
+            "basis": {"type": "string"}
+          }
+        },
+        "property_tax_range": {
+          "type": "object",
+          "description": "BL-13: ACQ property tax as a LOW/POINT/HIGH range (not a single ratio). POINT feeds S66-S71. basis='county-method' (agent-marketdata assessed value) or 'flat-ratio' (STATE_RATIO default). exemption_delta = EFB $0-tax savings when EFB is previewed.",
+          "properties": {
+            "low": {"type": "number"},
+            "high": {"type": "number"},
+            "point": {"type": "number"},
+            "basis": {"type": "string", "enum": ["county-method", "flat-ratio"]},
+            "ratio_used": {"type": "number"},
+            "assessed_value": {"type": ["number", "null"]},
+            "millage": {"type": "number"},
+            "exemption_delta": {"type": ["number", "null"]},
+            "citation": {"type": "string"}
+          }
+        },
+        "reprice": {
+          "type": "object",
+          "description": "BL-19: reprice signal. When below_hurdle, clearing_price = the B10 price that clears target_metric (solved by re-running ACQCashFlowProjector at trial prices). Advisory ONLY — never auto-writes B10.",
+          "properties": {
+            "below_hurdle": {"type": "boolean"},
+            "target_metric": {"type": "string", "enum": ["irr", "equity_multiple", "dscr", "debt_yield"]},
+            "target_value": {"type": "number"},
+            "current_value": {"type": "number"},
+            "current_price": {"type": "number"},
+            "clearing_price": {"type": ["number", "null"]},
+            "price_delta_pct": {"type": ["number", "null"]},
+            "iterations": {"type": "integer"},
+            "converged": {"type": "boolean"}
+          }
+        }
+      }
+    },
+    "comps": {
+      "type": "object",
+      "properties": {
+        "sales": {"type": "array"},
+        "rent": {"type": "array"},
+        "pipeline": {"type": "array"},
+        "median_ppu": {"type": "number"}
+      }
+    },
+    "forensic": {
+      "type": "object",
+      "description": "agent-t12 output: the unprompted T-12 forensic block",
+      "properties": {
+        "t12_t6_t3": {"type": "object"},
+        "vacancy_trend": {"type": "object"},
+        "concessions": {"type": "object"},
+        "loss_to_lease": {"type": "object"},
+        "bad_debt": {"type": "object"},
+        "anomalies": {"type": "array"},
+        "lease_up_flag": {"type": "boolean"},
+        "takeaways": {"type": "array", "items": {"type": "string"}}
+      }
+    },
+    "narrative": {
+      "type": "object",
+      "description": "color for the memo (Phase 12) and IC",
+      "properties": {
+        "ami_upside": {"type": "string"},
+        "hap_reliability": {"type": "string"},
+        "tax_exemption_value": {"type": "string"},
+        "dscr_margin": {"type": "string"},
+        "in_place_lift": {"type": "string"},
+        "going_in_cap_vs_comps": {"type": "string"}
+      }
+    },
+    "memo_vars": {
+      "type": "object",
+      "description": "the Phase-12 deal-variable block (shape mirrors build_esplanade_acq.py:22-107) so the memo builds from the spec, not by re-reading the xlsx"
+    }
+  }
+}
