@@ -21,6 +21,8 @@ and is reused **unmodified** — it is the validated source of all financial mat
 
 - **Production / VPS runs Python 3.13**, where `requirements.txt` (pinned numpy 2.1.2 / pandas 2.2.3
   / pymupdf 1.24.11) has prebuilt wheels. Install with `pip install -r requirements.txt`.
+  (Verified clean on the US VPS 2026-06-05 after fixing two pins: `starlette==0.38.6` to satisfy
+  `fastapi==0.115.0`, and adding `requests==2.32.3` which `auth.py` needs via `google.auth`.)
 - **Local dev on Python 3.14**: those exact pins lack cp314 wheels (build-from-source hangs). For
   local testing, install the API layer at compatible versions instead — see the test setup below.
   Do NOT change the pinned `requirements.txt`; it targets the 3.13 production runtime.

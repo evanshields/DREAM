@@ -7,12 +7,28 @@ Hermes). The UK instance stays intact and re-startable until the US smoke test p
 > This file is the runbook + rollback plan (an A0 acceptance criterion). The live migration runs on
 > the VPS hosts and needs Evan's SSH session / sign-off — do not run it unattended.
 
+## Dry-run findings (2026-06-05) — read before cutover
+A read-only dry-run + non-public staged deploy on the US VPS confirmed **GO** (the app deploys and
+reproduces Esplanade: IRR 0.2221 within the 2% band, exit value within ~$2). Guardrails held (nginx
+and the UK instance untouched). It surfaced facts the cutover must account for:
+- **`/opt/dream-app` ALREADY EXISTS on the US box** (created Mar 23, a prior manual push — `backend/`
+  + `frontend/` owned by a Windows-SID uid 197609, `venv/` + `ecosystem.config.js` root-owned; **not**
+  a git repo). The cutover must **back it up** (e.g. `mv /opt/dream-app /opt/dream-app.bak-YYYYMMDD`)
+  before placing the new repo there — do not clone over it.
+- **OpenBrain is co-resident** on this box (openbrain-api/mcp/health + mission-control). Do **not**
+  `pm2 save` carelessly or collide on ports. Port **8001** is free; PM2 `dream-api` name is free.
+- Pre-existing host noise unrelated to DREAM: `openbrain-health` is flapping (984+ restarts) and
+  `pipelines-api` is errored — don't blame DREAM staging for these.
+- A staging dir **`/root/dream-staging`** was left on the box (no running process) for inspection;
+  remove it during cutover.
+
 ## Pre-flight (collision check — the named A0.1 risk)
 On the US VPS, confirm no collision with OpenBrain before touching anything:
-- PM2 name: `pm2 list` — there must be no existing `dream-api`. (Pick `dream-api` only if free.)
-- Port: `ss -ltnp | grep 8001` — port **8001** must be free. If taken, pick a free port and update
-  `ecosystem.config.js` + the nginx proxy block together.
+- PM2 name: `pm2 list` — there must be no existing `dream-api`. (Confirmed free 2026-06-05.)
+- Port: `ss -ltnp | grep 8001` — port **8001** must be free. (Confirmed free.) If taken, pick a free
+  port and update `ecosystem.config.js` + the nginx proxy block together.
 - Env: the US box's OpenBrain env must not export a conflicting `FRONTEND_URL` / `PORT`.
+- **Back up the existing `/opt/dream-app`** before placing the new repo (see dry-run findings above).
 
 ## Migrate
 1. **Ship the code** (the repo is the source of truth now — backend lives in `evanshields/DREAM`):
