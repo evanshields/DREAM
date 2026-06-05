@@ -67,6 +67,9 @@ class WriteReport:
     refused_formula: List[Tuple[str, str]] = field(default_factory=list)  # (cell, existing formula)
     refused_fee_bounds: List[Tuple[str, str]] = field(default_factory=list)  # (cell, reason) — BL-03
     refused_unit_count: List[str] = field(default_factory=list)  # S-cells refused on a blocked count — BL-01
+    refused_ltv: List[str] = field(default_factory=list)        # B51/B67 refused on ltv_gate fail — BL-15
+    refused_rubs: List[str] = field(default_factory=list)       # S54/U54 refused on rubs_sign fail — BL-16
+    refused_exit_cap: List[str] = field(default_factory=list)   # B79 refused on exit_cap_gate fail — BL-10
     missing_cells: List[str] = field(default_factory=list)
     patches_applied: List[str] = field(default_factory=list)
     patch_log: List[str] = field(default_factory=list)  # printed formula-audit verdicts — BL-07
@@ -82,6 +85,9 @@ class WriteReport:
             and not self.refused_formula
             and not self.refused_fee_bounds
             and not self.refused_unit_count
+            and not self.refused_ltv
+            and not self.refused_rubs
+            and not self.refused_exit_cap
             and not self.identity_blocked
         )
 
@@ -127,6 +133,22 @@ def _is_unit_mix_cell(sheet: str, cell: str) -> bool:
         return False
     m = _UNIT_MIX_RE.match(cell.strip())
     return bool(m) and 3 <= int(m.group(1)) <= 21
+
+
+# BL-15: B51 (LTV input) + B67 (refi loan input) feed the B52/B66 LTV formulas; refuse them
+# when the LTV gate fails (B52 itself is a formula and already refused).
+def _is_ltv_input_cell(sheet: str, cell: str) -> bool:
+    return sheet == DEFAULT_SHEET and cell.upper() in ("B51", "B67")
+
+
+# BL-16: S54 (T-12 total) + U54 (per-unit) are the Utility Reimbursement contra inputs.
+def _is_rubs_cell(sheet: str, cell: str) -> bool:
+    return sheet == DEFAULT_SHEET and cell.upper() in ("S54", "U54")
+
+
+# BL-10: B79 is the exit-cap INPUT cell (take-the-HIGHEST).
+def _is_exit_cap_cell(sheet: str, cell: str) -> bool:
+    return sheet == DEFAULT_SHEET and cell.upper() == "B79"
 
 
 def _has_override_note(spec_cell: Dict) -> bool:
@@ -225,6 +247,17 @@ def populate(spec_path: str, template_path: str, out_path: Optional[str] = None)
     # S22 (B6 = =S22 is already refused as a formula). Guard against shipping a 244-unit parse.
     unit_count_blocked = bool(qa.get("unit_count", {}).get("blocked"))
 
+    # Wave-2 gate enforcement (BL-15/16/10): the engine computes these gates in synthesis and
+    # records them in the spec; a failing gate (ok==false) refuses the cells it guards. An ABSENT
+    # gate (not computed) is treated as ok — these refuse only on an explicit ok==false.
+    def _gate_failed(name: str) -> bool:
+        g = qa.get(name)
+        return isinstance(g, dict) and g.get("ok") is False
+
+    ltv_blocked = _gate_failed("ltv_gate")          # BL-15: refuse B51/B67
+    rubs_blocked = _gate_failed("rubs_sign")        # BL-16: refuse S54/U54
+    exit_cap_blocked = _gate_failed("exit_cap_gate")  # BL-10: refuse B79
+
     # 3b. Write INPUT cells
     for c in spec.get("cells", []):
         addr = c["cell"]
@@ -248,6 +281,18 @@ def populate(spec_path: str, template_path: str, out_path: Optional[str] = None)
         # BL-01 unit-count gate: refuse the unit-mix S-cells when the count is blocked.
         if unit_count_blocked and _is_unit_mix_cell(sheet, cell):
             report.refused_unit_count.append(addr)
+            continue
+        # BL-15 LTV gate: refuse the LTV inputs (B51/B67) when computed LTV != target or B52 is a literal.
+        if ltv_blocked and _is_ltv_input_cell(sheet, cell):
+            report.refused_ltv.append(addr)
+            continue
+        # BL-16 RUBS gate: refuse S54/U54 when the reimbursement is positive or the recovery jump is unjustified.
+        if rubs_blocked and _is_rubs_cell(sheet, cell):
+            report.refused_rubs.append(addr)
+            continue
+        # BL-10 exit-cap gate: refuse B79 when the staged exit cap is not the HIGHEST of the 3 methods.
+        if exit_cap_blocked and _is_exit_cap_cell(sheet, cell):
+            report.refused_exit_cap.append(addr)
             continue
         ws[cell] = c["value"]
         report.written.append(addr)

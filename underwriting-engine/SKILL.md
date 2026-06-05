@@ -119,6 +119,12 @@ This log is what lets the user, the IC, and the next session pick up exactly whe
 
 Before touching the model, determine whether this is an **ACQ** (conventional/traditional) or **EFB** (Essential Function Bond) deal. Use auto-detection signals first; fall back to a single ask.
 
+### Critical-input capture + durable state (BL-17 — BLOCKING)
+
+**Before any spread begins, capture three inputs as BLOCKING — purchase price, hold period, exit cap.** If any is missing, STOP and ask for it now; do not start spreading and discover the gap mid-stream (the Envy run had to interrupt at record 67 to re-supply the $75M price, and Evan/Fahd silently diverged on hold 7-vs-10 and exit cap 6.5-vs-6.25 because nothing forced a shared assumption). In the fast path these land in `meta.critical_inputs`; `state_ledger.UnderwriteState.critical_inputs_ok()` is the gate.
+
+**Persist a durable state ledger so a restart resumes instead of re-parsing.** Write `underwrite-state.json` as a sibling to `underwrite-spec.json` in the deal folder ([fastpath/state_ledger.py](.skills/dream-underwrite/fastpath/state_ledger.py)): record each completed phase (`record_phase`) and each parsed source with a cheap fingerprint + its extracted summary (`record_source`). On resume, `load_state` + `source_is_fresh` skip the re-parse (a changed fingerprint forces a fresh parse); `next_phase()` is where the run picks up. This eliminates the container-restart re-parse waste (Evan's 45 context snips + repeated full T-12 re-parses). The ledger is the orchestrator's resume file — it does NOT replace the spec or the Claude Log.
+
 ### Auto-detection signals
 
 | Signal source | EFB indicator | ACQ indicator |
@@ -288,7 +294,7 @@ the 2-cell limit, the printed-patch + confirm, and the `applied=true` flag.
 **Trigger:** Phase 3 confirmed.
 
 **Sub-steps:**
-1. Pull in-place rents, SF, unit counts from the Rent Roll Inputs tab into the Unit Mix block (R3:Z21 for EFB Mini Model).
+1. Pull in-place rents, SF, unit counts from the Rent Roll Inputs tab into the Unit Mix block (R3:Z21 for EFB Mini Model). **Unit counts come EXCLUSIVELY from the Phase-2 reconciled `UnitCountReconciler` classification (BL-09) — never a fresh raw pandas/office-js count here.** A raw re-count that lacks the documented status/building filter + an independent second source is the exact bypass that produced Fahd's 244; if the Phase-2 count was BLOCKED or carries a single-source warning, carry that state forward, do not silently re-derive.
 2. **Default for ALL deals (EFB and ACQ): four-tier mixed-income**, 51% affordable / 49% market, maximize GPR:
    - **MLA / corporate rental:** **~10% of total units (CAP)**, capped at FMR for the bedroom type. DO NOT assume the full 49% market block is MLA, that is a wrong assumption.
    - **Market-rate (Classic + Renovated):** **~39% of total units.** Split into Classic and Renovated cohorts; price each at the **75th percentile PSF** of the appropriate CoStar rent comps that were uploaded at the start of the deal (renovated comps for renovated units, classic comps for classic units).
@@ -404,7 +410,7 @@ clears → stay ACQ (no give-up of market upside for the exemption).
    - **Utilities (Gross)**: T-12/unit + 3% inflation
    - **Utility Reimbursements**: -75% of gross (default 75% RUBS recovery)
    - **Insurance**: T-12 × 1.15–1.25 (15–25% buffer for new policy at acquisition); FL/TX coastal 20–30% premium
-   - **Replacement Reserves**: $250 (2020+), $300 (2000–2019), $350–400 (pre-2000)
+   - **Replacement Reserves**: $250 (2020+), $300 (2000–2019), $350–400 (pre-2000). **Vintage cross-check (BL-18):** the reserve floor is set by the asset's CONFIRMED `year_built`, not by an assumption-note rationale that may have ridden in from a prior deal. Use `acq_engine.vintage_reserve_floor(year_built, note_value)` — it returns the floor for the actual vintage and RAISES a stated note value up to it (this catches Evan's Envy $250/u-vs-$300/u inconsistency, and the stale "2007 vintage / 18-yr-old roofs" note that sat on a 2020 asset). The vintage MISMATCH itself (note year ≠ confirmed year_built) is already flagged by `deal_identity_check` (Phase 0 / Phase 11 strict sweep) — reconcile the note's value to the floor here.
 3. **Property Taxes**: handled in Phase 9. For now, populate the T-12 actual into the T-12 column.
 
 **RUBS / Utility Reimbursements sign HARD GATE (BL-16 — the S54 contra trap).** Utility Reimbursements

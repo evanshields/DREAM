@@ -1942,3 +1942,70 @@ def rubs_sign_gate(
         max_jump_pp=D(str(max_jump_pp)),
         reason="; ".join(reasons),
     )
+
+
+# =============================================================================
+# WAVE-3 ADDITIONS (Envy 3-way forensic — UX / durable state / vintage)
+# =============================================================================
+
+
+# ------------------------------------------------------------------------- #
+# BL-18 — vintage-aware replacement-reserve floor
+# ------------------------------------------------------------------------- #
+# Evan's Envy reserve line was the weakest of the three: a stale "2007 vintage /
+# 18-yr-old roofs" rationale rode on a 2020 asset, and an internal inconsistency
+# ($250/u in the aligned table vs a $300/u note). The vintage MISMATCH detection
+# already lives in populator.deal_identity_check() (the strict-residuals sweep);
+# this helper supplies the other half the backlog asked for: the reserve FLOOR
+# for the asset's ACTUAL vintage, and a reconcile of a stated note value to it.
+# Schedule matches references/05-expenses.md + SKILL.md Phase 7:
+#   2020+  -> $250/u   |   2000-2019 -> $300/u   |   pre-2000 -> $350-400/u.
+
+@dataclass
+class ReserveFloorResult:
+    vintage_year: int
+    floor_per_unit: Decimal       # the per-unit reserve floor for the actual vintage
+    note_value: Optional[Decimal] # the reserve $/u stated in the assumption note, if supplied
+    reconciled_value: Decimal     # max(note_value, floor) — the value that should be populated
+    raised: bool                  # True if the note value was below the floor and got raised
+    reason: str
+
+
+def vintage_reserve_floor(
+    year_built: int,
+    note_value: Optional[Decimal] = None,
+    pre2000_floor: Decimal = D("350"),
+) -> ReserveFloorResult:
+    """Return the replacement-reserve $/unit floor for the asset's actual vintage and reconcile
+    any stated note value up to it (BL-18).
+
+    year_built drives the floor: 2020+ -> $250, 2000-2019 -> $300, pre-2000 -> pre2000_floor
+    (default $350; raise toward $400 for deep-pre-2000 / heavy-reno via the argument). When a
+    note_value is supplied, reconciled_value = max(note_value, floor) and raised flags whether the
+    note understated the floor (Evan's $250-vs-$300 inconsistency on a 2020 asset).
+    """
+    yb = int(year_built)
+    if yb >= 2020:
+        floor = D("250")
+    elif yb >= 2000:
+        floor = D("300")
+    else:
+        floor = D(str(pre2000_floor))
+
+    if note_value is None:
+        return ReserveFloorResult(
+            vintage_year=yb, floor_per_unit=floor, note_value=None,
+            reconciled_value=floor, raised=False,
+            reason=f"vintage {yb} -> reserve floor ${float(floor):.0f}/u")
+
+    nv = D(str(note_value))
+    if nv < floor:
+        return ReserveFloorResult(
+            vintage_year=yb, floor_per_unit=floor, note_value=nv,
+            reconciled_value=floor, raised=True,
+            reason=f"note reserve ${float(nv):.0f}/u is below the vintage-{yb} floor "
+                   f"${float(floor):.0f}/u -> raised to floor")
+    return ReserveFloorResult(
+        vintage_year=yb, floor_per_unit=floor, note_value=nv,
+        reconciled_value=nv, raised=False,
+        reason=f"note reserve ${float(nv):.0f}/u >= vintage-{yb} floor ${float(floor):.0f}/u")

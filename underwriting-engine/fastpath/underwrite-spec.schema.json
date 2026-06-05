@@ -44,6 +44,16 @@
             "signals": {"type": "array", "items": {"type": "string"}, "description": "the individual triggers that fired (audit trail for the CP-1 glance)"},
             "stop_at_cp1": {"type": "boolean", "const": true, "description": "BL-04 LOCKED: the fast path halts here; no unattended EFB build"}
           }
+        },
+        "critical_inputs": {
+          "type": "object",
+          "description": "BL-17: the three inputs Phase 0 MUST capture before any spread begins. Mirrors the durable underwrite-state.json ledger (fastpath/state_ledger.py). All three present => Phase 0 may proceed; a missing one BLOCKS (prevents the mid-stream price interruption + silent hold/exit-cap divergence the Envy run hit).",
+          "additionalProperties": false,
+          "properties": {
+            "purchase_price": {"type": ["number", "null"], "description": "B10 purchase price — BLOCKING Phase-0 input"},
+            "hold_years": {"type": ["integer", "null"], "description": "hold period (e.g. 7 / 10) — BLOCKING; Evan/Fahd silently diverged 7 vs 10"},
+            "exit_cap": {"type": ["number", "null"], "description": "exit cap rate — BLOCKING; Evan/Fahd silently diverged 6.5 vs 6.25"}
+          }
         }
       }
     },

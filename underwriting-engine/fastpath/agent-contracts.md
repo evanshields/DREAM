@@ -89,6 +89,17 @@ never guess.
 
 ---
 
+## Wave 0 durable state (orchestrator — BL-17)
+
+Before dispatch, the orchestrator captures the three BLOCKING critical inputs (purchase price, hold,
+exit cap) into `meta.critical_inputs` and a sibling `underwrite-state.json`
+([fastpath/state_ledger.py](.skills/dream-underwrite/fastpath/state_ledger.py)): if any is missing,
+STOP and ask — do not dispatch agents that will discover the gap mid-run. As each phase completes the
+orchestrator calls `record_phase`; as each source is parsed it calls `record_source` (path +
+fingerprint + extracted summary). On a restart, `load_state` + `source_is_fresh` skip re-parsing
+unchanged sources and `next_phase()` resumes where the run left off — eliminating the container-restart
+re-parse waste. The ledger is the resume file; it does not replace the spec or the Claude Log.
+
 ## Wave 2 synthesis (orchestrator, sequential — NOT an agent)
 
 Merge the five slices into one `underwrite-spec.json`, then run the calc engine:

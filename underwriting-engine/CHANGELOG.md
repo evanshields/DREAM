@@ -17,6 +17,59 @@ Acceptance: [CONFIRMED N transcripts | CANDIDATE 1 transcript]
 
 ---
 
+## 2026-06-05 — Wave 3: durable state + vintage gate + gate enforcement (Envy 3-way forensic)
+
+Source: same backlog (`shieldstone_acquisitions/underwrites/envy-pompano/_compare/`). The final wave —
+UX / durable state (Epic G) + completing the gate-enforcement story. **Done directly in-context (no
+workflow)** — the work is small, tightly coupled to one populator + one new module, and would gain
+nothing from parallel agents.
+
+**Re-scoping found two items mostly already built:** BL-18's vintage MISMATCH detection already lives
+in the Wave-1 `deal_identity_check` (the `strict_residuals` sweep), and BL-15/BL-16's engine gates
+(`ltv_gate`, `rubs_sign_gate`) shipped in Wave 2 — so Wave 3 added only the missing halves: the
+vintage reserve-FLOOR helper, and POPULATOR ENFORCEMENT of the Wave-2 gates.
+
+**Two decisions locked with Evan 2026-06-05:** (1) durable ledger = a sibling `underwrite-state.json`
+in the deal folder (co-located with the spec; no new infra); (2) wire ALL THREE gates (LTV/RUBS/
+exit-cap) into the populator so every documented gate actually blocks.
+
+Backlog closed: **BL-17** (front-load critical inputs + durable phase-state ledger), **BL-18**
+(vintage reserve-floor reconcile), **BL-15/16** (populator enforcement of the LTV/RUBS gates) + **BL-10**
+(populator enforcement of the exit-cap gate), **BL-09** (raw-pandas refusal extended to Phase 4).
+
+Files:
+- `fastpath/state_ledger.py` — NEW module (BL-17, pure stdlib). `UnderwriteState` with
+  `critical_inputs` (purchase price / hold / exit cap — `critical_inputs_ok()` is the Phase-0 blocking
+  gate), a phase ledger (`record_phase` / `completed_phases` / `next_phase` resume point), and a
+  parsed-source cache (`record_source` / `source_is_fresh` / `get_source_summary`) that skips
+  re-parsing unchanged sources on restart. `load_state` / `save_state` round-trip
+  `underwrite-state.json`; `fingerprint_file` is the cheap size:mtime change-detector.
+- `engine/acq_engine.py` (+~70) — `vintage_reserve_floor` + `ReserveFloorResult` (BL-18): reserve
+  floor by confirmed vintage ($250 2020+ / $300 2000-2019 / $350-400 pre-2000); RAISES a stated note
+  value up to the floor (catches Evan's $250-vs-$300 inconsistency + the stale-vintage note).
+- `fastpath/populator.py` — wired BL-15/16/10 enforcement: 3 new `refused_*` report fields + 3 cell
+  matchers (B51/B67 for LTV, S54/U54 for RUBS, B79 for exit-cap). `populate()` refuses each cell when
+  the corresponding `qa.{ltv_gate,rubs_sign,exit_cap_gate}.ok == false`. An ABSENT gate is treated as
+  OK (refuse only on an explicit false) — so older specs are unaffected.
+- `fastpath/underwrite-spec.schema.json` — `meta.critical_inputs` (BL-17, mirrors the ledger).
+- `SKILL.md` — Phase 0 critical-input-capture + durable-ledger BLOCKING subsection (BL-17); Phase 4
+  raw-pandas refusal (BL-09 — count comes from the Phase-2 reconciler, never a fresh raw count);
+  Phase 7 vintage reserve-floor reconcile note (BL-18).
+- `fastpath/agent-contracts.md` — new "Wave 0 durable state" section (orchestrator captures critical
+  inputs + records phase/source state for restart-resume).
+- Tests: NEW `engine/tests/test_vintage_reserve.py` (6), `fastpath/tests/test_state_ledger.py` (7);
+  extended `test_populator.py` (+5 gate-enforcement). **Full suite 162/162** (was 144; ground-truth +
+  Waves 1-2 unchanged — no regression).
+
+Acceptance: CANDIDATE. Behavioral: a fresh state blocks Phase 0 until PP+hold+exit-cap present; a
+restart resumes at `next_phase()` and skips unchanged sources; a $250/u note on a pre-2000 asset is
+raised to the floor; a failing LTV/RUBS/exit-cap gate refuses B51/B67 / S54 / B79; an absent gate
+blocks nothing.
+
+**Leanness audit:** net additive (new ledger module + small engine helper + populator wiring + ~4KB
+doc). Explicit accept — BL-17 is the last autonomy-adjacent UX gap (restart-resume), and the gate
+enforcement makes the Wave-2 gates real rather than documented-only.
+
 ## 2026-06-05 — Wave 2: engine wiring + new build + pinned UW-Snapshot fix (Envy 3-way forensic)
 
 Source: same backlog (`shieldstone_acquisitions/underwrites/envy-pompano/_compare/`). Wave 2 closes
