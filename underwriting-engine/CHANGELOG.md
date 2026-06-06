@@ -17,6 +17,122 @@ Acceptance: [CONFIRMED N transcripts | CANDIDATE 1 transcript]
 
 ---
 
+## 2026-06-05 — Wave 3: durable state + vintage gate + gate enforcement (Envy 3-way forensic)
+
+Source: same backlog (`shieldstone_acquisitions/underwrites/envy-pompano/_compare/`). The final wave —
+UX / durable state (Epic G) + completing the gate-enforcement story. **Done directly in-context (no
+workflow)** — the work is small, tightly coupled to one populator + one new module, and would gain
+nothing from parallel agents.
+
+**Re-scoping found two items mostly already built:** BL-18's vintage MISMATCH detection already lives
+in the Wave-1 `deal_identity_check` (the `strict_residuals` sweep), and BL-15/BL-16's engine gates
+(`ltv_gate`, `rubs_sign_gate`) shipped in Wave 2 — so Wave 3 added only the missing halves: the
+vintage reserve-FLOOR helper, and POPULATOR ENFORCEMENT of the Wave-2 gates.
+
+**Two decisions locked with Evan 2026-06-05:** (1) durable ledger = a sibling `underwrite-state.json`
+in the deal folder (co-located with the spec; no new infra); (2) wire ALL THREE gates (LTV/RUBS/
+exit-cap) into the populator so every documented gate actually blocks.
+
+Backlog closed: **BL-17** (front-load critical inputs + durable phase-state ledger), **BL-18**
+(vintage reserve-floor reconcile), **BL-15/16** (populator enforcement of the LTV/RUBS gates) + **BL-10**
+(populator enforcement of the exit-cap gate), **BL-09** (raw-pandas refusal extended to Phase 4).
+
+Files:
+- `fastpath/state_ledger.py` — NEW module (BL-17, pure stdlib). `UnderwriteState` with
+  `critical_inputs` (purchase price / hold / exit cap — `critical_inputs_ok()` is the Phase-0 blocking
+  gate), a phase ledger (`record_phase` / `completed_phases` / `next_phase` resume point), and a
+  parsed-source cache (`record_source` / `source_is_fresh` / `get_source_summary`) that skips
+  re-parsing unchanged sources on restart. `load_state` / `save_state` round-trip
+  `underwrite-state.json`; `fingerprint_file` is the cheap size:mtime change-detector.
+- `engine/acq_engine.py` (+~70) — `vintage_reserve_floor` + `ReserveFloorResult` (BL-18): reserve
+  floor by confirmed vintage ($250 2020+ / $300 2000-2019 / $350-400 pre-2000); RAISES a stated note
+  value up to the floor (catches Evan's $250-vs-$300 inconsistency + the stale-vintage note).
+- `fastpath/populator.py` — wired BL-15/16/10 enforcement: 3 new `refused_*` report fields + 3 cell
+  matchers (B51/B67 for LTV, S54/U54 for RUBS, B79 for exit-cap). `populate()` refuses each cell when
+  the corresponding `qa.{ltv_gate,rubs_sign,exit_cap_gate}.ok == false`. An ABSENT gate is treated as
+  OK (refuse only on an explicit false) — so older specs are unaffected.
+- `fastpath/underwrite-spec.schema.json` — `meta.critical_inputs` (BL-17, mirrors the ledger).
+- `SKILL.md` — Phase 0 critical-input-capture + durable-ledger BLOCKING subsection (BL-17); Phase 4
+  raw-pandas refusal (BL-09 — count comes from the Phase-2 reconciler, never a fresh raw count);
+  Phase 7 vintage reserve-floor reconcile note (BL-18).
+- `fastpath/agent-contracts.md` — new "Wave 0 durable state" section (orchestrator captures critical
+  inputs + records phase/source state for restart-resume).
+- Tests: NEW `engine/tests/test_vintage_reserve.py` (6), `fastpath/tests/test_state_ledger.py` (7);
+  extended `test_populator.py` (+5 gate-enforcement). **Full suite 162/162** (was 144; ground-truth +
+  Waves 1-2 unchanged — no regression).
+
+Acceptance: CANDIDATE. Behavioral: a fresh state blocks Phase 0 until PP+hold+exit-cap present; a
+restart resumes at `next_phase()` and skips unchanged sources; a $250/u note on a pre-2000 asset is
+raised to the floor; a failing LTV/RUBS/exit-cap gate refuses B51/B67 / S54 / B79; an absent gate
+blocks nothing.
+
+**Leanness audit:** net additive (new ledger module + small engine helper + populator wiring + ~4KB
+doc). Explicit accept — BL-17 is the last autonomy-adjacent UX gap (restart-resume), and the gate
+enforcement makes the Wave-2 gates real rather than documented-only.
+
+## 2026-06-05 — Wave 2: engine wiring + new build + pinned UW-Snapshot fix (Envy 3-way forensic)
+
+Source: same backlog (`shieldstone_acquisitions/underwrites/envy-pompano/_compare/`). Wave 2 closes
+the **analyst-divergence gap** — it makes the engine DO the tedious analytical work humans diverged
+on (four-tier optimization, interest reserve, lease-up ramp), adds the two genuinely net-new builds
+(FL tax range, reprice solver), and lands Evan's pinned UW-Snapshot scope fix. Produced via a hybrid
+Opus/Sonnet **multi-agent workflow** (schema-first → 3 parallel independent items → Epic C synthesis
+design + tests); the workflow DRAFTED code and the parent applied it carefully to the shared
+`acq_engine.py` in-context (avoiding six agents racing one file).
+
+**Two decisions locked with Evan 2026-06-05:** (1) BL-04 EFB auto-route = DETECT + RECOMMEND only,
+the fast path STOPS at CP-1 (`stop_at_cp1` always true) — the engine never auto-builds the EFB model;
+(2) BL-13 FL tax = assume `agent-marketdata` supplies the county method + assessed value, flat-ratio
+kept as the documented default.
+
+Backlog closed: **BL-04** (four-tier wired + NOAH detection + EFB route recommendation), **BL-10**
+(exit-cap == HIGHEST gate), **BL-11** (interest-reserve-net DSCR), **BL-12** (data-derived lease-up
+ramp), **BL-13** (FL property-tax range estimator), **BL-15** (LTV formula-integrity gate), **BL-16**
+(RUBS contra-sign + recovery-jump gate), **BL-19** (reprice / goal-seek solver), **BL-08** (pinned
+UW-Snapshot scope fix).
+
+Files:
+- `engine/acq_engine.py` (+~940) — ALL ADDITIVE, no edit to the validated SeniorDebtCalculator /
+  ACQCashFlowProjector / ExitCapTriangulator math. New: `PropertyTaxRangeEstimator` (BL-13, low/point/
+  high + county-method/flat-ratio + FL Save-Our-Homes); `RepriceSolver` (BL-19, bisection goal-seek on
+  price, NaN/Inf-guarded, reuses the projector via a `price_to_inputs` callback — never reimplements
+  cash-flow math); `detect_noah` + `build_efb_route_signal` + `EFBRouteSignal` (BL-04, stop_at_cp1
+  always true); `reserve_adjusted_dscr` (BL-11, no-op when no shortfall years → Esplanade unchanged);
+  `exit_cap_gate` (BL-10), `ltv_gate` (BL-15), `rubs_sign_gate` (BL-16). Module-level `import math` +
+  `Callable` added. Fixed a BL-13 draft edge case: county-method high could collapse onto point when
+  the assessed value == PP×hi_ratio; added a strict ±3% reassessment band for non-flat states (GA
+  statutory flat preserved).
+- `fastpath/underwrite-spec.schema.json` (+132) — 9 additive fields: `meta.efb_route_signal`;
+  `qa.{exit_cap_gate,ltv_gate,rubs_sign}`; `headline_metrics.{tier_allocation,interest_reserve,
+  lease_up_ramp,property_tax_range,reprice}`. Field names mirror the engine dataclasses 1:1. Inserted
+  surgically (compact style preserved — no reformatting churn).
+- `SKILL.md` (+55) — Phase 4 BL-04 NOAH/EFB hard-stop note; Phase 7 BL-16 RUBS gate; Phase 10
+  BL-10/BL-15/BL-11 notes; **BL-08 Phase-11b scope fix** (Snapshot = revenue→OpEx→NOI→cap only; DSCR→
+  Checks, returns/exit→Pro Forma; QA-gate + checkpoint rewritten).
+- `fastpath/agent-contracts.md` (+29) — Wave-2 synthesis steps 1–7b rewired to CALL the built classes
+  + emit the spec fields; step-10 reprice; CP-1 surfacing adds the new gates + the BL-04 halt.
+- `references/12-uw-snapshot.md` (+28) — **BL-08**: removed Capital Stack/Debt Service/Returns/Bond/
+  Exit/Sensitivity rows from the structure table; scope-boundary note; Financing/Returns/Exit sanity
+  sections relabeled CHECKS-TAB / PRO-FORMA-TAB; Final Metrics Audit reframed as a chat summary.
+- `references/06-property-tax.md` (+1), `templates/field-mapping-acq.md` — BL-13 estimator pointer;
+  BL-08 Snapshot-scope note.
+- Tests: NEW `test_property_tax_range.py`, `test_reprice_solver.py`, `test_wave2_epicc.py` (+83
+  cases). **Full suite 144/144** (was 61; the Esplanade/Rayzor ground-truth tests + all Wave-1 gates
+  unchanged — no regression).
+- `fastpath/wave2-workflow.js` — the orchestration script that produced this wave (build artifact /
+  reproducibility record, not a runtime path).
+
+Acceptance: CANDIDATE — validated against the Envy forensic data + the Esplanade ground truth (engine
+additions are no-ops on the stabilized regression deal: reserve sizes to $0, no NOAH signal, no
+reprice trigger). Behavioral: a below-hurdle deal returns a clearing price; a lease-up Y1 DSCR clears
+the reserve floor while a stabilized series is unchanged; a non-max B79 / positive S54 / literal B52
+each fail their gate; the EFB recommendation halts at CP-1 without building the EFB model.
+
+**Leanness audit:** net additive (engine is the bulk; ~+5KB doc). Explicit accept on the growth —
+six of the items wire ALREADY-BUILT (Wave-1-verified) classes into the synthesis so the engine
+finally does the four-tier/reserve/ramp work that drove the human divergence; the gates each prevent
+a forensic-confirmed defect; BL-08 removes spec scope (net-negative intent on the Snapshot).
+
 ## 2026-06-05 — Wave 1: hard-gate layer (Envy 3-way forensic — the autonomy floor)
 
 Source: `shieldstone_acquisitions/underwrites/envy-pompano/_compare/` (SKILL_IMPROVEMENT_PLAN.md +

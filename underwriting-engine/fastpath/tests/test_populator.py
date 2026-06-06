@@ -216,6 +216,77 @@ def test_populate_patch_log_records_verdicts():
         assert "Pro Forma!S40" in rep.patches_applied
 
 
+# --------------------------------------------------------------------------- #
+# Wave-3 gate enforcement (BL-15 LTV / BL-16 RUBS / BL-10 exit-cap)
+# --------------------------------------------------------------------------- #
+
+def test_populate_refuses_ltv_inputs_when_ltv_gate_fails():
+    # BL-15: ltv_gate.ok==false refuses the LTV inputs B51/B67 (B52 is a formula, already refused).
+    with tempfile.TemporaryDirectory() as tmp:
+        sp = _spec_with(
+            tmp,
+            [{"cell": "Pro Forma!B51", "value": 0.85, "type": "percent", "source": "term sheet", "phase": 3}],
+            qa_extra={"ltv_gate": {"ok": False, "computed_ltv": 0.789, "target_ltv": 0.70}},
+        )
+        rep = P.populate(sp, TEMPLATE)
+        assert "Pro Forma!B51" in rep.refused_ltv
+        assert "Pro Forma!B51" not in rep.written
+        assert rep.ok is False
+
+
+def test_populate_writes_ltv_inputs_when_gate_ok():
+    with tempfile.TemporaryDirectory() as tmp:
+        sp = _spec_with(
+            tmp,
+            [{"cell": "Pro Forma!B51", "value": 0.70, "type": "percent", "source": "term sheet", "phase": 3}],
+            qa_extra={"ltv_gate": {"ok": True}},
+        )
+        rep = P.populate(sp, TEMPLATE)
+        assert not rep.refused_ltv
+        assert "Pro Forma!B51" in rep.written
+
+
+def test_populate_refuses_s54_when_rubs_gate_fails():
+    # BL-16: rubs_sign.ok==false (positive S54 or unjustified jump) refuses S54/U54.
+    with tempfile.TemporaryDirectory() as tmp:
+        sp = _spec_with(
+            tmp,
+            [{"cell": "Pro Forma!S54", "value": 50000, "type": "currency", "source": "T-12", "phase": 7}],
+            qa_extra={"rubs_sign": {"ok": False, "is_negative": False}},
+        )
+        rep = P.populate(sp, TEMPLATE)
+        assert "Pro Forma!S54" in rep.refused_rubs
+        assert "Pro Forma!S54" not in rep.written
+        assert rep.ok is False
+
+
+def test_populate_refuses_b79_when_exit_cap_gate_fails():
+    # BL-10: exit_cap_gate.ok==false (B79 != HIGHEST method) refuses B79.
+    with tempfile.TemporaryDirectory() as tmp:
+        sp = _spec_with(
+            tmp,
+            [{"cell": "Pro Forma!B79", "value": 0.0625, "type": "percent", "source": "comp", "phase": 3}],
+            qa_extra={"exit_cap_gate": {"ok": False, "max": 0.0675, "b79_value": 0.0625}},
+        )
+        rep = P.populate(sp, TEMPLATE)
+        assert "Pro Forma!B79" in rep.refused_exit_cap
+        assert "Pro Forma!B79" not in rep.written
+        assert rep.ok is False
+
+
+def test_absent_gates_do_not_block():
+    # A spec with no Wave-2 gate keys must NOT refuse anything (refuse only on explicit ok==false).
+    with tempfile.TemporaryDirectory() as tmp:
+        sp = _spec_with(
+            tmp,
+            [{"cell": "Pro Forma!B79", "value": 0.065, "type": "percent", "source": "comp", "phase": 3},
+             {"cell": "Pro Forma!B51", "value": 0.70, "type": "percent", "source": "ts", "phase": 3}],
+        )
+        rep = P.populate(sp, TEMPLATE)
+        assert not rep.refused_ltv and not rep.refused_rubs and not rep.refused_exit_cap
+        assert "Pro Forma!B79" in rep.written
+
+
 if __name__ == "__main__":
     with tempfile.TemporaryDirectory() as tmp:
         sp = _write_spec(tmp)

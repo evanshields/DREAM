@@ -119,6 +119,12 @@ This log is what lets the user, the IC, and the next session pick up exactly whe
 
 Before touching the model, determine whether this is an **ACQ** (conventional/traditional) or **EFB** (Essential Function Bond) deal. Use auto-detection signals first; fall back to a single ask.
 
+### Critical-input capture + durable state (BL-17 — BLOCKING)
+
+**Before any spread begins, capture three inputs as BLOCKING — purchase price, hold period, exit cap.** If any is missing, STOP and ask for it now; do not start spreading and discover the gap mid-stream (the Envy run had to interrupt at record 67 to re-supply the $75M price, and Evan/Fahd silently diverged on hold 7-vs-10 and exit cap 6.5-vs-6.25 because nothing forced a shared assumption). In the fast path these land in `meta.critical_inputs`; `state_ledger.UnderwriteState.critical_inputs_ok()` is the gate.
+
+**Persist a durable state ledger so a restart resumes instead of re-parsing.** Write `underwrite-state.json` as a sibling to `underwrite-spec.json` in the deal folder ([fastpath/state_ledger.py](.skills/dream-underwrite/fastpath/state_ledger.py)): record each completed phase (`record_phase`) and each parsed source with a cheap fingerprint + its extracted summary (`record_source`). On resume, `load_state` + `source_is_fresh` skip the re-parse (a changed fingerprint forces a fresh parse); `next_phase()` is where the run picks up. This eliminates the container-restart re-parse waste (Evan's 45 context snips + repeated full T-12 re-parses). The ledger is the orchestrator's resume file — it does NOT replace the spec or the Claude Log.
+
 ### Auto-detection signals
 
 | Signal source | EFB indicator | ACQ indicator |
@@ -288,7 +294,7 @@ the 2-cell limit, the printed-patch + confirm, and the `applied=true` flag.
 **Trigger:** Phase 3 confirmed.
 
 **Sub-steps:**
-1. Pull in-place rents, SF, unit counts from the Rent Roll Inputs tab into the Unit Mix block (R3:Z21 for EFB Mini Model).
+1. Pull in-place rents, SF, unit counts from the Rent Roll Inputs tab into the Unit Mix block (R3:Z21 for EFB Mini Model). **Unit counts come EXCLUSIVELY from the Phase-2 reconciled `UnitCountReconciler` classification (BL-09) — never a fresh raw pandas/office-js count here.** A raw re-count that lacks the documented status/building filter + an independent second source is the exact bypass that produced Fahd's 244; if the Phase-2 count was BLOCKED or carries a single-source warning, carry that state forward, do not silently re-derive.
 2. **Default for ALL deals (EFB and ACQ): four-tier mixed-income**, 51% affordable / 49% market, maximize GPR:
    - **MLA / corporate rental:** **~10% of total units (CAP)**, capped at FMR for the bedroom type. DO NOT assume the full 49% market block is MLA, that is a wrong assumption.
    - **Market-rate (Classic + Renovated):** **~39% of total units.** Split into Classic and Renovated cohorts; price each at the **75th percentile PSF** of the appropriate CoStar rent comps that were uploaded at the start of the deal (renovated comps for renovated units, classic comps for classic units).
@@ -313,6 +319,16 @@ the 2-cell limit, the printed-patch + confirm, and the `applied=true` flag.
 7. **HAP optimization** ([references/03-efb-revenue.md](.skills/dream-underwrite/references/03-efb-revenue.md) §HAP Revenue Optimization): do NOT default to proportional allocation. Calculate HAP delta per bedroom (FMR minus higher of 80% AMI rent or market-rate cap). Concentrate all HAP units in the bedroom type with the largest positive delta.
 8. **Rent achievability stress test** ([references/03-efb-revenue.md](.skills/dream-underwrite/references/03-efb-revenue.md) §Rent Achievability): compare each pro forma rent against P50 / P75 / Max of stabilized comps. If AMI ceiling exceeds 75th percentile, CAP at 75th percentile and document the effective AMI equivalency.
 9. Optimize GPR by allocating higher-rent tiers to higher-SF units where the dollar premium vs. market is largest.
+
+**NOAH/EFB-route HARD STOP (BL-04 — fast path).** In the fast path, synthesis CALLS
+`acq_engine.FourTierOptimizer.allocate()` for the market-max GPR mix (emitting
+`headline_metrics.tier_allocation`), then `acq_engine.detect_noah()` (in-place vs 85% of the 80%-AMI
+ceiling, per bedroom) + `acq_engine.build_efb_route_signal()`. When the conventional case FAILS its
+hurdle AND NOAH + a capturable exemption fire, the signal sets `efb_recommended=true` and
+`stop_at_cp1=true`: **the fast path HALTS at CP-1 for a human glance and DOES NOT build the EFB
+four-tier (locked Evan 2026-06-05 — detection + recommendation only, never an unattended EFB build).**
+A human flips routing at CP-1 or the run finishes as ACQ. NOAH present but the conventional case
+clears → stay ACQ (no give-up of market upside for the exemption).
 
 **Phase 4 QA gate (run BEFORE the checkpoint):**
 - [ ] NOAH detection run for EVERY unit type (in-place / 80% AMI ratio computed and reported)
@@ -394,8 +410,17 @@ the 2-cell limit, the printed-patch + confirm, and the `applied=true` flag.
    - **Utilities (Gross)**: T-12/unit + 3% inflation
    - **Utility Reimbursements**: -75% of gross (default 75% RUBS recovery)
    - **Insurance**: T-12 × 1.15–1.25 (15–25% buffer for new policy at acquisition); FL/TX coastal 20–30% premium
-   - **Replacement Reserves**: $250 (2020+), $300 (2000–2019), $350–400 (pre-2000)
+   - **Replacement Reserves**: $250 (2020+), $300 (2000–2019), $350–400 (pre-2000). **Vintage cross-check (BL-18):** the reserve floor is set by the asset's CONFIRMED `year_built`, not by an assumption-note rationale that may have ridden in from a prior deal. Use `acq_engine.vintage_reserve_floor(year_built, note_value)` — it returns the floor for the actual vintage and RAISES a stated note value up to it (this catches Evan's Envy $250/u-vs-$300/u inconsistency, and the stale "2007 vintage / 18-yr-old roofs" note that sat on a 2020 asset). The vintage MISMATCH itself (note year ≠ confirmed year_built) is already flagged by `deal_identity_check` (Phase 0 / Phase 11 strict sweep) — reconcile the note's value to the floor here.
 3. **Property Taxes**: handled in Phase 9. For now, populate the T-12 actual into the T-12 column.
+
+**RUBS / Utility Reimbursements sign HARD GATE (BL-16 — the S54 contra trap).** Utility Reimbursements
+(S54) is an INPUT entered NEGATIVE (contra-expense). The fast path CALLS
+`acq_engine.rubs_sign_gate(reimbursement_value, uw_utility_expense, t12_reimbursement,
+t12_utility_expense)`: it FAILS (and the populator refuses S54) when the value is booked POSITIVE (a
+positive RUBS double-counts revenue) OR when the modeled recovery ratio (UW reimbursement / UW utility
+expense) jumps more than ~15pp above the T-12 actual recovery with no documented operational plan
+(submetering install, RUBS rollout per OM). A 5–10pp jump is a flag; a larger unjustified jump
+manufactures NOI. Emit `qa.rubs_sign`.
 
 **Phase 7 QA gate (run BEFORE the checkpoint):**
 - [ ] Every line item benchmarked against Shieldstone manual range OR T-12 + 3% (with cite per line)
@@ -490,6 +515,25 @@ the 2-cell limit, the printed-patch + confirm, and the `applied=true` flag.
    - Resize purchase price to hit target going-in pro forma cap rate.
 3. **Going-in cap rate sanity check**: target ~7% for EFB with full exemption; 5.5–6.5% for ACQ Class A core-plus; 6.5–8.0% for ACQ value-add depending on market tier.
 
+**Exit-cap + LTV HARD GATES (BL-10 / BL-15 — the populator's refusal triggers).** After sizing, the
+fast path asserts two integrity gates:
+- **BL-10 exit cap == HIGHEST:** `ExitCapTriangulator` already takes the max of the 3 methods;
+  `acq_engine.exit_cap_gate(result, b79_value)` then asserts the value STAGED for B79 (the INPUT cell)
+  equals that max within 1bp AND that ≥2 of the 3 methods are documented (entry+strategy alone is not
+  a triangulation). ok==false BLOCKS B79 — writing a softer/lower exit cap embeds compression. Emit
+  `qa.exit_cap_gate`.
+- **BL-15 LTV formula integrity:** `acq_engine.ltv_gate(target_ltv, purchase_price, senior_loan,
+  b52_formula, b66_formula)` asserts the computed senior LTV ties to the B51 input within 0.5% AND
+  that B52 (Loan Amount =B51*B10) and B66 (combined LTV) read as FORMULAS — FLAGGING a literal where
+  the formula belongs (a hardcoded B52 breaks combined LTV in B66). The populator already refuses
+  formula cells; this is the assertion side. ok==false BLOCKS B51/B67. Emit `qa.ltv_gate`.
+
+**Interest-reserve net-of-draws DSCR (BL-11).** Sizing CALLS
+`acq_engine.InterestReserveSizer.size(...)`, funds the reserve from sources (adds to equity/TPC), and
+passes it to `acq_engine.reserve_adjusted_dscr(raw_dscr, reserve)` so ramp-year DSCR reflects the
+reserve paying debt service (realistic Year 1, not 0.41–0.77x). A stabilized deal with no shortfall
+years gets reserve_sized=0 and an UNCHANGED DSCR series. Emit `headline_metrics.interest_reserve`.
+
 **Phase 10 QA gate (run BEFORE the checkpoint):**
 - [ ] Senior DSCR row formula adapts to active loan period (bridge DS years 1-B57, refi P+I years B57+1 onward)
 - [ ] Per-year DSCR table output: Year 1-10 each with active loan, phase (IO/Amort), DSCR, floor, pass/fail
@@ -534,20 +578,21 @@ The Comps tab has **four** sections. **Never auto-populate without explicit user
 
 #### 11b: UW Snapshot Tab
 
+**Scope:** The Snapshot populates only the revenue → OpEx → NOI → cap-rate block. It does NOT carry DSCR, returns (IRR/EM/CoC), or exit metrics — those are verified on the Checks tab (DSCR) and the Pro Forma tab (returns/exit), then reported in chat via the Final Metrics Audit.
+
 1. Reconcile T-12 / T-6 / T-3 annualized NOI in the snapshot.
-2. **With-tax vs. without-tax pulls**: the snapshot pulls Pro Forma NOI two ways, full pro forma (with tax) and EFB-equivalent (without tax). Verify the tax exemption breaker drives the correct value.
+2. **With-tax vs. without-tax pulls (EFB only)**: the snapshot pulls Pro Forma NOI two ways, full pro forma (with tax) and EFB-equivalent (without tax). Verify the tax exemption breaker drives the correct value.
 3. **Deal-identity re-verify (BL-02 HARD GATE).** Before delivering the model, re-run
    `deal_identity_check` with `strict_residuals=True` (a populated model must carry NO surviving
    `#REF!`/`#NUM!`, no foreign tab, no name/unit mismatch, no stale-vintage note). A False match
    BLOCKS "deliver the model" — repoint every carryover cell first. This is the Phase-11 catch Evan's
    audit made by hand (Aviara 66/33 hardcodes, Esplanade #REF! in Checks, the Rayzor Ranch tab).
-4. Sanity check list:
+4. Snapshot sanity checks (revenue/expense/NOI block only):
    - Sources = Uses at Year 0 (should be ~$0)
-   - DSCR >= floor in every year (1.15x EFB, 1.25x agency refi)
-   - Going-in cap rate within ±15% of submarket sales comps
-   - Exit cap >= entry cap (never embed compression)
    - Expense ratio 40–55% of EGI (Class B); flag if outside
    - Blended pro forma rent vs. in-place lift quantified
+5. **Checks-tab verification (DSCR):** read the Checks tab and confirm DSCR >= floor in every year (1.15x EFB, 1.25x agency refi). Surface any failures in chat.
+6. **Pro Forma verification (returns/exit, ACQ):** read Pro Forma B14–B17 (IRR, EM, CoC) and B79–B82 (exit cap, costs of sale, sale year, exit value). Confirm exit cap >= entry cap (never embed compression); going-in cap rate within ±15% of submarket sales comps. Surface any failures in chat.
 
 **Phase 11 QA gate (run BEFORE the checkpoint):**
 - [ ] D8 (sales subject) is a formula reference to Pro Forma (e.g., `=Pro Forma!B10`), NOT a hardcoded value
@@ -561,9 +606,11 @@ The Comps tab has **four** sections. **Never auto-populate without explicit user
 - [ ] **No pipeline rows reference an MSA outside the subject's state (template-fork carryover HARD BLOCK passed)**
 - [ ] **Deal-identity re-verify passed (`deal_identity_check` strict: no #REF!/#NUM!, no foreign tab, no name/unit/vintage mismatch)**
 - [ ] **Row 101 SUM / MAX / AVERAGE formulas left intact (values written to D90:F99 only)**
-- [ ] UW Snapshot tab: T-12/T-6/T-3 reconciliation shown, with-tax vs. without-tax pulls visible
+- [ ] UW Snapshot tab: T-12/T-6/T-3 reconciliation shown, with-tax vs. without-tax pulls visible (EFB); Snapshot contains Deal Identity + Revenue + Expense + NOI blocks only — no DSCR/returns/exit rows on the Snapshot
+- [ ] Checks tab: DSCR >= floor verified (1.15x EFB, 1.25x agency refi ACQ) in every year; failures surfaced in chat
+- [ ] Pro Forma tab (ACQ): IRR/EM/CoC (B14–B17) and exit cap/sale year/exit value (B79–B82) read and confirmed; exit cap >= entry cap; failures surfaced in chat
 
-**Checkpoint, DELIVER the model**: Present final metrics audit (GPR, Vacancy, EGI, OpEx, NOI, DSCR Y1/Y3/Y5/Y10, Exit Value, IRR for ACQ, Bond Coverage for EFB). Note any flagged sanity checks. Wait for user to either approve the model or request adjustments. Then proceed to Phase 12.
+**Checkpoint, DELIVER the model**: Present final metrics audit in chat — sourced from three tabs: (1) Snapshot tab: GPR, Vacancy, EGI, OpEx, NOI Y1/Y3/Y5/Y10; (2) Checks tab: DSCR Y1/Y3/Y5/Y10, Sources=Uses, bond coverage (EFB); (3) Pro Forma tab: IRR, EM, CoC, net investor IRR, exit cap, exit value (ACQ). Note any flagged sanity checks. Wait for user to either approve the model or request adjustments. Then proceed to Phase 12.
 
 ---
 

@@ -32,6 +32,28 @@
             "ground_truth_selected": {"type": "string", "description": "BL-14: which model/transcript the parent selected as ground truth"},
             "ground_truth_match": {"type": "boolean", "description": "BL-14: did the selected ground truth pass the identity fingerprint (auditable selection)"}
           }
+        },
+        "efb_route_signal": {
+          "type": "object",
+          "description": "BL-04: NOAH/EFB-structural detection + routing RECOMMENDATION. The fast path STOPS at CP-1 for a human glance (stop_at_cp1 is always true); the engine NEVER auto-builds the EFB four-tier. routing stays the Wave-0 value until a human flips it.",
+          "additionalProperties": false,
+          "properties": {
+            "noah_detected": {"type": "boolean", "description": "true if NOAH / EFB-structural signals tripped (in-place deep below the 80%-AMI ceiling per bedroom)"},
+            "efb_recommended": {"type": "boolean", "description": "engine's recommendation to re-route ACQ->EFB; advisory only"},
+            "reason": {"type": "string"},
+            "signals": {"type": "array", "items": {"type": "string"}, "description": "the individual triggers that fired (audit trail for the CP-1 glance)"},
+            "stop_at_cp1": {"type": "boolean", "const": true, "description": "BL-04 LOCKED: the fast path halts here; no unattended EFB build"}
+          }
+        },
+        "critical_inputs": {
+          "type": "object",
+          "description": "BL-17: the three inputs Phase 0 MUST capture before any spread begins. Mirrors the durable underwrite-state.json ledger (fastpath/state_ledger.py). All three present => Phase 0 may proceed; a missing one BLOCKS (prevents the mid-stream price interruption + silent hold/exit-cap divergence the Envy run hit).",
+          "additionalProperties": false,
+          "properties": {
+            "purchase_price": {"type": ["number", "null"], "description": "B10 purchase price — BLOCKING Phase-0 input"},
+            "hold_years": {"type": ["integer", "null"], "description": "hold period (e.g. 7 / 10) — BLOCKING; Evan/Fahd silently diverged 7 vs 10"},
+            "exit_cap": {"type": ["number", "null"], "description": "exit cap rate — BLOCKING; Evan/Fahd silently diverged 6.5 vs 6.25"}
+          }
         }
       }
     },
@@ -90,6 +112,47 @@
             "reasons": {"type": "array", "items": {"type": "string"}}
           }
         },
+        "exit_cap_gate": {
+          "type": "object",
+          "description": "BL-10 HARD GATE: ExitCapTriangulator output + assertion that the value staged for B79 (INPUT) equals the HIGHEST of the methods. ok==false => populator refuses B79 (writing a non-max exit cap embeds compression).",
+          "properties": {
+            "methods": {"type": "object", "description": "treasury_spread / comp_validation / entry_strategy (null = method not run)", "properties": {
+              "treasury_spread": {"type": ["number", "null"]},
+              "comp_validation": {"type": ["number", "null"]},
+              "entry_strategy": {"type": "number"}
+            }},
+            "selected": {"type": "string", "description": "ExitCapResult.binding_method"},
+            "max": {"type": "number", "description": "ExitCapResult.exit_cap (the HIGHEST); must land in B79"},
+            "b79_value": {"type": ["number", "null"]},
+            "ok": {"type": "boolean"}
+          }
+        },
+        "ltv_gate": {
+          "type": "object",
+          "description": "BL-15 HARD GATE: LTV integrity. B52 Loan Amount is a FORMULA (=B51*B10); B66 combined LTV is a FORMULA. ok==false (B52 a literal, or computed LTV diverges from target) flags a hardcoded loan amount overwriting B52.",
+          "properties": {
+            "target_ltv": {"type": "number"},
+            "computed_ltv": {"type": "number"},
+            "loan_amount": {"type": ["number", "null"]},
+            "b52_is_formula": {"type": "boolean"},
+            "b66_is_formula": {"type": "boolean"},
+            "ok": {"type": "boolean"}
+          }
+        },
+        "rubs_sign": {
+          "type": "object",
+          "description": "BL-16 HARD GATE: Utility Reimbursements (S54) sign + plausibility. S54 is an INPUT entered NEGATIVE (contra). ok==false (positive value, or recovery jumps > max_jump_pp vs T-12 with no justification).",
+          "properties": {
+            "reimbursement_value": {"type": "number"},
+            "is_negative": {"type": "boolean"},
+            "recovery_pct": {"type": "number"},
+            "t12_recovery_pct": {"type": ["number", "null"]},
+            "jump_pp": {"type": "number"},
+            "max_jump_pp": {"type": "number", "default": 15},
+            "justification": {"type": "string"},
+            "ok": {"type": "boolean"}
+          }
+        },
         "reconcile": {
           "type": "array",
           "description": "Populated at CP-2: Python engine vs Excel data_only re-read, per headline metric",
@@ -140,7 +203,85 @@
         "equity_multiple": {"type": ["number", "null"], "description": "ACQ only"},
         "coc_stabilized": {"type": ["number", "null"], "description": "ACQ only"},
         "bond_amount": {"type": ["number", "null"], "description": "EFB only"},
-        "tax_savings_10yr": {"type": ["number", "null"], "description": "EFB only"}
+        "tax_savings_10yr": {"type": ["number", "null"], "description": "EFB only"},
+        "tier_allocation": {
+          "type": "object",
+          "description": "BL-04: FourTierOptimizer.allocate() result — market-max GPR allocation across Market/100AMI/HAP/80AMI. Feeds the unit-mix W-column rents.",
+          "properties": {
+            "allocations": {"type": "array", "items": {
+              "type": "object",
+              "required": ["tier", "bedroom", "units", "rent", "inplace"],
+              "properties": {
+                "tier": {"type": "string", "description": "'Market' | '100AMI' | 'HAP' | '80AMI'"},
+                "bedroom": {"type": "string"},
+                "units": {"type": "integer"},
+                "rent": {"type": "number", "description": "per-unit/month net-to-owner rent"},
+                "inplace": {"type": "number"}
+              }
+            }},
+            "gpr": {"type": "number"},
+            "pure_market_gpr": {"type": "number"},
+            "gpr_delta": {"type": "number"},
+            "gpr_delta_pct": {"type": "number"},
+            "tier_targets": {"type": "object", "additionalProperties": {"type": "integer"}}
+          }
+        },
+        "interest_reserve": {
+          "type": "object",
+          "description": "BL-11: InterestReserveSizer.size() — reserve covering the lease-up/ramp debt-service shortfall; adds to equity/TPC.",
+          "properties": {
+            "shortfall_years": {"type": "array", "items": {"type": "integer"}},
+            "gross_shortfall": {"type": "number"},
+            "buffer": {"type": "number"},
+            "reserve_sized": {"type": "number"},
+            "covered_dscr_floor": {"type": "number"}
+          }
+        },
+        "lease_up_ramp": {
+          "type": "object",
+          "description": "BL-12: LeaseUpRamp.noi_series() + the forensic-derived vacancy/concession curves it consumed (replaces a flat manual ramp).",
+          "properties": {
+            "noi_series": {"type": "array", "items": {"type": "number"}},
+            "vacancy_curve": {"type": "array", "items": {"type": "number"}},
+            "concession_curve": {"type": "array", "items": {"type": "number"}},
+            "stabilized_noi": {"type": "number"},
+            "stabilized_egi": {"type": "number"},
+            "stabilized_vacancy": {"type": "number"},
+            "stabilized_concession": {"type": "number"},
+            "stabilizes_year": {"type": "integer"},
+            "basis": {"type": "string"}
+          }
+        },
+        "property_tax_range": {
+          "type": "object",
+          "description": "BL-13: ACQ property tax as a LOW/POINT/HIGH range (not a single ratio). POINT feeds S66-S71. basis='county-method' (agent-marketdata assessed value) or 'flat-ratio' (STATE_RATIO default). exemption_delta = EFB $0-tax savings when EFB is previewed.",
+          "properties": {
+            "low": {"type": "number"},
+            "high": {"type": "number"},
+            "point": {"type": "number"},
+            "basis": {"type": "string", "enum": ["county-method", "flat-ratio"]},
+            "ratio_used": {"type": "number"},
+            "assessed_value": {"type": ["number", "null"]},
+            "millage": {"type": "number"},
+            "exemption_delta": {"type": ["number", "null"]},
+            "citation": {"type": "string"}
+          }
+        },
+        "reprice": {
+          "type": "object",
+          "description": "BL-19: reprice signal. When below_hurdle, clearing_price = the B10 price that clears target_metric (solved by re-running ACQCashFlowProjector at trial prices). Advisory ONLY — never auto-writes B10.",
+          "properties": {
+            "below_hurdle": {"type": "boolean"},
+            "target_metric": {"type": "string", "enum": ["irr", "equity_multiple", "dscr", "debt_yield"]},
+            "target_value": {"type": "number"},
+            "current_value": {"type": "number"},
+            "current_price": {"type": "number"},
+            "clearing_price": {"type": ["number", "null"]},
+            "price_delta_pct": {"type": ["number", "null"]},
+            "iterations": {"type": "integer"},
+            "converged": {"type": "boolean"}
+          }
+        }
       }
     },
     "comps": {

@@ -287,3 +287,4 @@ For the ACQ Mini Model / Flex Model equivalent cells, see [templates/field-mappi
 - [references/05-expenses.md](.skills/dream-underwrite/references/05-expenses.md), operating expense framework where property tax sits
 - [templates/field-mapping-efb.md](.skills/dream-underwrite/templates/field-mapping-efb.md), EFB cell map
 - [templates/field-mapping-acq.md](.skills/dream-underwrite/templates/field-mapping-acq.md), ACQ cell map
+- `acq_engine.PropertyTaxRangeEstimator` (BL-13): county-method LOW/POINT/HIGH range estimator; supersedes the flat-point for ACQ deals when `agent-marketdata` supplies a county assessed value. Flat-ratio fallback (`PropertyTaxCalculator`) remains the documented default when no county method is available.
