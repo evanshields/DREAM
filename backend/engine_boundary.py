@@ -55,6 +55,10 @@ from acq_engine import (  # noqa: E402  (path set above)
     AgencySizingResult,
     HurdleResult,
 )
+from lihtc_engine import (  # noqa: E402  EFB / tax-exempt bond sizing
+    BondSizingCalculator,
+    BondSizingResult,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -266,3 +270,74 @@ def compute_hurdle(
         "recommendation": r.recommendation,
         "components": r.components,
     }
+
+
+# ---------------------------------------------------------------------------
+# EFB (tax-exempt bond / workforce housing) path — the Wave B broaden delta
+# ---------------------------------------------------------------------------
+
+@dataclass
+class EFBDealInputs:
+    """Float/JSON-native EFB inputs. EFB sizing is bond-driven (size the bonds to a DSCR
+    on stabilized NOI), the mirror of the ACQ levered-returns path. Validated vs Rayzor.
+    """
+    stabilized_noi: float
+    target_dscr: float = 1.15            # 1.15x with HAP, 1.20x without (per the bond-sizing doc)
+    bond_rate: float = 0.05              # tax-exempt bond coupon
+    amortization_years: int = 35
+    # optional context for the 10-yr exemption color (not used in the sizing math)
+    annual_property_tax_exempted: Optional[float] = None
+    hold_years: int = 10
+
+
+def run_efb_underwrite(inp: EFBDealInputs) -> Dict[str, object]:
+    """Size tax-exempt bonds to the target DSCR on stabilized NOI and return a float-only
+    headline_metrics dict (shape matches the spec's EFB headline fields: bond_amount,
+    year1_dscr, year1_noi, tax_savings_10yr)."""
+    res: BondSizingResult = BondSizingCalculator().size_bonds(
+        net_operating_income=to_dec(inp.stabilized_noi),
+        target_dscr=to_dec(inp.target_dscr),
+        interest_rate=to_dec(inp.bond_rate),
+        amortization_years=int(inp.amortization_years),
+    )
+    tax_savings_10yr = None
+    if inp.annual_property_tax_exempted is not None:
+        tax_savings_10yr = float(inp.annual_property_tax_exempted) * int(inp.hold_years)
+    return {
+        "bond_amount": f(res.maximum_bond_amount),
+        "annual_debt_service": f(res.annual_debt_service),
+        "maximum_debt_service": f(res.maximum_debt_service),
+        "year1_noi": f(res.net_operating_income),
+        "year1_dscr": f(res.net_operating_income / res.annual_debt_service)
+                      if res.annual_debt_service else None,
+        "target_dscr": f(res.target_dscr),
+        "bond_rate": f(res.interest_rate),
+        "tax_savings_10yr": tax_savings_10yr,
+    }
+
+
+# ---------------------------------------------------------------------------
+# Routing layer (Wave B.4) — dispatch on meta.routing
+# ---------------------------------------------------------------------------
+
+class UnknownRoutingError(ValueError):
+    """meta.routing was neither ACQ nor EFB."""
+
+
+def run_underwrite(routing: str, inputs: Dict[str, object]) -> Dict[str, object]:
+    """Single entry the API layer calls. Dispatches the float-input dict to the correct engine
+    path by routing. ACQ -> acq_engine (levered returns); EFB -> lihtc_engine (bond sizing).
+
+    `inputs` is a plain dict (JSON body). It is unpacked into the route's dataclass; unknown keys
+    are ignored so the same body can carry extra UI fields. Returns headline_metrics (floats).
+    """
+    r = str(routing or "").upper()
+    if r == "ACQ":
+        acq_fields = {k: v for k, v in inputs.items()
+                      if k in ACQDealInputs.__dataclass_fields__}
+        return run_acq_underwrite(ACQDealInputs(**acq_fields))
+    if r == "EFB":
+        efb_fields = {k: v for k, v in inputs.items()
+                      if k in EFBDealInputs.__dataclass_fields__}
+        return run_efb_underwrite(EFBDealInputs(**efb_fields))
+    raise UnknownRoutingError(f"routing must be ACQ or EFB, got {routing!r}")
