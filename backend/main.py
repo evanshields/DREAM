@@ -77,6 +77,10 @@ app = FastAPI(
 from routers.recalc import router as recalc_router  # noqa: E402
 app.include_router(recalc_router)
 
+# Wave D — App->Excel push (populate + reconcile against a user Mini Model template).
+from routers.export_excel import router as export_router  # noqa: E402
+app.include_router(export_router)
+
 
 # A0.2 — configurable Google OAuth lives in auth_dep.require_auth (imported above).
 # Enforced when GOOGLE_CLIENT_ID is set; transparent local-dev pass-through otherwise.
