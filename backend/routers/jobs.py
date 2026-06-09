@@ -18,6 +18,7 @@ main.py import, no live LLM.
 """
 from __future__ import annotations
 
+import logging
 import os
 import sys
 from datetime import datetime, timezone
@@ -35,9 +36,10 @@ from jobs.contracts import JobStatus, JobRecord  # noqa: E402
 from jobs.job_store import get_job_store, SQLiteJobStore, JobNotFound  # noqa: E402
 from jobs.runner import run_job  # noqa: E402
 from jobs.wave0 import run_wave0  # noqa: E402
-from jobs.analysts import StubAnalysts  # noqa: E402
+from jobs.analysts import StubAnalysts, KimiAnalysts  # noqa: E402
 
 router = APIRouter(prefix="/api/jobs", tags=["jobs"])
+logger = logging.getLogger(__name__)
 
 
 def _now() -> str:
@@ -101,8 +103,35 @@ def _job_view(job: JobRecord, deal_store: DealStore) -> Dict[str, Any]:
 # ---------------------------------------------------------------------------
 
 def get_analysts():
-    """Default analytical set. v1 uses StubAnalysts (no LLM); swap to KimiAnalysts when wired."""
-    return StubAnalysts()
+    """Select the Wave-1 analytical set (ENV-gated Kimi/Stub switch).
+
+    Default is StubAnalysts (no LLM, no network) so the standard test/dev path stays
+    deterministic and offline. The live KimiAnalysts set is opt-in and FAIL-SAFE:
+
+      * DREAM_USE_KIMI must be truthy ("1", "true", "yes", "on"), AND
+      * KIMI_API_KEY must be present and non-empty.
+
+    If the flag is set but no key is configured, we log a warning and fall back to
+    StubAnalysts rather than raising — the request must never 500 over a missing key.
+    KimiAnalysts pins the long-deal-doc model via KIMI_MODEL_FASTPATH (default
+    moonshot-v1-128k, read in jobs/analysts.py) and builds its Moonshot client LAZILY,
+    so selecting it here performs no network call.
+    """
+    use_kimi = os.environ.get("DREAM_USE_KIMI", "").strip().lower() in ("1", "true", "yes", "on")
+    if not use_kimi:
+        return StubAnalysts()
+    api_key = os.environ.get("KIMI_API_KEY", "").strip()
+    if not api_key:
+        logger.warning(
+            "DREAM_USE_KIMI is set but KIMI_API_KEY is empty; falling back to StubAnalysts "
+            "(fail-safe). Set KIMI_API_KEY to enable the live Kimi analytical set."
+        )
+        return StubAnalysts()
+    logger.info(
+        "DREAM_USE_KIMI enabled and KIMI_API_KEY present; using KimiAnalysts (model=%s).",
+        os.environ.get("KIMI_MODEL_FASTPATH", "moonshot-v1-128k"),
+    )
+    return KimiAnalysts()
 
 
 # ---------------------------------------------------------------------------

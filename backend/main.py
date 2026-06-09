@@ -85,6 +85,11 @@ app.include_router(export_router)
 from routers.jobs import router as jobs_router  # noqa: E402
 app.include_router(jobs_router)
 
+# Task C — username/password login (issues a short-lived app JWT accepted by require_auth
+# alongside Google OAuth). Urgent stopgap before Google Test Users propagate.
+from routers.auth_login import router as auth_login_router  # noqa: E402
+app.include_router(auth_login_router)
+
 
 # A0.2 — configurable Google OAuth lives in auth_dep.require_auth (imported above).
 # Enforced when GOOGLE_CLIENT_ID is set; transparent local-dev pass-through otherwise.
