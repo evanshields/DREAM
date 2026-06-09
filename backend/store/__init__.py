@@ -6,6 +6,8 @@ from .deal_store import (
     DealNotFound,
     VersionConflict,
     get_deal_store,
+    open_sqlite,
+    default_db_path,
 )
 
 __all__ = [
@@ -15,4 +17,6 @@ __all__ = [
     "DealNotFound",
     "VersionConflict",
     "get_deal_store",
+    "open_sqlite",
+    "default_db_path",
 ]

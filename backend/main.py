@@ -81,6 +81,10 @@ app.include_router(recalc_router)
 from routers.export_excel import router as export_router  # noqa: E402
 app.include_router(export_router)
 
+# Wave C — chat-bot fast-path job service (submit/status/answer/cancel; HITL stop at CP-1).
+from routers.jobs import router as jobs_router  # noqa: E402
+app.include_router(jobs_router)
+
 
 # A0.2 — configurable Google OAuth lives in auth_dep.require_auth (imported above).
 # Enforced when GOOGLE_CLIENT_ID is set; transparent local-dev pass-through otherwise.

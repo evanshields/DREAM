@@ -251,6 +251,23 @@ class SQLiteDealStore:
 _store: Optional[DealStore] = None
 
 
+def open_sqlite(path: str = ":memory:") -> sqlite3.Connection:
+    """Open a SQLite connection with the app's standard settings (Row factory,
+    cross-thread access). Lives HERE so sibling stores (e.g. backend/jobs/job_store.py)
+    can persist through SQLite WITHOUT importing sqlite3 themselves — the architectural
+    guard (no DB driver outside the store package) stays intact and the Postgres swap
+    (Wave F.2) remains a single-package change."""
+    conn = sqlite3.connect(path, check_same_thread=False)
+    conn.row_factory = sqlite3.Row
+    return conn
+
+
+def default_db_path() -> str:
+    """The process-wide DB file path (DREAM_DB_PATH env, default ./dream_deals.db).
+    Shared by every store so jobs + deals live in one SQLite file."""
+    return os.environ.get("DREAM_DB_PATH", os.path.join(os.getcwd(), "dream_deals.db"))
+
+
 def get_deal_store() -> DealStore:
     """Return the process-wide DealStore. Path from DREAM_DB_PATH env (default: ./dream_deals.db).
     Swap to a Postgres implementation here in Wave F.2 — callers never change."""
