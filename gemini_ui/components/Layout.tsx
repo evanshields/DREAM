@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { ViewState } from '../types';
-import { LayoutDashboard, Trello, FileText, Upload, Bell, Search, Moon, Sun } from 'lucide-react';
+import { LayoutDashboard, Trello, FileText, SlidersHorizontal, Upload, Bell, Search, Moon, Sun } from 'lucide-react';
 
 interface LayoutProps {
   children: React.ReactNode;
@@ -23,6 +23,7 @@ export const Layout: React.FC<LayoutProps> = ({ children, activeView, onNavigate
     { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
     { id: 'pipeline', label: 'Pipeline', icon: Trello },
     { id: 'analysis', label: 'Analysis', icon: FileText },
+    { id: 'assumptions', label: 'Assumptions', icon: SlidersHorizontal },
     { id: 'intake', label: 'Upload Deal', icon: Upload },
   ];
 
