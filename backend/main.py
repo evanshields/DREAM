@@ -87,6 +87,10 @@ app.include_router(export_router, dependencies=[Depends(require_auth)])
 from routers.jobs import router as jobs_router  # noqa: E402
 app.include_router(jobs_router, dependencies=[Depends(require_auth)])
 
+# Pipeline deal-list (read-only; PRD §6). Surfaces DealStore.list for the pipeline screen.
+from routers.deals import router as deals_router  # noqa: E402
+app.include_router(deals_router, dependencies=[Depends(require_auth)])
+
 # Task C — username/password login (issues a short-lived app JWT accepted by require_auth
 # alongside Google OAuth). Urgent stopgap before Google Test Users propagate.
 from routers.auth_login import router as auth_login_router  # noqa: E402

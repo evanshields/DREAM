@@ -32,3 +32,6 @@ __pycache__/
 venv/
 *.db
 backend/.env
+
+# TS build info
+*.tsbuildinfo
