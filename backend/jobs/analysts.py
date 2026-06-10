@@ -26,6 +26,7 @@ from __future__ import annotations
 import json
 import os
 import sys
+from concurrent.futures import ThreadPoolExecutor
 from typing import Any, Dict, List, Optional, Protocol, runtime_checkable
 
 _BACKEND = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -375,13 +376,15 @@ class KimiAnalysts:
     def run_all(self, deal_docs: Optional[Dict[str, Any]] = None,
                 intake_summary: Optional[Dict[str, Any]] = None,
                 critical_inputs: Optional[Dict[str, Any]] = None) -> List[Dict[str, Any]]:
+        """The five slices are independent (each reads the same inputs; only merge_slices joins
+        them), so run them CONCURRENTLY — five sequential Moonshot calls were the dominant
+        latency on the live submit path (~5x wall clock). Order of results is preserved."""
         dd = dict(deal_docs or {})
         isum = dict(intake_summary or {})
         ci = dict(critical_inputs or {})
-        return [
-            self.slice_t12(dd, isum, ci),
-            self.slice_rentroll(dd, isum, ci),
-            self.slice_assumptions(dd, isum, ci),
-            self.slice_comps(dd, isum, ci),
-            self.slice_marketdata(dd, isum, ci),
-        ]
+        self._get_client()  # build the lazy client ONCE before fan-out (init is not thread-safe)
+        slices = (self.slice_t12, self.slice_rentroll, self.slice_assumptions,
+                  self.slice_comps, self.slice_marketdata)
+        with ThreadPoolExecutor(max_workers=len(slices)) as pool:
+            futures = [pool.submit(s, dd, isum, ci) for s in slices]
+            return [fut.result() for fut in futures]

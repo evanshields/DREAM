@@ -239,6 +239,17 @@ class SQLiteJobStore:
             self._insert(rec, None)
             return rec
 
+    def find_by_idempotency(self, idempotency_key: str) -> Optional[JobRecord]:
+        """Return the existing job for a non-empty idempotency key, else None. Lets the router
+        detect a replay BEFORE creating any deal record (a retry must never orphan a deal)."""
+        if not idempotency_key:
+            return None
+        with self._lock:
+            row = self._conn.execute(
+                "SELECT doc_json FROM jobs WHERE idempotency_key=?", (idempotency_key,)
+            ).fetchone()
+        return JobRecord.from_dict(json.loads(row["doc_json"])) if row is not None else None
+
     def get_job(self, job_id: str) -> JobRecord:
         with self._lock:
             rec, _state, _v = self._read_locked(job_id)

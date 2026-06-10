@@ -84,10 +84,36 @@ export interface SensitivityResponse {
   grid: SensitivityPoint[];
 }
 
+// --- auth token (the recalc/jobs routers are auth-gated in production) -----
+// The login flow (Google sign-in or POST /api/auth/login) stores the bearer token here;
+// every API call attaches it. Kept in localStorage so a page reload stays signed in.
+const TOKEN_KEY = 'dream_token';
+
+export function setAuthToken(token: string | null): void {
+  try {
+    if (token) localStorage.setItem(TOKEN_KEY, token);
+    else localStorage.removeItem(TOKEN_KEY);
+  } catch {
+    /* storage unavailable (SSR/incognito) — calls just go unauthenticated */
+  }
+}
+
+export function getAuthToken(): string | null {
+  try {
+    return localStorage.getItem(TOKEN_KEY);
+  } catch {
+    return null;
+  }
+}
+
 async function postJson<T>(path: string, body: unknown, signal?: AbortSignal): Promise<T> {
+  const token = getAuthToken();
   const res = await fetch(`${API_BASE}${path}`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: {
+      'Content-Type': 'application/json',
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
     body: JSON.stringify(body),
     signal,
   });

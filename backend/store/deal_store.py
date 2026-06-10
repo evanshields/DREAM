@@ -137,9 +137,9 @@ class SQLiteDealStore:
     def __init__(self, path: str = ":memory:"):
         self._path = path
         # check_same_thread=False + an explicit lock: FastAPI may touch the store from worker
-        # threads. A single shared connection keeps SQLite's single-writer semantics simple.
-        self._conn = sqlite3.connect(path, check_same_thread=False)
-        self._conn.row_factory = sqlite3.Row
+        # threads. open_sqlite applies WAL + busy_timeout so this connection coexists with the
+        # sibling stores' connections on the same DB file under concurrent writers.
+        self._conn = open_sqlite(path)
         self._lock = threading.Lock()
         with self._lock:
             self._conn.executescript(_SCHEMA)
@@ -259,6 +259,15 @@ def open_sqlite(path: str = ":memory:") -> sqlite3.Connection:
     (Wave F.2) remains a single-package change."""
     conn = sqlite3.connect(path, check_same_thread=False)
     conn.row_factory = sqlite3.Row
+    # WAL + a generous busy timeout: the deal/job/user stores each hold their OWN connection to
+    # the same DB file. Default rollback-journal locking raises 'database is locked' under
+    # concurrent writers (a job interleaves writes across stores for minutes per run); WAL allows
+    # concurrent readers + a writer, and the timeout absorbs writer handoffs.
+    try:
+        conn.execute("PRAGMA journal_mode=WAL")
+        conn.execute("PRAGMA busy_timeout=15000")
+    except sqlite3.OperationalError:  # pragma: no cover — :memory:/readonly edge cases
+        pass
     return conn
 
 

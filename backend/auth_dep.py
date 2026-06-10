@@ -54,15 +54,17 @@ def _try_app_jwt(token: str) -> Optional[dict]:
     # Imported lazily so environments without PyJWT (none in prod) still import this module, and so
     # auth_enabled()/the Google path never depend on the JWT lib being present.
     try:
-        from app_jwt import decode_token, looks_like_app_jwt, JWTConfigError
+        from app_jwt import decode_token, is_app_token, JWTConfigError
         import jwt as _pyjwt
     except Exception:  # pragma: no cover - PyJWT is a pinned dependency in prod
         return None
 
     if not os.environ.get("AUTH_JWT_SECRET", "").strip():
         return None  # app-JWT login not configured on this server -> defer to Google
-    if not looks_like_app_jwt(token):
-        return None  # not three-segment JWT shape -> let Google try it
+    if not is_app_token(token):
+        # Not OUR issuer (e.g. a Google ID token, which is also a 3-segment JWT) -> let the
+        # Google verifier own it. Shape alone must never route here — see is_app_token.
+        return None
 
     try:
         claims = decode_token(token)
@@ -109,9 +111,12 @@ def require_auth(
         _check_allowlist(app_user.get("email", ""))
         return app_user
 
-    # 2) Fall back to Google ID-token verification (original path). If GOOGLE_CLIENT_ID is unset
-    #    verify_google_token raises 500; that is correct — a JWT-only server should never reach
-    #    here with a non-app token, and a misconfigured server must fail loudly.
+    # 2) Fall back to Google ID-token verification (original path). On a JWT-only server
+    #    (AUTH_JWT_SECRET set, no GOOGLE_CLIENT_ID) a non-app token is bad CLIENT input — that is
+    #    a 401, never a 500 (verify_google_token would raise 500 for the missing client id).
+    if not os.environ.get("GOOGLE_CLIENT_ID", "").strip():
+        raise HTTPException(status_code=401, detail="Invalid or expired token",
+                            headers={"WWW-Authenticate": "Bearer"})
     user = verify_google_token(token)  # raises 401 on invalid/expired
     _check_allowlist(user.get("email", ""))
     return user

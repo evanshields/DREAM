@@ -147,7 +147,16 @@ def submit_job(req: SubmitJobRequest):
     ds: DealStore = get_deal_store()
     ts = _now()
 
+    # Idempotent replay FIRST — before any deal row is created. A retried POST (timeout, dropped
+    # connection) must return the existing job's view and never orphan a draft deal.
+    existing = js.find_by_idempotency(req.idempotency_key)
+    if existing is not None:
+        return _job_view(existing, ds)
+
     # --- create the canonical deal record (the spec is filled at synthesis) ---
+    # intake_payload preserves the ORIGINAL submission so an AWAITING_INPUT resume re-runs with
+    # the full deal package (docs + summary), not just the answered questions. It lives on the
+    # seed spec only; the synthesis ds.put replaces the spec at CP-1, by which point resume is over.
     seed_spec = {
         "meta": {
             "deal_name": req.deal_name or req.intake_summary.get("deal_name", ""),
@@ -159,6 +168,10 @@ def submit_job(req: SubmitJobRequest):
         },
         "qa": {},
         "cells": [],
+        "intake_payload": {
+            "intake_summary": req.intake_summary,
+            "deal_docs": req.deal_docs,
+        },
     }
     deal = ds.create(seed_spec, owner=req.owner, now_iso=ts, status="draft")
     job = js.create_job(
@@ -212,11 +225,25 @@ def answer_job(job_id: str, req: AnswerRequest):
     if job.status == JobStatus.AWAITING_INPUT and not job.has_blocking_questions():
         # Move back to ROUTING (legal: AWAITING_INPUT -> ROUTING) so the runner re-drives Wave 0.
         js.transition(job_id, JobStatus.ROUTING, ts)
-        # Fold the answered values into an intake summary so Wave 0 now passes.
-        resumed_summary = _summary_from_answers(job)
+        # Restore the ORIGINAL submission (persisted on the deal's seed spec at submit) and
+        # overlay the answers — a resume must never analyze less than the user originally sent.
+        answers = _summary_from_answers(job)
+        intake_payload: Dict[str, Any] = {}
+        try:
+            intake_payload = ds.get(job.deal_id).spec.get("intake_payload") or {}
+        except DealNotFound:  # pragma: no cover — deal created at submit
+            pass
+        resumed_summary = dict(intake_payload.get("intake_summary") or {})
+        merged_ci = dict(resumed_summary.get("critical_inputs") or {})
+        merged_ci.update(answers.get("critical_inputs") or {})
+        resumed_summary["critical_inputs"] = merged_ci
+        if "routing" in answers:  # an answered routing question overrides the original signal
+            resumed_summary["routing"] = answers["routing"]
+        deal_docs = intake_payload.get("deal_docs") or {}
         try:
             final = run_job(job_id, analysts=get_analysts(), now_iso=ts,
-                            intake_summary=resumed_summary, job_store=js, deal_store=ds)
+                            intake_summary=resumed_summary, deal_docs=deal_docs,
+                            job_store=js, deal_store=ds)
         except Exception as e:  # noqa: BLE001
             raise HTTPException(status_code=422, detail=str(e))
         return _job_view(final, ds)

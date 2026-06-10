@@ -51,8 +51,8 @@ class ACQRecalcRequest(BaseModel):
 
     total_equity: float = 0.0
     noi_series: List[float] = Field(default_factory=list)
-    exit_cap: float = 0.06
-    sale_year: int = 7
+    exit_cap: float = Field(default=0.06, gt=0)   # 0 would divide-by-zero in the exit-value math
+    sale_year: int = Field(default=7, ge=1)
     costs_of_sale: float = 0.02
 
     servicing_spread: float = 0.0116
@@ -183,6 +183,9 @@ def recalc_sensitivity(req: SensitivityRequest):
     if req.metric not in _ALLOWED_METRICS:
         raise HTTPException(status_code=400,
                             detail=f"metric must be one of {sorted(_ALLOWED_METRICS)}")
+    if req.field == "exit_cap" and any(v <= 0 for v in req.values):
+        raise HTTPException(status_code=400,
+                            detail="exit_cap sweep values must be > 0 (cap rate divides exit NOI)")
     base = req.base.model_dump()
     grid = []
     try:

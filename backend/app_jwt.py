@@ -72,7 +72,23 @@ def decode_token(token: str) -> dict:
 
 
 def looks_like_app_jwt(token: str) -> bool:
-    """Cheap shape check: a JWT is three base64url segments. Lets require_auth try the app-JWT path
-    first without paying a Google network round-trip on tokens that clearly are not ours. This is a
-    routing hint only — decode_token still fully verifies."""
+    """Cheap shape check: a JWT is three base64url segments. NOTE: Google ID tokens are ALSO
+    three-segment JWTs, so shape alone cannot route between the app path and the Google path —
+    use is_app_token (issuer-based) for routing. Kept for back-compat."""
     return isinstance(token, str) and token.count(".") == 2
+
+
+def is_app_token(token: str) -> bool:
+    """Routing-only check: True iff the UNVERIFIED payload claims iss == our issuer.
+
+    This decides WHICH verifier owns the token (ours vs Google) — it grants no trust whatsoever;
+    decode_token still fully verifies signature/expiry/issuer. A Google ID token (iss
+    accounts.google.com) returns False here and routes to the Google verifier, fixing the
+    shape-heuristic bug where Google tokens were swallowed by the HS256 path and 401'd."""
+    if not looks_like_app_jwt(token):
+        return False
+    try:
+        claims = jwt.decode(token, options={"verify_signature": False})
+    except jwt.PyJWTError:
+        return False
+    return claims.get("iss") == _ISS

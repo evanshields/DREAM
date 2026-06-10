@@ -37,11 +37,13 @@ if _BACKEND not in sys.path:
     sys.path.insert(0, _BACKEND)
 
 from store import get_deal_store, DealStore  # noqa: E402
-from jobs.contracts import JobStatus, JobPhase, WAVE1_SLICE_PHASES  # noqa: E402
+from jobs.contracts import (  # noqa: E402
+    JobStatus, JobPhase, WAVE1_SLICE_PHASES, OpenQuestion, SOURCE_CITED,
+)
 from jobs.job_store import get_job_store, SQLiteJobStore  # noqa: E402
 from jobs.wave0 import run_wave0  # noqa: E402
 from jobs.analysts import StubAnalysts, merge_slices  # noqa: E402
-from jobs.synthesis import run_synthesis  # noqa: E402
+from jobs.synthesis import run_synthesis, MissingEngineInputsError  # noqa: E402
 
 # Map slice index -> the WAVE1 phase for audit/phase tracking.
 _SLICE_PHASE = list(WAVE1_SLICE_PHASES)
@@ -119,7 +121,13 @@ def run_job(
             )
             return js.get_job(job_id)
 
-        critical_inputs = wave0["critical_inputs"]
+        # Full critical-inputs dict: wave0's normalized BL-17 three win, but EXTRA engine fields
+        # answered at AWAITING_INPUT (bridge_loan, refi_rate, ...) ride along to synthesis —
+        # wave0 only extracts the locked three and would otherwise drop the answers.
+        critical_inputs = {
+            **(intake_summary.get("critical_inputs") or {}),
+            **wave0["critical_inputs"],
+        }
 
         # ---- Wave 1: the five analytical slices, SEQUENTIALLY ----------------------------------
         js.transition(job_id, JobStatus.ANALYZING, ts, phase=_SLICE_PHASE[0])
@@ -146,13 +154,46 @@ def run_job(
 
         # ---- Wave 2: synthesis (engine + gates) — deterministic, no LLM ------------------------
         js.transition(job_id, JobStatus.SYNTHESIZING, ts, phase=JobPhase.WAVE2_SYNTHESIS)
-        result = run_synthesis(merged, critical_inputs, ts, return_result=True)
+        try:
+            result = run_synthesis(merged, critical_inputs, ts, return_result=True)
+        except MissingEngineInputsError as e:
+            # ASK, don't crash (the BL-17 spirit, applied to the full engine contract): the deal
+            # package did not yield a runnable payload — one blocking question per missing field.
+            # field uses the meta.critical_inputs.* namespace so the existing answer->resume
+            # mapping (_summary_from_answers) routes the values back without new parsing.
+            for name in e.missing:
+                js.add_open_question(job_id, OpenQuestion(
+                    id=f"oq-{job_id}-engine-{name}",
+                    field=f"meta.critical_inputs.{name}",
+                    question=(f"Provide {name} for the ACQ engine — the deal package did not "
+                              f"yield it (or the value was invalid)."),
+                    current_value=None,
+                    source=SOURCE_CITED,
+                    blocking=True,
+                ), now_iso=ts)
+            js.append_audit(job_id, "error", f"synthesis paused for inputs: {e}", ts=ts)
+            js.transition(job_id, JobStatus.AWAITING_INPUT, ts)
+            return js.get_job(job_id)
         js.append_audit(
             job_id, "gate",
             f"Synthesis gates ok={result.gate_summary.ok} "
             f"blocking={result.gate_summary.blocking}",
             detail=result.gate_summary.as_dict(), ts=ts,
         )
+
+        # ---- FAIL CLOSED on a blocking gate: a RED underwrite must never present as a clean CP-1
+        if not result.gate_summary.ok:
+            job = js.get_job(job_id)
+            deal = ds.get(job.deal_id)
+            ds.put(job.deal_id, result.spec, expected_version=deal.version,
+                   now_iso=ts, status="gate_failed")  # spec kept for forensics, never 'computed'
+            js.append_audit(job_id, "gate",
+                            f"BLOCKING gate(s) failed: {result.gate_summary.blocking} — "
+                            "failing closed (spec persisted as gate_failed)",
+                            detail=result.gate_summary.as_dict(), ts=ts)
+            js.transition(job_id, JobStatus.FAILED, ts,
+                          error=f"blocking QA gates failed: {result.gate_summary.blocking}")
+            return js.get_job(job_id)
 
         # Persist every llm-inferred cell as an OpenQuestion for the CP-1 glance.
         for q in result.open_questions:

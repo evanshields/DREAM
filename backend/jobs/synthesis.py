@@ -164,14 +164,21 @@ def _is_llm_inferred(cell: Dict[str, Any]) -> bool:
 
 
 def _critical_inputs_dict(critical_inputs: Any) -> Dict[str, Any]:
-    """Normalize CriticalInputs (dataclass | dict | obj) into a plain dict (JSON-native)."""
+    """Normalize CriticalInputs (dataclass | dict | obj) into a plain dict (JSON-native).
+    A dict source keeps ALL its keys (not just the BL-17 three) — answered AWAITING_INPUT
+    questions for engine fields (bridge_loan, refi_rate, ...) ride in through here and must
+    survive to _coerce_acq_inputs."""
     if critical_inputs is None:
         return {"purchase_price": None, "hold_years": None, "exit_cap": None}
     if isinstance(critical_inputs, dict):
-        src = critical_inputs
-        getter = src.get
-    else:
-        getter = lambda k: getattr(critical_inputs, k, None)  # noqa: E731
+        out = {
+            "purchase_price": critical_inputs.get("purchase_price"),
+            "hold_years": critical_inputs.get("hold_years"),
+            "exit_cap": critical_inputs.get("exit_cap"),
+        }
+        out.update({k: v for k, v in critical_inputs.items() if v is not None})
+        return out
+    getter = lambda k: getattr(critical_inputs, k, None)  # noqa: E731
     return {
         "purchase_price": getter("purchase_price"),
         "hold_years": getter("hold_years"),
@@ -179,18 +186,55 @@ def _critical_inputs_dict(critical_inputs: Any) -> Dict[str, Any]:
     }
 
 
+class MissingEngineInputsError(ValueError):
+    """The merged slices + critical inputs do not form a runnable ACQ engine payload.
+
+    Raised BEFORE ACQDealInputs is constructed so the runner can stop at AWAITING_INPUT with one
+    blocking OpenQuestion per missing/invalid field — the BL-17 'ask, don't crash' contract —
+    instead of dying with a raw TypeError AFTER the Wave-1 LLM spend."""
+
+    def __init__(self, missing: List[str]):
+        super().__init__(
+            "ACQ engine inputs missing or invalid: " + ", ".join(missing)
+            + " (supply them via the deal package or answer the blocking questions)"
+        )
+        self.missing = list(missing)
+
+
 def _coerce_acq_inputs(engine_inputs: Dict[str, Any], ci: Dict[str, Any]) -> ACQDealInputs:
-    """Build ACQDealInputs from the slices' engine inputs, with BL-17 critical inputs as the
-    authoritative source for exit_cap / sale_year (hold). Unknown keys are ignored (ACQDealInputs
-    only accepts its declared fields)."""
+    """Build ACQDealInputs from the slices' engine inputs, with critical inputs as the
+    authoritative overlay: BL-17's locked fields PLUS any engine field answered by a human at
+    AWAITING_INPUT (human answers always beat slice values). Unknown keys are ignored.
+
+    Validates the payload is RUNNABLE before constructing — missing required debt terms, a
+    non-positive exit_cap/total_equity, or an NOI series shorter than the hold raise
+    MissingEngineInputsError (question-able) rather than TypeError/DivisionByZero (a crash)."""
+    fields = ACQDealInputs.__dataclass_fields__
     payload = {k: v for k, v in (engine_inputs or {}).items()
-               if k in ACQDealInputs.__dataclass_fields__}
-    # Critical inputs (BL-17) win over any slice-supplied value for the three locked fields,
-    # but only when present (so the Esplanade stub, which sets them on engine_inputs, still works).
-    if ci.get("exit_cap") is not None:
-        payload["exit_cap"] = ci["exit_cap"]
+               if k in fields and v is not None}
+    # hold_years is BL-17's name for the engine's sale_year.
     if ci.get("hold_years") is not None:
         payload["sale_year"] = int(ci["hold_years"])
+    # Every engine field present in ci (exit_cap from BL-17; bridge/refi/etc from answered
+    # questions) overrides the slice value — the human is authoritative.
+    for k, v in ci.items():
+        if k in fields and v is not None:
+            payload[k] = v
+
+    problems: List[str] = []
+    required = ("bridge_loan", "bridge_rate", "bridge_io_years",
+                "refi_loan", "refi_rate", "refi_io_years")
+    problems.extend(k for k in required if payload.get(k) is None)
+    if payload.get("exit_cap", 0.06) <= 0:
+        problems.append("exit_cap")
+    if payload.get("total_equity") is None or payload.get("total_equity", 0.0) <= 0:
+        problems.append("total_equity")
+    sale_year = int(payload.get("sale_year", 7))
+    noi = payload.get("noi_series") or []
+    if len(noi) < max(sale_year, 1):
+        problems.append("noi_series")
+    if problems:
+        raise MissingEngineInputsError(problems)
     return ACQDealInputs(**payload)
 
 

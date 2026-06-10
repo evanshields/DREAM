@@ -28,6 +28,7 @@ the assumption dashboard and sizing flows; the headline returns come from the pr
 """
 from __future__ import annotations
 
+import math
 import os
 import sys
 from dataclasses import dataclass, field
@@ -77,8 +78,13 @@ def to_dec_list(xs) -> List[Decimal]:
 
 
 def f(x) -> float:
-    """Decimal -> float, only at the JSON edge."""
-    return float(x) if x is not None else None
+    """Decimal -> float, only at the JSON edge. Non-finite (NaN/inf, e.g. numpy IRR on degenerate
+    flows) -> None: JSON cannot carry them (Starlette's encoder 500s on NaN), and a NaN must read
+    as 'not computable' rather than poison a persisted spec."""
+    if x is None:
+        return None
+    v = float(x)
+    return v if math.isfinite(v) else None
 
 
 def f_list(xs) -> List[float]:

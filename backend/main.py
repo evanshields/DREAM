@@ -74,16 +74,18 @@ app = FastAPI(
 )
 
 # /api/recalc lives in its own router whose import graph is deliberately LLM-free (A1.5).
+# ALL Wave A-D routers are auth-gated at mount time (router files stay dependency-free so their
+# standalone test harnesses run without tokens; production enforcement lives HERE).
 from routers.recalc import router as recalc_router  # noqa: E402
-app.include_router(recalc_router)
+app.include_router(recalc_router, dependencies=[Depends(require_auth)])
 
 # Wave D — App->Excel push (populate + reconcile against a user Mini Model template).
 from routers.export_excel import router as export_router  # noqa: E402
-app.include_router(export_router)
+app.include_router(export_router, dependencies=[Depends(require_auth)])
 
 # Wave C — chat-bot fast-path job service (submit/status/answer/cancel; HITL stop at CP-1).
 from routers.jobs import router as jobs_router  # noqa: E402
-app.include_router(jobs_router)
+app.include_router(jobs_router, dependencies=[Depends(require_auth)])
 
 # Task C — username/password login (issues a short-lived app JWT accepted by require_auth
 # alongside Google OAuth). Urgent stopgap before Google Test Users propagate.

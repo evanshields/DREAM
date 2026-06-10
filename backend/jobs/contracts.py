@@ -106,7 +106,8 @@ _BASE_TRANSITIONS: Dict[JobStatus, set] = {
     JobStatus.ROUTING:        {JobStatus.AWAITING_INPUT, JobStatus.ANALYZING},
     JobStatus.AWAITING_INPUT: {JobStatus.ROUTING, JobStatus.ANALYZING},  # resume after a human answer
     JobStatus.ANALYZING:      {JobStatus.SYNTHESIZING, JobStatus.AWAITING_INPUT},
-    JobStatus.SYNTHESIZING:   {JobStatus.AWAITING_CP1},                  # HITL: synthesis terminates at CP-1
+    JobStatus.SYNTHESIZING:   {JobStatus.AWAITING_CP1,                   # HITL: synthesis terminates at CP-1
+                               JobStatus.AWAITING_INPUT},                # ...or asks for missing engine inputs
     JobStatus.AWAITING_CP1:   {JobStatus.COMPLETED},                     # ONLY an explicit human action; never auto
     JobStatus.COMPLETED:      set(),
     JobStatus.FAILED:         set(),
