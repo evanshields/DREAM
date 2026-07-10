@@ -214,12 +214,17 @@ class SchemaValidationError(ValueError):
     """A KimiAnalysts slice failed validation against underwrite-spec.schema.json (fail closed)."""
 
 
-def _validate_cells(cells: Any) -> None:
+def _validate_cells(cells: Any) -> List[Dict[str, Any]]:
     """Validate a `cells[]` slice fragment against the schema's cell item rules (required keys,
-    value type, allowed `type`/`source`). Lightweight; covers what the slices actually emit."""
+    value type, allowed `type`/`source`). Structural violations still RAISE (fail closed), but a
+    cell whose VALUE is non-scalar (list/dict — an LLM echoing series data it saw in the intake)
+    is DROPPED rather than killing a multi-minute run: such a cell could never populate a
+    spreadsheet cell anyway, and engine inputs flow via assumptions_engine_inputs, not cells.
+    Returns the (possibly filtered) list."""
     if not isinstance(cells, list):
         raise SchemaValidationError("cells must be a list")
     allowed_types = {"currency", "percent", "decimal", "integer", "text", "year"}
+    kept: List[Dict[str, Any]] = []
     for c in cells:
         if not isinstance(c, dict):
             raise SchemaValidationError("each cell must be an object")
@@ -229,11 +234,13 @@ def _validate_cells(cells: Any) -> None:
         if not isinstance(c["cell"], str) or not c["cell"]:
             raise SchemaValidationError(f"cell.cell must be a non-empty string: {c!r}")
         if not isinstance(c["value"], (int, float, str, bool)) and c["value"] is not None:
-            raise SchemaValidationError(f"cell.value bad type: {c!r}")
+            continue  # drop the non-scalar echo; never a legal spreadsheet cell
         if not isinstance(c["source"], str):
             raise SchemaValidationError(f"cell.source must be a string: {c!r}")
         if "type" in c and c["type"] not in allowed_types:
             raise SchemaValidationError(f"cell.type {c['type']!r} not allowed")
+        kept.append(c)
+    return kept
 
 
 def validate_slice(slice_out: Dict[str, Any]) -> Dict[str, Any]:
@@ -244,7 +251,7 @@ def validate_slice(slice_out: Dict[str, Any]) -> Dict[str, Any]:
         raise SchemaValidationError("slice output must be a dict")
     for key in ("t12_cells", "rentroll_cells", "assumptions_cells"):
         if key in slice_out:
-            _validate_cells(slice_out[key])
+            slice_out[key] = _validate_cells(slice_out[key])  # may drop non-scalar echo cells
     if "t12_unmapped" in slice_out and not isinstance(slice_out["t12_unmapped"], int):
         raise SchemaValidationError("qa.t12_unmapped must be an integer")
     if "assumptions_engine_inputs" in slice_out and not isinstance(

@@ -266,3 +266,46 @@ def test_sensitivity_rejects_zero_in_exit_cap_sweep():
         "field": "exit_cap", "values": [0.0, 0.05, 0.06], "metric": "irr",
     })
     assert r.status_code == 400
+
+
+# ---------------------------------------------------------------------------
+# 9. Live-Kimi resume bug (2026-07-10): array answers must not reach the LLM slices
+#    as critical inputs, and an LLM echoing a non-scalar cell must not kill the run.
+# ---------------------------------------------------------------------------
+
+class _CISpy(StubAnalysts):
+    """Records the critical_inputs each run_all call receives."""
+    seen: list = []
+
+    def run_all(self, deal_docs=None, intake_summary=None, critical_inputs=None):
+        type(self).seen.append(dict(critical_inputs or {}))
+        return super().run_all(deal_docs, intake_summary, critical_inputs)
+
+
+def test_slices_receive_only_bl17_trio_not_engine_answers(monkeypatch):
+    """Answered engine fields (esp. arrays like noi_series) go to SYNTHESIS only — the analyst
+    slices get wave0's three scalar BL-17 inputs (their contract). Feeding arrays to the live LLM
+    made it echo them back as schema-invalid cells (the 2026-07-10 production failure)."""
+    _CISpy.seen = []
+    client, ds, js = _jobs_client(monkeypatch, lambda: _CISpy())
+    intake = {"routing": "ACQ", "deal_name": "SpyDeal",
+              "critical_inputs": {"purchase_price": 55000000, "hold_years": 7, "exit_cap": 0.06,
+                                  "noi_series": [1.0, 2.0, 3.0],       # engine answer riding along
+                                  "bridge_loan": 23800000}}
+    r = client.post("/api/jobs", json={"intake_summary": intake, "owner": "evan"})
+    assert r.status_code == 200, r.text
+    assert len(_CISpy.seen) == 1
+    ci_seen = _CISpy.seen[0]
+    assert set(ci_seen.keys()) == {"purchase_price", "hold_years", "exit_cap"}
+    assert "noi_series" not in ci_seen and "bridge_loan" not in ci_seen
+
+
+def test_validate_slice_drops_non_scalar_cells_instead_of_raising():
+    from jobs.analysts import validate_slice
+    out = {"t12_cells": [
+        {"cell": "B10", "value": 55000000, "source": "OM p.3"},
+        {"cell": "noi_series", "value": [1, 2, 3], "source": "BL-17"},   # LLM echo — drop
+    ]}
+    cleaned = validate_slice(out)
+    assert cleaned is out                                    # identity preserved
+    assert [c["cell"] for c in cleaned["t12_cells"]] == ["B10"]

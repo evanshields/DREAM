@@ -135,7 +135,11 @@ def run_job(
         runner = getattr(analysts, "run_all", None)
         if runner is not None:
             # run_all returns the five outputs in order; we still audit per phase + check cancel.
-            outputs = analysts.run_all(deal_docs, intake_summary, critical_inputs)
+            # The SLICES get only wave0's normalized BL-17 trio (their documented contract, all
+            # scalars). The full merged critical_inputs — which may carry answered ENGINE fields
+            # including arrays like noi_series — goes to synthesis ONLY: feeding arrays to the LLM
+            # as "authoritative critical inputs" makes it echo them back as (schema-invalid) cells.
+            outputs = analysts.run_all(deal_docs, intake_summary, wave0["critical_inputs"])
             for i, out in enumerate(outputs):
                 _check_cancel(js, job_id)
                 phase = _SLICE_PHASE[min(i, len(_SLICE_PHASE) - 1)]
