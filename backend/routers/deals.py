@@ -1,17 +1,24 @@
 """
-backend/routers/deals.py — read-only deal list (PRD §6, APIRouter prefix /api/deals).
+backend/routers/deals.py — read-only deal views (PRD §6, APIRouter prefix /api/deals).
 
-The Pipeline screen needs a list of the user's deals. `DealStore.list(owner, routing, status)`
-already returns the records; this router is the thin HTTP surface over it. ONE endpoint:
+The Pipeline screen needs a list of the user's deals, and the /deal/:id detail page needs the FULL
+deal view (so a cold reload doesn't lose gates + open questions). `DealStore` already returns the
+records; this router is the thin HTTP surface over it. TWO endpoints:
 
-  GET /api/deals   list deals (optional ?owner=&routing=&status= filters) ->
-                   [{deal_id, deal_name, slug, routing, mode, status, owner, version,
-                     created_at, updated_at, headline_metrics}]
+  GET /api/deals             list deals (optional ?owner=&routing=&status= filters) ->
+                             [{deal_id, deal_name, slug, routing, mode, status, owner, version,
+                               created_at, updated_at, headline_metrics}]
+  GET /api/deals/{deal_id}   the full deal view: the list-item fields PLUS the opaque canonical
+                             spec, gate_summary (spec.qa), and the latest job block
+                             {job_id, status, phase, error, open_questions, blocking_questions}
+                             (null when the deal has no job). 404 on an unknown deal_id.
 
 `headline_metrics` is pulled from each record's spec (spec.headline_metrics), defaulting to {} for
-un-computed drafts. Read-only — no writes, no LLM. The router mounts standalone in tests
-(TestClient with an injected DealStore) exactly like routers/jobs.py, and is auth-gated at mount
-time in main.py (the router file itself stays dependency-free so its test harness needs no token).
+un-computed drafts. Read-only — no writes, no LLM (jobs.job_store imports contracts + the store
+package only; the analysts/LLM modules stay out of this router's import graph). The router mounts
+standalone in tests (TestClient with injected stores) exactly like routers/jobs.py, and is
+auth-gated at mount time in main.py (the router file itself stays dependency-free so its test
+harness needs no token).
 """
 from __future__ import annotations
 
@@ -19,13 +26,15 @@ import os
 import sys
 from typing import Any, Dict, List, Optional
 
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, HTTPException, Query
 
 _BACKEND = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if _BACKEND not in sys.path:
     sys.path.insert(0, _BACKEND)
 
-from store import get_deal_store, DealStore, DealRecord  # noqa: E402
+from store import get_deal_store, DealStore, DealRecord, DealNotFound  # noqa: E402
+from jobs.contracts import JobRecord  # noqa: E402
+from jobs.job_store import get_job_store  # noqa: E402
 
 router = APIRouter(prefix="/api/deals", tags=["deals"])
 
@@ -57,6 +66,28 @@ def _deal_view(rec: DealRecord) -> Dict[str, Any]:
     }
 
 
+def _gate_summary(spec: Dict[str, Any]) -> Dict[str, Any]:
+    """Pull the QA gate summary (spec.qa) off the canonical spec; {} for un-computed drafts."""
+    if isinstance(spec, dict):
+        qa = spec.get("qa")
+        if isinstance(qa, dict):
+            return qa
+    return {}
+
+
+def _deal_job_view(job: JobRecord) -> Dict[str, Any]:
+    """The job block on the deal detail view — the slice of _job_view (routers/jobs.py) the
+    /deal/:id page needs to restore gates + open questions on a cold reload."""
+    return {
+        "job_id": job.job_id,
+        "status": job.status.value,
+        "phase": job.phase.value,
+        "error": job.error,
+        "open_questions": [q.to_dict() for q in job.open_questions],
+        "blocking_questions": [q.to_dict() for q in job.blocking_questions()],
+    }
+
+
 @router.get("")
 @router.get("/")
 def list_deals(
@@ -67,3 +98,24 @@ def list_deals(
     """List deals (newest first), optionally filtered by owner/routing/status. Read-only."""
     ds: DealStore = get_deal_store()
     return [_deal_view(rec) for rec in ds.list(owner=owner, routing=routing, status=status)]
+
+
+@router.get("/{deal_id}")
+def get_deal(deal_id: str) -> Dict[str, Any]:
+    """The full deal view for /deal/:id — list-item fields + the opaque canonical spec +
+    gate_summary + the MOST RECENT job for this deal (or null). Read-only; 404 on unknown id."""
+    ds: DealStore = get_deal_store()
+    try:
+        rec = ds.get(deal_id)
+    except DealNotFound:
+        raise HTTPException(status_code=404, detail=f"deal '{deal_id}' not found")
+
+    view = _deal_view(rec)
+    view["spec"] = rec.spec
+    view["gate_summary"] = _gate_summary(rec.spec)
+
+    # Latest job for this deal: list_jobs(deal_id=...) is parametrized SQL inside the store
+    # package and returns newest-first (ORDER BY updated_at DESC) — first row wins.
+    jobs = get_job_store().list_jobs(deal_id=deal_id)
+    view["job"] = _deal_job_view(jobs[0]) if jobs else None
+    return view
