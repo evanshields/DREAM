@@ -4,7 +4,7 @@ backend/jobs/runner.py — Wave C-v1 SEQUENTIAL job runner (the chat-bot fast pa
 run_job(job_id) drives one fast-path underwrite to the HITL stop, SEQUENTIALLY (v1):
 
     SUBMITTED
-      -> ROUTING          run_wave0 (BL-17 critical inputs + ACQ routing)
+      -> ROUTING          run_wave0 (per-routing critical inputs + ACQ/EFB routing decision)
          |-- not ready -> AWAITING_INPUT  (blocking OpenQuestions persisted; STOP, return)
       -> ANALYZING        the five analytical slices, one after another (StubAnalysts default;
                           KimiAnalysts when wired). Each slice + the merge are audited.
@@ -135,8 +135,9 @@ def run_job(
         runner = getattr(analysts, "run_all", None)
         if runner is not None:
             # run_all returns the five outputs in order; we still audit per phase + check cancel.
-            # The SLICES get only wave0's normalized BL-17 trio (their documented contract, all
-            # scalars). The full merged critical_inputs — which may carry answered ENGINE fields
+            # The SLICES get only wave0's normalized per-route critical inputs (their documented
+            # contract, ALL scalars — the ACQ BL-17 trio, or the EFB stabilized_noi + optional
+            # bond scalars). The full merged critical_inputs — which may carry answered ENGINE fields
             # including arrays like noi_series — goes to synthesis ONLY: feeding arrays to the LLM
             # as "authoritative critical inputs" makes it echo them back as (schema-invalid) cells.
             outputs = analysts.run_all(deal_docs, intake_summary, wave0["critical_inputs"])
@@ -165,12 +166,13 @@ def run_job(
             # package did not yield a runnable payload — one blocking question per missing field.
             # field uses the meta.critical_inputs.* namespace so the existing answer->resume
             # mapping (_summary_from_answers) routes the values back without new parsing.
+            engine_route = getattr(e, "routing", "ACQ")
             for name in e.missing:
                 js.add_open_question(job_id, OpenQuestion(
                     id=f"oq-{job_id}-engine-{name}",
                     field=f"meta.critical_inputs.{name}",
-                    question=(f"Provide {name} for the ACQ engine — the deal package did not "
-                              f"yield it (or the value was invalid)."),
+                    question=(f"Provide {name} for the {engine_route} engine — the deal package "
+                              f"did not yield it (or the value was invalid)."),
                     current_value=None,
                     source=SOURCE_CITED,
                     blocking=True,

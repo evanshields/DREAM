@@ -157,13 +157,16 @@ def submit_job(req: SubmitJobRequest):
     # intake_payload preserves the ORIGINAL submission so an AWAITING_INPUT resume re-runs with
     # the full deal package (docs + summary), not just the answered questions. It lives on the
     # seed spec only; the synthesis ds.put replaces the spec at CP-1, by which point resume is over.
+    # Routing: an explicit intake_summary routing wins (it is what Wave 0 reads), else the
+    # request field, else ACQ — so an EFB submission's job/seed record matches its actual route.
+    routing = str(req.intake_summary.get("routing") or req.routing or "ACQ").upper()
     seed_spec = {
         "meta": {
             "deal_name": req.deal_name or req.intake_summary.get("deal_name", ""),
             "slug": (req.intake_summary.get("slug")
                      or (req.deal_name or "deal").lower().replace(" ", "-")),
-            "routing": (req.routing or "ACQ").upper(),
-            "template": "acq-mini-model",
+            "routing": routing,
+            "template": "efb-mini-model" if routing == "EFB" else "acq-mini-model",
             "mode": "HITL",
         },
         "qa": {},
@@ -175,7 +178,7 @@ def submit_job(req: SubmitJobRequest):
     }
     deal = ds.create(seed_spec, owner=req.owner, now_iso=ts, status="draft")
     job = js.create_job(
-        deal_id=deal.deal_id, routing=(req.routing or "ACQ"), owner=req.owner,
+        deal_id=deal.deal_id, routing=routing, owner=req.owner,
         now_iso=ts, idempotency_key=req.idempotency_key,
     )
 

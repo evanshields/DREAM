@@ -74,6 +74,14 @@ def run_gates(
     a 2nd-source count, template formulas). When evidence is absent, that gate is skipped (not
     failed) EXCEPT unit-count with no source, which the reconciler itself blocks.
 
+    Per-route behavior (meta.routing):
+      * deal_identity (BL-02) and unit_count (BL-01) are routing-agnostic — both routes run them.
+      * fee_bounds (BL-03) reads B45 on ACQ, B39 on EFB; the vendored assert_fee_bounds already
+        passes the EFB route with a documented reason (5% IS the EFB default).
+      * formula_audit (BL-07) runs on ACQ only; on EFB it is skipped EXPLICITLY with a
+        documented reason written into qa.formula_audit (the fragile-cell table is ACQ-template
+        calibrated) — never silently.
+
     Returns (spec_copy_with_qa_filled, GateSummary).
     """
     spec = copy.deepcopy(spec)
@@ -136,7 +144,21 @@ def run_gates(
             summary.warnings.append("unit_count:single_source")
 
     # --- BL-07 formula integrity ---
-    if template_formulas:
+    if routing == "EFB":
+        # EXPLICIT SKIP (never silent): the BL-07 fragile-cell table (S40/B66/B67/row31/row32/
+        # row78 with their canonical formulas) is calibrated to the ACQ mini-model template. No
+        # EFB-template audit table exists yet, so running the ACQ expectations against an EFB
+        # workbook would emit false PATCH verdicts. The skip is recorded in qa so CP-1 shows the
+        # gate was considered and why it did not run.
+        qa["formula_audit"] = {
+            "skipped": True,
+            "routing": routing,
+            "reason": ("BL-07 fragile-cell table is calibrated to the ACQ mini-model template; "
+                       "no EFB-template audit table exists yet — gate skipped explicitly rather "
+                       "than run against the wrong template"),
+        }
+        summary.details["formula_audit"] = qa["formula_audit"]
+    elif template_formulas:
         res = formula_integrity_check(template_formulas)
         qa["formula_audit"] = [
             {"cell": v.cell, "status": v.status, "expected": v.expected,

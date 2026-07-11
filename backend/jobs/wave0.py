@@ -4,19 +4,29 @@ backend/jobs/wave0.py — Wave 0 routing + BL-17 critical-input capture (NO LLM)
 Wave 0 runs BEFORE the five analytical slices. Two jobs, both deterministic (the runner never
 dispatches an agent that would discover a gap mid-run — the Envy failure):
 
-  1. BL-17 critical inputs — purchase_price / hold_years / exit_cap (state_ledger.CriticalInputs).
-     Any missing => the run STOPS at AWAITING_INPUT and emits one BLOCKING OpenQuestion per missing
-     input. These three diverged silently on Envy (7 vs 10 hold, 6.5 vs 6.25 exit); capturing them
-     up front and surviving restarts is the whole point of the durable ledger.
+  1. Per-routing critical inputs — one blocking OpenQuestion per missing input:
+       ACQ: purchase_price / hold_years / exit_cap (BL-17, state_ledger.CriticalInputs). These
+            three diverged silently on Envy (7 vs 10 hold, 6.5 vs 6.25 exit); capturing them up
+            front and surviving restarts is the whole point of the durable ledger.
+       EFB: stabilized_noi (float, > 0 — the bond-sizing input). hold_years is optional (the
+            engine defaults 10); bond_rate / target_dscr / amortization_years /
+            annual_property_tax_exempted are optional scalar pass-throughs to the engine.
 
-  2. Routing — FORCED to ACQ in v1 (EFB is a later unlock), but the BASIS is recorded so a future
-     EFB enablement is auditable. If the intake explicitly signals an EFB/ambiguous-future deal,
-     Wave 0 does NOT guess: it stops at AWAITING_INPUT with a blocking routing OpenQuestion.
+  2. Routing — default ACQ; explicit routing="EFB" is ACCEPTED (the EFB unlock) with basis
+     "explicit:EFB". An AMBIGUOUS EFB signal (tokens in the notes without an explicit routing)
+     still stops at AWAITING_INPUT with a blocking routing OpenQuestion — Wave 0 never guesses.
+     When routing is ambiguous, critical-input capture is DEFERRED: the resume re-runs Wave 0
+     with the answered routing and gates the correct per-route set then (asking the ACQ trio on
+     a deal that may be EFB would demand the wrong inputs).
 
 Return contract (a plain dict, JSON-native):
-  ready    -> {"ready": True,  "critical_inputs": {...}, "routing": "ACQ", "routing_basis": "..."}
-  not ready-> {"ready": False, "awaiting": [OpenQuestion, ...], "routing": "ACQ"|None,
+  ready    -> {"ready": True,  "critical_inputs": {...}, "routing": "ACQ"|"EFB",
+               "routing_basis": "..."}
+  not ready-> {"ready": False, "awaiting": [OpenQuestion, ...], "routing": "ACQ"|"EFB"|None,
                "critical_inputs": {...}}  (the OpenQuestions are BLOCKING)
+
+critical_inputs values are ALWAYS scalars (float/int/None) — the slices' locked contract
+(arrays fed to the LLM slices get echoed back as schema-invalid cells; a production bug).
 
 No clock, no DB, no LLM — the runner persists the result and drives the transition.
 """
@@ -43,14 +53,23 @@ except Exception:  # pragma: no cover
     CriticalInputs = None  # type: ignore
     REQUIRED_CRITICAL_INPUTS = ("purchase_price", "hold_years", "exit_cap")
 
-# Human-readable prompts per missing BL-17 input (CP-1 / AWAITING_INPUT surface).
+# Human-readable prompts per missing BL-17 input (CP-1 / AWAITING_INPUT surface). ACQ route.
 _CRITICAL_PROMPTS = {
     "purchase_price": "What is the purchase price (B10)? Required before any spread begins (BL-17).",
     "hold_years": "What is the hold period in years (e.g. 7 or 10)? Required before any spread (BL-17).",
     "exit_cap": "What is the exit cap rate (e.g. 0.0625)? Required before any spread (BL-17).",
 }
 
-# v1 routing is forced ACQ; these tokens in the intake force an explicit human routing decision.
+# EFB critical inputs: stabilized_noi is REQUIRED (bond sizing runs on it); everything else is an
+# optional scalar pass-through with a validated engine default (engine_boundary.EFBDealInputs).
+_EFB_REQUIRED_CRITICAL_INPUTS = ("stabilized_noi",)
+_EFB_CRITICAL_PROMPTS = {
+    "stabilized_noi": ("What is the stabilized (Year-1) NOI? Required to size the tax-exempt "
+                       "bonds to the target DSCR (EFB critical input)."),
+}
+
+# Default routing is ACQ; these tokens in the intake (WITHOUT an explicit routing) force an
+# explicit human routing decision — Wave 0 never guesses EFB from prose.
 _EFB_SIGNAL_TOKENS = (
     "efb", "tax-exempt bond", "tax exempt bond", "4% bond", "lihtc",
     "workforce housing", "hap", "noah",
@@ -109,15 +128,70 @@ def _extract_critical_inputs(intake_summary: Dict[str, Any]):
     return _Shim(pp, hy, ec)
 
 
+def _extract_efb_critical_inputs(intake_summary: Dict[str, Any]):
+    """Pull the EFB critical inputs from the intake summary (nested 'critical_inputs' block or
+    flat aliases). stabilized_noi (float, > 0) is REQUIRED; hold_years is optional (the engine
+    defaults 10); bond_rate / target_dscr / amortization_years / annual_property_tax_exempted are
+    optional pass-throughs included only when present. ALL values are scalars (the slices' locked
+    contract). Returns (critical_inputs_dict, missing_field_names)."""
+    ci_src: Dict[str, Any] = {}
+    nested = intake_summary.get("critical_inputs")
+    if isinstance(nested, dict):
+        ci_src.update(nested)
+    # flat fallbacks / aliases
+    for key, aliases in (
+        ("stabilized_noi", ("stabilized_noi", "noi", "year1_noi")),
+        ("hold_years", ("hold_years", "hold_period", "hold")),
+        ("bond_rate", ("bond_rate",)),
+        ("target_dscr", ("target_dscr",)),
+        ("amortization_years", ("amortization_years",)),
+        ("annual_property_tax_exempted", ("annual_property_tax_exempted",)),
+    ):
+        if ci_src.get(key) in (None, ""):
+            for a in aliases:
+                if intake_summary.get(a) not in (None, ""):
+                    ci_src[key] = intake_summary[a]
+                    break
+
+    def _flt(v):
+        try:
+            return float(v) if v not in (None, "") else None
+        except (TypeError, ValueError):
+            return None
+
+    def _int(v):
+        try:
+            return int(v) if v not in (None, "") else None
+        except (TypeError, ValueError):
+            return None
+
+    noi = _flt(ci_src.get("stabilized_noi"))
+    if noi is not None and noi <= 0:
+        noi = None  # a non-positive NOI cannot size bonds — treat as missing (ask, don't crash)
+
+    ci: Dict[str, Any] = {"stabilized_noi": noi, "hold_years": _int(ci_src.get("hold_years"))}
+    for k in ("bond_rate", "target_dscr", "annual_property_tax_exempted"):
+        v = _flt(ci_src.get(k))
+        if v is not None:
+            ci[k] = v
+    v = _int(ci_src.get("amortization_years"))
+    if v is not None:
+        ci["amortization_years"] = v
+
+    missing = [k for k in _EFB_REQUIRED_CRITICAL_INPUTS if ci.get(k) is None]
+    return ci, missing
+
+
 def _detect_routing(intake_summary: Dict[str, Any]) -> Dict[str, Any]:
-    """Decide routing. v1 forces ACQ but records the basis. An explicit EFB/ambiguous signal in the
-    intake (without an explicit routing='ACQ' confirmation) forces a human routing decision."""
+    """Decide routing. Explicit routing (ACQ or EFB) is accepted with its basis recorded. An
+    ambiguous EFB signal in the prose (without an explicit routing) forces a human routing
+    decision — Wave 0 never guesses EFB from tokens."""
     explicit = str(intake_summary.get("routing", "")).strip().upper()
     if explicit == "ACQ":
         return {"routing": "ACQ", "basis": "explicit:ACQ", "ambiguous": False}
     if explicit == "EFB":
-        # EFB is a later unlock; do not auto-route. Stop and ask.
-        return {"routing": None, "basis": "explicit:EFB (unsupported in v1)", "ambiguous": True}
+        # The EFB unlock: an EXPLICIT routing=EFB is accepted (deterministic, human-supplied).
+        return {"routing": "EFB", "basis": "explicit:EFB", "ambiguous": False}
 
     blob = " ".join(
         str(v) for v in (
@@ -131,8 +205,8 @@ def _detect_routing(intake_summary: Dict[str, Any]) -> Dict[str, Any]:
     if hit:
         return {"routing": None, "basis": f"ambiguous: EFB signal '{hit}' detected", "ambiguous": True}
 
-    # default v1: ACQ
-    return {"routing": "ACQ", "basis": "default:ACQ (v1 forces ACQ; EFB is a later unlock)",
+    # default: ACQ (EFB routes only on an explicit routing=EFB or an answered routing question)
+    return {"routing": "ACQ", "basis": "default:ACQ (no EFB signal; EFB requires explicit routing)",
             "ambiguous": False}
 
 
@@ -145,19 +219,23 @@ def run_wave0(job: Any, intake_summary: Optional[Dict[str, Any]]) -> Dict[str, A
     intake_summary = dict(intake_summary or {})
     job_id = getattr(job, "job_id", "job")
 
-    ci = _extract_critical_inputs(intake_summary)
     routing = _detect_routing(intake_summary)
 
     awaiting: List[OpenQuestion] = []
+    critical_inputs: Dict[str, Any] = {}
 
-    # --- routing ambiguity is a BLOCKING question (never guess EFB) ---
     if routing["ambiguous"] or routing["routing"] is None:
+        # --- routing ambiguity is a BLOCKING question (never guess EFB) -----------------------
+        # Critical-input capture is DEFERRED: the correct per-route set depends on the answer
+        # (asking the ACQ trio on a deal that turns out EFB would demand the wrong inputs). The
+        # resume re-runs Wave 0 with the answered routing and gates the right set then.
         awaiting.append(OpenQuestion(
             id=f"oq-{job_id}-routing",
             field="meta.routing",
             question=(
-                "Confirm deal routing. Wave C-v1 underwrites ACQ only; an EFB/ambiguous signal was "
-                f"detected ({routing['basis']}). Choose ACQ to proceed, or hold for the EFB unlock."
+                "Confirm deal routing (ACQ levered returns or EFB tax-exempt bond sizing). An "
+                f"ambiguous EFB signal was detected ({routing['basis']}); Wave 0 never guesses "
+                "routing from prose."
             ),
             current_value=None,
             source=SOURCE_CITED,
@@ -165,28 +243,42 @@ def run_wave0(job: Any, intake_summary: Optional[Dict[str, Any]]) -> Dict[str, A
             blocking=True,
         ))
 
-    # --- BL-17 critical inputs: one blocking question per missing field ---
-    for field in ci.missing():
-        awaiting.append(OpenQuestion(
-            id=f"oq-{job_id}-{field}",
-            field=f"meta.critical_inputs.{field}",
-            question=_CRITICAL_PROMPTS.get(field, f"Provide {field} (BL-17 critical input)."),
-            current_value=None,
-            source=SOURCE_CITED,
-            blocking=True,
-        ))
+    elif routing["routing"] == "EFB":
+        # --- EFB critical inputs: stabilized_noi required; the rest optional pass-throughs ----
+        critical_inputs, missing = _extract_efb_critical_inputs(intake_summary)
+        for field in missing:
+            awaiting.append(OpenQuestion(
+                id=f"oq-{job_id}-{field}",
+                field=f"meta.critical_inputs.{field}",
+                question=_EFB_CRITICAL_PROMPTS.get(field, f"Provide {field} (EFB critical input)."),
+                current_value=None,
+                source=SOURCE_CITED,
+                blocking=True,
+            ))
 
-    critical_inputs = {
-        "purchase_price": ci.purchase_price,
-        "hold_years": ci.hold_years,
-        "exit_cap": ci.exit_cap,
-    }
+    else:
+        # --- ACQ: BL-17 critical inputs, one blocking question per missing field (unchanged) --
+        ci = _extract_critical_inputs(intake_summary)
+        for field in ci.missing():
+            awaiting.append(OpenQuestion(
+                id=f"oq-{job_id}-{field}",
+                field=f"meta.critical_inputs.{field}",
+                question=_CRITICAL_PROMPTS.get(field, f"Provide {field} (BL-17 critical input)."),
+                current_value=None,
+                source=SOURCE_CITED,
+                blocking=True,
+            ))
+        critical_inputs = {
+            "purchase_price": ci.purchase_price,
+            "hold_years": ci.hold_years,
+            "exit_cap": ci.exit_cap,
+        }
 
     if awaiting:
         return {
             "ready": False,
             "awaiting": awaiting,
-            "routing": routing["routing"],          # may be None when EFB/ambiguous
+            "routing": routing["routing"],          # may be None when ambiguous
             "routing_basis": routing["basis"],
             "critical_inputs": critical_inputs,
         }
@@ -194,6 +286,6 @@ def run_wave0(job: Any, intake_summary: Optional[Dict[str, Any]]) -> Dict[str, A
     return {
         "ready": True,
         "critical_inputs": critical_inputs,
-        "routing": routing["routing"],              # "ACQ"
+        "routing": routing["routing"],              # "ACQ" | "EFB"
         "routing_basis": routing["basis"],
     }

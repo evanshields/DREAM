@@ -1,6 +1,7 @@
-"""Wave C-v1 — Wave 0 acceptance tests. Deterministic routing + BL-17 critical-input capture, NO
-LLM: ready when all three inputs present + ACQ; AWAITING_INPUT with one blocking OpenQuestion per
-missing input; ambiguous/EFB routing forces a blocking routing decision (never guesses)."""
+"""Wave C — Wave 0 acceptance tests. Deterministic routing + per-route critical-input capture, NO
+LLM. ACQ: ready when the BL-17 trio present; AWAITING_INPUT with one blocking OpenQuestion per
+missing input. EFB (the unlock): explicit routing=EFB is ACCEPTED and gates on stabilized_noi;
+an AMBIGUOUS EFB signal still forces a blocking routing decision (never guesses)."""
 import os
 import sys
 
@@ -57,7 +58,7 @@ def test_routing_defaults_to_acq_with_basis():
     })
     assert out["ready"] is True
     assert out["routing"] == "ACQ"
-    assert "v1 forces ACQ" in out["routing_basis"]
+    assert out["routing_basis"].startswith("default:ACQ")
 
 
 def test_efb_signal_forces_blocking_routing_question():
@@ -73,10 +74,56 @@ def test_efb_signal_forces_blocking_routing_question():
     assert out["routing"] is None
 
 
-def test_explicit_efb_routing_not_auto_supported():
+def test_ambiguous_routing_defers_critical_input_questions():
+    """When routing is ambiguous, the ONLY blocking question is routing — per-route critical
+    inputs are gated on the resume (asking the ACQ trio on a maybe-EFB deal is wrong)."""
+    out = run_wave0(_job(), {"notes": "workforce housing play"})  # no routing, no inputs
+    assert out["ready"] is False
+    assert [q.field for q in out["awaiting"]] == ["meta.routing"]
+
+
+# ---- the EFB unlock: explicit routing=EFB is accepted -------------------------------------
+
+def test_explicit_efb_routing_accepted_with_stabilized_noi():
     out = run_wave0(_job(), {
         "routing": "EFB",
-        "critical_inputs": {"purchase_price": 55000000, "hold_years": 7, "exit_cap": 0.06},
+        "critical_inputs": {"stabilized_noi": 4448271.31},
     })
+    assert out["ready"] is True
+    assert out["routing"] == "EFB"
+    assert out["routing_basis"] == "explicit:EFB"
+    assert out["critical_inputs"]["stabilized_noi"] == 4448271.31
+    assert out["critical_inputs"]["hold_years"] is None  # optional; engine defaults 10
+
+
+def test_efb_missing_stabilized_noi_blocks_with_one_question():
+    out = run_wave0(_job(), {"routing": "EFB"})
     assert out["ready"] is False
-    assert any(q.field == "meta.routing" for q in out["awaiting"])
+    assert [q.field for q in out["awaiting"]] == ["meta.critical_inputs.stabilized_noi"]
+    assert all(q.blocking for q in out["awaiting"])
+
+
+def test_efb_non_positive_noi_treated_as_missing():
+    out = run_wave0(_job(), {"routing": "EFB", "critical_inputs": {"stabilized_noi": 0}})
+    assert out["ready"] is False
+    assert [q.field for q in out["awaiting"]] == ["meta.critical_inputs.stabilized_noi"]
+
+
+def test_efb_optional_scalars_ride_along():
+    out = run_wave0(_job(), {
+        "routing": "EFB",
+        "critical_inputs": {
+            "stabilized_noi": 4448271.31, "hold_years": 10, "bond_rate": 0.05,
+            "target_dscr": 1.15, "amortization_years": 35,
+            "annual_property_tax_exempted": 900000,
+        },
+    })
+    assert out["ready"] is True
+    ci = out["critical_inputs"]
+    assert ci == {
+        "stabilized_noi": 4448271.31, "hold_years": 10, "bond_rate": 0.05,
+        "target_dscr": 1.15, "amortization_years": 35,
+        "annual_property_tax_exempted": 900000.0,
+    }
+    # the slices' locked contract: every critical-input value is a scalar
+    assert all(isinstance(v, (int, float)) for v in ci.values())

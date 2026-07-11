@@ -207,6 +207,46 @@ class StubAnalysts:
 
 
 # ---------------------------------------------------------------------------
+# Rayzor Ranch EFB ground-truth fixtures (the StubEFBAnalysts payload) — CITED deal data.
+# Values match underwriting-engine/engine/tests/test_efb_rayzor.py + backend/tests/
+# test_engine_boundary_efb_and_routing.py so run_synthesis on the EFB route reproduces the
+# Rayzor bond-sizing invariant (implied Y1 DSCR == 1.15 target within 2%) with NO LLM.
+# ---------------------------------------------------------------------------
+
+_RAYZOR_EFB_ENGINE_INPUTS = {
+    "stabilized_noi": 4448271.31,          # Rayzor Mini Model Year-1 NOI
+    "target_dscr": 1.15,                   # EFB standing rule (with HAP)
+    "bond_rate": 0.05,                     # tax-exempt bond coupon
+    "amortization_years": 35,
+    "annual_property_tax_exempted": 900000.0,   # 10-yr exemption color -> tax_savings_10yr 9.0M
+    "hold_years": 10,
+}
+
+
+class StubEFBAnalysts(StubAnalysts):
+    """FIXED Rayzor-equivalent EFB slices. No LLM, no network — the EFB mirror of StubAnalysts.
+    Only the assumptions slice differs materially (EFB bond-sizing engine inputs; fee cell B39
+    instead of B45; no ACQ template_formulas — BL-07 is explicitly skipped on the EFB route).
+    t12/rentroll/comps/marketdata reuse the parent shapes with Rayzor's 329 units so the
+    unit-count gate (routing-agnostic) still exercises."""
+
+    def __init__(self, *, units: int = 329):
+        super().__init__(units=units)
+
+    def slice_assumptions(self) -> Dict[str, Any]:
+        return {
+            "assumptions_cells": [
+                {"cell": "B10", "value": 62000000, "source": "Rayzor OM / executed PSA", "phase": 3},
+                {"cell": "B39", "value": 0.05, "source": "EFB developer-fee default (5%)", "phase": 3},
+                # one judgment cell -> exercises the OpenQuestion ledger on the EFB route too
+                {"cell": "B31", "value": 0.02, "source": SOURCE_LLM_INFERRED, "phase": 3},
+            ],
+            "assumptions_engine_inputs": dict(_RAYZOR_EFB_ENGINE_INPUTS),
+            "fee_override": False,
+        }
+
+
+# ---------------------------------------------------------------------------
 # Self-contained spec-slice validator (no jsonschema dependency)
 # ---------------------------------------------------------------------------
 
@@ -293,6 +333,20 @@ _SLICE_PROMPTS: Dict[str, str] = {
         "\"template_formulas\":{...}}. Deal/engine values carry a 'source'; pure judgment values "
         "use \"source\":\"llm-inferred\"."
     ),
+    # EFB variant of the assumptions slice (selected when the intake routing is EFB): the fee
+    # cell is B39 (5% IS the valid EFB default — no ACQ 0.5-1.0% band) and the engine inputs are
+    # the bond-sizing fields, not the bridge/refi levered-returns fields.
+    "assumptions_efb": (
+        "You are agent-assumptions (EFB / tax-exempt bond route). Read pricing/closing/fees/bond "
+        "INPUT cells only (NEVER formula cells). The EFB fee cell is B39; 5% is the valid EFB "
+        "default (the ACQ 0.5-1.0% band does NOT apply). Build the EFB engine input floats as "
+        "assumptions_engine_inputs: stabilized_noi (REQUIRED, the Year-1 stabilized NOI the "
+        "bonds are sized on), target_dscr (1.15 with HAP, 1.20 without), bond_rate, "
+        "amortization_years, annual_property_tax_exempted, hold_years. Return JSON ONLY: "
+        "{\"assumptions_cells\":[{\"cell\",\"value\",\"source\",\"phase\":3}], "
+        "\"assumptions_engine_inputs\":{...}, \"fee_override\":false}. Deal/engine values carry "
+        "a 'source'; pure judgment values use \"source\":\"llm-inferred\"."
+    ),
     "comps": (
         "You are agent-comps. Sales: Sold + valid price/units/SF, recency-weighted ranked "
         "candidates. Rent comps by bedroom with P50/P75/Max (skip the subject). Construction "
@@ -347,7 +401,14 @@ class KimiAnalysts:
     def _run_slice(self, name: str, deal_docs: Dict[str, Any],
                    intake_summary: Dict[str, Any],
                    critical_inputs: Dict[str, Any]) -> Dict[str, Any]:
-        system = _SLICE_PROMPTS[name]
+        # Minimal routing awareness: only the assumptions slice is ACQ-specific (fee cell,
+        # engine-input fields); on an EFB intake it swaps to the EFB prompt variant. The other
+        # four slices are routing-agnostic and keep their prompts.
+        prompt_key = name
+        if name == "assumptions" and str(
+                (intake_summary or {}).get("routing", "")).strip().upper() == "EFB":
+            prompt_key = "assumptions_efb"
+        system = _SLICE_PROMPTS[prompt_key]
         user = (
             "Deal package summary:\n"
             f"{json.dumps(intake_summary, ensure_ascii=False)[:6000]}\n\n"

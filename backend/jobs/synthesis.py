@@ -1,5 +1,5 @@
 """
-backend/jobs/synthesis.py — Wave C-v1 SEQUENTIAL Wave-2 synthesis runner (ACQ-only, HITL).
+backend/jobs/synthesis.py — Wave C SEQUENTIAL Wave-2 synthesis runner (ACQ + EFB, HITL).
 
 This is the heart of the chat-bot fast path: it takes the merged output of the five Wave-1
 analytical slices (a plain dict — STUBBED/mockable in this pass, no live Kimi), assembles the
@@ -29,13 +29,22 @@ in v1 (see module-level WIRED / DEFERRED notes and integration_notes for the hon
       re-run FourTierOptimizer / ExitCapTriangulator / RepriceSolver in v1 — those Decimal calls
       stay upstream (the analytical slices / a later wave) so synthesis.py holds NO Decimal.
 
+  EFB ROUTE (the EFB unlock): meta.routing == "EFB" dispatches to the validated bond-sizing path
+    (`engine_boundary.run_efb_underwrite`, Rayzor-validated) instead of the ACQ projector. The
+    EFB engine inputs (stabilized_noi required; target_dscr/bond_rate/amortization_years/
+    annual_property_tax_exempted/hold_years optional with validated defaults) come from the
+    slices' assumptions_engine_inputs overlaid by the critical inputs (human answers win),
+    mirroring the ACQ coercion. The ACQ path is UNCHANGED (Esplanade ground truth protected).
+
   DEFERRED (NOT in v1, documented honestly):
-    * NOAH/EFB route signal build (the engine never auto-builds EFB; ACQ-only here).
+    * NOAH/EFB route signal build (the engine never auto-builds EFB; routing is human-decided
+      at Wave 0 — explicit routing=EFB or an answered routing question).
     * Reprice solve, interest-reserve equity resizing, exit-cap/LTV gate RECOMPUTE from raw inputs.
 
 DETERMINISM RULE (locked): headline_metrics + qa.* NEVER come from an LLM. They come from the
-engine (`run_acq_underwrite`) and the gate harness. Any slice value tagged `source == 'llm-inferred'`
-is treated as judgment, surfaced as an OpenQuestion, and NEVER written into headline_metrics/qa.
+engine (`run_acq_underwrite` / `run_efb_underwrite`) and the gate harness. Any slice value tagged
+`source == 'llm-inferred'` is treated as judgment, surfaced as an OpenQuestion, and NEVER written
+into headline_metrics/qa.
 
 JSON-NATIVE: floats not Decimal at this layer (Decimal stays inside engine_boundary). The spec this
 module emits is a plain dict matching underwrite-spec.schema.json (meta/qa/cells/headline_metrics/
@@ -53,7 +62,10 @@ _BACKEND = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if _BACKEND not in sys.path:
     sys.path.insert(0, _BACKEND)
 
-from engine_boundary import ACQDealInputs, run_acq_underwrite  # noqa: E402
+from engine_boundary import (  # noqa: E402
+    ACQDealInputs, run_acq_underwrite,
+    EFBDealInputs, run_efb_underwrite,
+)
 from qa_gates import run_gates, GateSummary                    # noqa: E402
 
 from jobs.contracts import (  # noqa: E402
@@ -187,18 +199,20 @@ def _critical_inputs_dict(critical_inputs: Any) -> Dict[str, Any]:
 
 
 class MissingEngineInputsError(ValueError):
-    """The merged slices + critical inputs do not form a runnable ACQ engine payload.
+    """The merged slices + critical inputs do not form a runnable engine payload (ACQ or EFB).
 
-    Raised BEFORE ACQDealInputs is constructed so the runner can stop at AWAITING_INPUT with one
-    blocking OpenQuestion per missing/invalid field — the BL-17 'ask, don't crash' contract —
-    instead of dying with a raw TypeError AFTER the Wave-1 LLM spend."""
+    Raised BEFORE the route's DealInputs is constructed so the runner can stop at AWAITING_INPUT
+    with one blocking OpenQuestion per missing/invalid field — the BL-17 'ask, don't crash'
+    contract — instead of dying with a raw TypeError AFTER the Wave-1 LLM spend. `routing` names
+    the engine route the payload failed for (the runner uses it in the question text)."""
 
-    def __init__(self, missing: List[str]):
+    def __init__(self, missing: List[str], routing: str = "ACQ"):
         super().__init__(
-            "ACQ engine inputs missing or invalid: " + ", ".join(missing)
+            f"{routing} engine inputs missing or invalid: " + ", ".join(missing)
             + " (supply them via the deal package or answer the blocking questions)"
         )
         self.missing = list(missing)
+        self.routing = routing
 
 
 def _coerce_acq_inputs(engine_inputs: Dict[str, Any], ci: Dict[str, Any]) -> ACQDealInputs:
@@ -236,6 +250,43 @@ def _coerce_acq_inputs(engine_inputs: Dict[str, Any], ci: Dict[str, Any]) -> ACQ
     if problems:
         raise MissingEngineInputsError(problems)
     return ACQDealInputs(**payload)
+
+
+def _coerce_efb_inputs(engine_inputs: Dict[str, Any], ci: Dict[str, Any]) -> EFBDealInputs:
+    """Build EFBDealInputs from the slices' engine inputs, with critical inputs as the
+    authoritative overlay (human answers always beat slice values) — the exact mirror of
+    _coerce_acq_inputs for the bond-sizing route. Unknown keys are ignored; every EFBDealInputs
+    field is a direct name match (hold_years included), so no field renaming is needed.
+
+    Validates the payload is RUNNABLE before constructing: stabilized_noi must be present and
+    > 0 (the bond-sizing denominator); optional fields, WHEN SUPPLIED, must be positive (a 0
+    bond_rate/target_dscr/amortization_years would divide-by-zero inside the engine). Failures
+    raise MissingEngineInputsError(routing="EFB") — question-able, not a crash."""
+    fields = EFBDealInputs.__dataclass_fields__
+    payload = {k: v for k, v in (engine_inputs or {}).items()
+               if k in fields and v is not None}
+    # Every engine field present in ci (stabilized_noi from Wave 0; bond_rate/target_dscr/etc
+    # from answered questions or optional pass-throughs) overrides the slice value — the human
+    # is authoritative.
+    for k, v in ci.items():
+        if k in fields and v is not None:
+            payload[k] = v
+
+    def _positive(v) -> bool:
+        try:
+            return v is not None and float(v) > 0
+        except (TypeError, ValueError):
+            return False
+
+    problems: List[str] = []
+    if not _positive(payload.get("stabilized_noi")):
+        problems.append("stabilized_noi")
+    for opt in ("target_dscr", "bond_rate", "amortization_years", "hold_years"):
+        if opt in payload and not _positive(payload[opt]):
+            problems.append(opt)
+    if problems:
+        raise MissingEngineInputsError(problems, routing="EFB")
+    return EFBDealInputs(**payload)
 
 
 def build_open_questions(slices: AnalyticalSlices) -> List[OpenQuestion]:
@@ -340,13 +391,17 @@ def run_synthesis(
     *,
     return_result: bool = False,
 ):
-    """Execute the Wave-2 SEQUENTIAL synthesis (ACQ-only, HITL) and return the spec + headline_metrics.
+    """Execute the Wave-2 SEQUENTIAL synthesis (ACQ or EFB per meta.routing, HITL) and return the
+    spec + headline_metrics.
 
     Args:
       slices: the merged 5-slice output — an AnalyticalSlices, or a plain dict (a stub's output)
               coerced via AnalyticalSlices.from_dict (no live LLM needed).
-      critical_inputs: state_ledger.CriticalInputs | dict | obj with purchase_price/hold_years/exit_cap
-              (BL-17). The three locked fields win over slice-supplied values for exit_cap / sale_year.
+      critical_inputs: state_ledger.CriticalInputs | dict | obj. ACQ: purchase_price/hold_years/
+              exit_cap (BL-17) — the three locked fields win over slice-supplied values for
+              exit_cap / sale_year. EFB: stabilized_noi (required) plus optional bond fields
+              (bond_rate/target_dscr/amortization_years/annual_property_tax_exempted/hold_years).
+              In BOTH routes, human-answered engine fields riding in here beat slice values.
       now_iso: caller-supplied ISO-8601 timestamp (this module keeps no clock — deterministic, like
               DealStore / the state ledger). Stamped into meta.generated.
 
@@ -355,8 +410,9 @@ def run_synthesis(
       When return_result=True, a SynthesisResult carrying the GateSummary + open_questions too
       (the runner persists these on the JobRecord; the presenter renders them at CP-1).
 
-    Determinism: headline_metrics comes ONLY from engine_boundary.run_acq_underwrite; qa.* gates
-    come ONLY from qa_gates.run_gates. No LLM value enters either. The fail-closed contract: a
+    Determinism: headline_metrics comes ONLY from engine_boundary.run_acq_underwrite (ACQ) or
+    engine_boundary.run_efb_underwrite (EFB); qa.* gates come ONLY from qa_gates.run_gates.
+    No LLM value enters either. The fail-closed contract: a
     blocking gate sets GateSummary.ok=False with the gate named in .blocking (the runner FAILs /
     surfaces it; it does not silently proceed).
     """
@@ -364,21 +420,30 @@ def run_synthesis(
         slices = AnalyticalSlices.from_dict(dict(slices or {}))
 
     routing = str((slices.meta or {}).get("routing", "ACQ")).upper()
-    if routing != "ACQ":
-        # ACQ ROUTE ONLY in v1 (EFB is a later wave). Fail closed rather than guess.
-        raise ValueError(
-            f"Wave C-v1 synthesis is ACQ-only; got routing {routing!r}. EFB is a later unlock."
-        )
-
     ci = _critical_inputs_dict(critical_inputs)
 
     # --- Steps 6 + 9: drive the VALIDATED engine for headline returns (deterministic) ----------
-    # The lease-up-ramped NOI series (step 4) is supplied by the slices via assumptions_engine_inputs
-    # (noi_series); the engine consumes it directly. Interest reserve (step 6) is wired-if-present:
-    # a stabilized deal (no shortfall years) yields reserve_sized=0 and an UNCHANGED DSCR series,
-    # so the Esplanade ground truth is protected (no equity resize is applied in v1).
-    acq_inputs = _coerce_acq_inputs(slices.assumptions_engine_inputs, ci)
-    headline_metrics = run_acq_underwrite(acq_inputs)  # floats; the CP-2 oracle
+    # Routing dispatch: ACQ -> the Esplanade-validated levered-returns projector (UNCHANGED);
+    # EFB -> the Rayzor-validated bond-sizing path. Anything else fails closed — never guess.
+    if routing == "ACQ":
+        # The lease-up-ramped NOI series (step 4) is supplied by the slices via
+        # assumptions_engine_inputs (noi_series); the engine consumes it directly. Interest
+        # reserve (step 6) is wired-if-present: a stabilized deal (no shortfall years) yields
+        # reserve_sized=0 and an UNCHANGED DSCR series, so the Esplanade ground truth is
+        # protected (no equity resize is applied in v1).
+        acq_inputs = _coerce_acq_inputs(slices.assumptions_engine_inputs, ci)
+        headline_metrics = run_acq_underwrite(acq_inputs)  # floats; the CP-2 oracle
+    elif routing == "EFB":
+        # EFB: size the tax-exempt bonds to the target DSCR on stabilized NOI (Rayzor-validated
+        # BondSizingCalculator via engine_boundary). headline_metrics carries the EFB shape
+        # (bond_amount / year1_dscr / year1_noi / tax_savings_10yr ...), never irr.
+        efb_inputs = _coerce_efb_inputs(slices.assumptions_engine_inputs, ci)
+        headline_metrics = run_efb_underwrite(efb_inputs)  # floats; the CP-2 oracle
+    else:
+        # Unknown route. Fail closed rather than guess.
+        raise ValueError(
+            f"synthesis supports routing ACQ or EFB; got {routing!r}."
+        )
 
     # --- assemble the canonical spec (before gates; run_gates reads it) ------------------------
     spec = assemble_spec(slices, headline_metrics, ci)
