@@ -309,3 +309,17 @@ def test_validate_slice_drops_non_scalar_cells_instead_of_raising():
     cleaned = validate_slice(out)
     assert cleaned is out                                    # identity preserved
     assert [c["cell"] for c in cleaned["t12_cells"]] == ["B10"]
+
+
+def test_deal_name_survives_synthesis(monkeypatch):
+    """The CP-1 ds.put re-derives the deal index from the SYNTHESIZED spec; the slices' meta has
+    no deal_name, so without the runner's carry-forward the computed deal loses its name."""
+    client, ds, js = _jobs_client(monkeypatch, lambda: StubAnalysts())
+    r = client.post("/api/jobs", json={"intake_summary": READY, "owner": "evan",
+                                       "deal_name": "Named Deal"})
+    assert r.json()["status"] == "awaiting_cp1"
+    deals = ds.list()
+    assert len(deals) == 1
+    assert deals[0].status == "computed"
+    assert deals[0].deal_name == "Named Deal"          # survived the spec replacement
+    assert deals[0].slug == "named-deal"

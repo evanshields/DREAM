@@ -151,9 +151,16 @@ def run_job(
             raise TypeError("analysts must expose run_all(...)")
 
         merged = merge_slices(slice_outputs)
-        # Ensure routing flows into the spec meta (synthesis is ACQ-only and reads meta.routing).
+        # Ensure routing flows into the spec meta (synthesis dispatches on meta.routing).
         merged.setdefault("meta", {}).setdefault("routing", wave0["routing"])
         merged["meta"].setdefault("routing_basis", wave0.get("routing_basis", ""))
+        # Deal identity must SURVIVE synthesis: the slices' meta rarely carries the app-level
+        # deal_name/slug/template/mode, and the CP-1 ds.put re-derives the index from the NEW
+        # spec — without this carry-forward, computed deals lose their names in the pipeline.
+        seed_meta = ds.get(js.get_job(job_id).deal_id).spec.get("meta", {}) or {}
+        for key in ("deal_name", "slug", "template", "mode"):
+            if seed_meta.get(key):
+                merged["meta"].setdefault(key, seed_meta[key])
 
         _check_cancel(js, job_id)
 
