@@ -7,11 +7,13 @@ import {
   Inbox,
   TrendingUp,
   Building2,
+  Landmark,
+  Activity,
   Loader2,
 } from 'lucide-react';
 import { listDeals, ApiError, type DealListItem } from '../lib/api';
 import { Card, Button, Badge, statusTone } from '../components/ui';
-import { fmtEM, fmtPct1, fmtDate, prettyStatus } from '../lib/format';
+import { fmtEM, fmtPct1, fmtUSD, fmtDate, prettyStatus } from '../lib/format';
 
 type Filter = 'all' | 'computed' | 'awaiting_input' | 'gate_failed' | 'draft';
 const FILTERS: { key: Filter; label: string }[] = [
@@ -120,17 +122,32 @@ export function Pipeline() {
 
 function DealCard({ deal }: { deal: DealListItem }) {
   const hm = deal.headline_metrics ?? {};
+  const isEFB = deal.routing === 'EFB';
+
+  // ACQ headline pair
   const irr = typeof hm.irr === 'number' ? hm.irr : null;
   const em = typeof hm.equity_multiple === 'number' ? hm.equity_multiple : null;
+  // EFB headline pair
+  const bond = typeof hm.bond_amount === 'number' ? hm.bond_amount : null;
+  const dscr = typeof hm.year1_dscr === 'number' ? hm.year1_dscr : null;
+
+  const hasMetrics = isEFB ? bond != null || dscr != null : irr != null || em != null;
 
   return (
     <Link to={`/deal/${encodeURIComponent(deal.deal_id)}`} className="block group">
-      <Card className="p-5 h-full transition-shadow group-hover:shadow-cardHover border-t-4 border-t-teal">
+      <Card
+        className={`p-5 h-full transition-shadow group-hover:shadow-cardHover border-t-4 ${
+          isEFB ? 'border-t-taupe' : 'border-t-teal'
+        }`}
+      >
         <div className="flex items-start justify-between gap-2 mb-3">
           <h3 className="font-head font-bold text-lg text-slate-near leading-tight">
             {deal.deal_name || 'Untitled deal'}
           </h3>
-          <Badge tone={deal.routing === 'EFB' ? 'taupe' : 'teal'}>{deal.routing || '—'}</Badge>
+          <Badge tone={isEFB ? 'taupe' : 'teal'}>
+            {isEFB && <Landmark className="w-3 h-3" />}
+            {deal.routing || '—'}
+          </Badge>
         </div>
 
         <div className="flex items-center gap-2 mb-4">
@@ -138,10 +155,23 @@ function DealCard({ deal }: { deal: DealListItem }) {
           <span className="text-xs text-slate/40">Updated {fmtDate(deal.updated_at)}</span>
         </div>
 
-        {irr != null || em != null ? (
+        {hasMetrics ? (
           <div className="grid grid-cols-2 gap-3 pt-3 border-t border-slate/10">
-            <Metric label="IRR" value={irr != null ? fmtPct1(irr) : '—'} icon={TrendingUp} />
-            <Metric label="Equity Mult." value={em != null ? fmtEM(em) : '—'} icon={Building2} />
+            {isEFB ? (
+              <>
+                <Metric
+                  label="Bond Proceeds"
+                  value={bond != null ? fmtUSD(bond) : '—'}
+                  icon={Landmark}
+                />
+                <Metric label="Year-1 DSCR" value={dscr != null ? fmtEM(dscr) : '—'} icon={Activity} />
+              </>
+            ) : (
+              <>
+                <Metric label="IRR" value={irr != null ? fmtPct1(irr) : '—'} icon={TrendingUp} />
+                <Metric label="Equity Mult." value={em != null ? fmtEM(em) : '—'} icon={Building2} />
+              </>
+            )}
           </div>
         ) : (
           <p className="text-xs text-slate/40 pt-3 border-t border-slate/10">

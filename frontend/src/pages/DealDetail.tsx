@@ -5,11 +5,13 @@ import {
   TrendingUp,
   Layers,
   DollarSign,
+  Landmark,
   ShieldCheck,
   ShieldAlert,
   HelpCircle,
   CheckCircle2,
   XCircle,
+  MinusCircle,
   Loader2,
   AlertTriangle,
 } from 'lucide-react';
@@ -19,11 +21,39 @@ import {
   type JobView,
   type DealListItem,
   type DealHeadlineMetrics,
+  type EFBHeadlineMetrics,
+  type EFBUnderwriteRequest,
   type OpenQuestion,
 } from '../lib/api';
 import { Card, Badge, statusTone } from '../components/ui';
 import { AssumptionDashboard } from '../components/AssumptionDashboard';
+import {
+  EFBMetricTiles,
+  EFBSizingPanel,
+  EFB_SIZING_DEFAULTS,
+} from '../components/EFBMetricTiles';
 import { fmtUSD, fmtPct1, fmtEM, prettyStatus, fmtDate } from '../lib/format';
+
+// Pull the EFB metric keys out of the generic per-deal headline_metrics bag.
+const EFB_METRIC_KEYS = [
+  'bond_amount',
+  'annual_debt_service',
+  'maximum_debt_service',
+  'year1_noi',
+  'year1_dscr',
+  'target_dscr',
+  'bond_rate',
+  'tax_savings_10yr',
+] as const;
+
+function pickEFBMetrics(hm: DealHeadlineMetrics): Partial<EFBHeadlineMetrics> {
+  const out: Partial<EFBHeadlineMetrics> = {};
+  for (const k of EFB_METRIC_KEYS) {
+    const v = hm[k];
+    if (typeof v === 'number') out[k] = v;
+  }
+  return out;
+}
 
 // The CP-1 review + assumption dashboard (PRD §4.4).
 // Two arrival paths:
@@ -74,10 +104,26 @@ export function DealDetail() {
     ? ((stateJob.spec as { meta?: { deal_name?: string } }).meta?.deal_name ?? 'Deal')
     : (deal?.deal_name ?? 'Deal');
   const routing = stateJob?.routing ?? deal?.routing ?? 'ACQ';
+  const isEFB = routing === 'EFB';
   const status = stateJob?.status ?? deal?.status ?? '';
 
   const gateSummary = stateJob?.gate_summary ?? null;
   const openQuestions = stateJob?.open_questions ?? [];
+
+  // Seed the live EFB sizing panel from the deal's computed headline metrics.
+  const efbSeed = useMemo<Partial<EFBUnderwriteRequest> | undefined>(() => {
+    if (!isEFB || !headline) return undefined;
+    const m = pickEFBMetrics(headline);
+    const seed: Partial<EFBUnderwriteRequest> = {};
+    if (m.year1_noi != null) seed.stabilized_noi = m.year1_noi;
+    if (m.target_dscr != null) seed.target_dscr = m.target_dscr;
+    if (m.bond_rate != null) seed.bond_rate = m.bond_rate;
+    // headline exposes only the hold-total savings (tax_savings_10yr, keyed to
+    // the 10-yr default hold) — back out the annual figure for the panel input.
+    if (m.tax_savings_10yr != null)
+      seed.annual_property_tax_exempted = m.tax_savings_10yr / EFB_SIZING_DEFAULTS.hold_years;
+    return seed;
+  }, [isEFB, headline]);
 
   if (loading) {
     return (
@@ -114,9 +160,18 @@ export function DealDetail() {
         </Card>
       )}
 
-      {/* CP-1: headline metrics */}
+      {/* CP-1: headline metrics (routing-aware — EFB shows bond sizing tiles) */}
       {headline ? (
-        <HeadlineMetricsBlock hm={headline} />
+        isEFB ? (
+          <div>
+            <h2 className="eyebrow text-slate/60 mb-3 flex items-center">
+              <Landmark className="w-4 h-4 mr-2" /> CP-1 Headline Metrics
+            </h2>
+            <EFBMetricTiles hm={pickEFBMetrics(headline)} />
+          </div>
+        ) : (
+          <HeadlineMetricsBlock hm={headline} />
+        )
       ) : (
         <Card className="p-5 bg-teal-panel/40 border-teal/15">
           <p className="text-sm text-slate/70">
@@ -136,9 +191,10 @@ export function DealDetail() {
       {/* Open questions (LLM-inferred cells to confirm; non-blocking) */}
       {openQuestions.length > 0 && <OpenQuestionsBlock questions={openQuestions} />}
 
-      {/* Live assumption dashboard — always available */}
+      {/* Live modelling — EFB gets the bond sizing panel (seeded from the deal's
+          computed metrics); ACQ keeps the full assumption dashboard. */}
       <div className="pt-2 border-t border-slate/10">
-        <AssumptionDashboard />
+        {isEFB ? <EFBSizingPanel seed={efbSeed} /> : <AssumptionDashboard />}
       </div>
     </div>
   );
@@ -190,6 +246,15 @@ function GateSummaryBlock({ gates }: { gates: Record<string, unknown> }) {
   const entries = Object.entries(gates);
   if (entries.length === 0) return null;
 
+  // {skipped: true, reason} — e.g. formula_audit on EFB runs. Neutral, not a failure.
+  const gateSkipped = (v: unknown): string | null => {
+    if (v && typeof v === 'object') {
+      const o = v as Record<string, unknown>;
+      if (o.skipped === true) return typeof o.reason === 'string' ? o.reason : '';
+    }
+    return null;
+  };
+
   const gatePassed = (v: unknown): boolean | null => {
     if (typeof v === 'boolean') return v;
     if (v && typeof v === 'object') {
@@ -203,7 +268,9 @@ function GateSummaryBlock({ gates }: { gates: Record<string, unknown> }) {
     return null;
   };
 
-  const anyFail = entries.some(([, v]) => gatePassed(v) === false);
+  const anyFail = entries.some(
+    ([, v]) => gateSkipped(v) === null && gatePassed(v) === false,
+  );
 
   return (
     <div>
@@ -218,11 +285,26 @@ function GateSummaryBlock({ gates }: { gates: Record<string, unknown> }) {
       <Card className="p-1">
         <ul className="divide-y divide-slate/10">
           {entries.map(([name, v]) => {
+            const skippedReason = gateSkipped(v);
             const passed = gatePassed(v);
             return (
-              <li key={name} className="flex items-center justify-between px-4 py-3">
+              <li key={name} className="flex items-center justify-between gap-3 px-4 py-3">
                 <span className="text-sm font-medium text-slate font-mono">{name}</span>
-                {passed === true ? (
+                {skippedReason !== null ? (
+                  <span
+                    className="flex items-center gap-2 min-w-0"
+                    title={skippedReason || undefined}
+                  >
+                    {skippedReason && (
+                      <span className="text-xs text-slate/50 truncate max-w-[280px]">
+                        {skippedReason}
+                      </span>
+                    )}
+                    <Badge tone="neutral" className="shrink-0">
+                      <MinusCircle className="w-3 h-3" /> Skipped
+                    </Badge>
+                  </span>
+                ) : passed === true ? (
                   <Badge tone="ok">
                     <CheckCircle2 className="w-3 h-3" /> Pass
                   </Badge>

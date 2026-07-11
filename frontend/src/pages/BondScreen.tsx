@@ -1,23 +1,15 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useState } from 'react';
 import {
   Landmark,
   Activity,
-  RefreshCw,
   RotateCcw,
-  TrendingUp,
   Crosshair,
   Building2,
   Info,
-  CheckCircle2,
-  AlertTriangle,
 } from 'lucide-react';
 import {
-  underwriteEFB,
   recalcExitCap,
   recalcAgencySizing,
-  ApiError,
-  type EFBUnderwriteRequest,
-  type EFBHeadlineMetrics,
   type ExitCapRequest,
   type ExitCapResponse,
   type ExitCapStrategy,
@@ -25,7 +17,9 @@ import {
   type AgencySizingResponse,
 } from '../lib/api';
 import { Card, Button, Badge } from '../components/ui';
-import { fmtUSD, fmtUSDFull, fmtPct, fmtEM } from '../lib/format';
+import { fmtUSD, fmtPct } from '../lib/format';
+import { NumField, StatusLine, useLiveCalc } from '../components/livecalc';
+import { EFBSizingPanel } from '../components/EFBMetricTiles';
 
 // ---------------------------------------------------------------------------
 // Bond Screen — deterministic 501(c)(3)/EFB tax-exempt bond sizing.
@@ -33,323 +27,10 @@ import { fmtUSD, fmtUSDFull, fmtPct, fmtEM } from '../lib/format';
 //   POST /api/underwrite/efb      — size bonds to a target DSCR on stabilized NOI
 //   POST /api/recalc/exit-cap     — 3-method exit-cap triangulation (takes HIGHEST)
 //   POST /api/recalc/agency-sizing — takeout loan = MIN(DSCR, LTV, debt-yield)
-// Defaults mirror the backend request models exactly.
+// Defaults mirror the backend request models exactly. The EFB sizing panel +
+// the live-recalc field primitives live in src/components (shared with the
+// EFB deal-detail view).
 // ---------------------------------------------------------------------------
-
-// --- edit helpers (same pattern as AssumptionDashboard) --------------------
-
-type Kind = 'usd' | 'pct' | 'int' | 'ratio';
-
-function displayValue(kind: Kind, v: number | null | undefined): string {
-  if (v == null) return '—';
-  if (kind === 'usd') return fmtUSD(v);
-  if (kind === 'pct') return fmtPct(v);
-  if (kind === 'ratio') return fmtEM(v);
-  return `${v}`;
-}
-
-function toEditString(kind: Kind, v: number | null | undefined): string {
-  if (v == null) return '';
-  if (kind === 'pct') return (v * 100).toString();
-  return v.toString();
-}
-
-// '' -> null (field cleared); invalid -> undefined (ignore the commit)
-function fromEditString(kind: Kind, s: string): number | null | undefined {
-  if (s.trim() === '') return null;
-  const n = Number(s);
-  if (!Number.isFinite(n)) return undefined;
-  if (kind === 'pct') return n / 100;
-  if (kind === 'int') return Math.round(n);
-  return n;
-}
-
-// --- shared live-calc hook: run once immediately, then debounce 450ms ------
-
-interface LiveCalcState<Res> {
-  result: Res | null;
-  loading: boolean;
-  error: string | null;
-}
-
-function useLiveCalc<Req, Res>(
-  fn: (req: Req, signal?: AbortSignal) => Promise<Res>,
-  req: Req,
-): LiveCalcState<Res> {
-  const [result, setResult] = useState<Res | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const abortRef = useRef<AbortController | null>(null);
-  const debounceRef = useRef<number | null>(null);
-  const firstRef = useRef(true);
-
-  useEffect(() => {
-    const run = () => {
-      abortRef.current?.abort();
-      const ctrl = new AbortController();
-      abortRef.current = ctrl;
-      setLoading(true);
-      setError(null);
-      fn(req, ctrl.signal)
-        .then((res) => {
-          if (ctrl.signal.aborted) return;
-          setResult(res);
-          setLoading(false);
-        })
-        .catch((e: unknown) => {
-          if (ctrl.signal.aborted) return;
-          if (e instanceof ApiError && e.status === 401) return;
-          setError(e instanceof Error ? e.message : String(e));
-          setLoading(false);
-        });
-    };
-    if (firstRef.current) {
-      firstRef.current = false;
-      run();
-    } else {
-      if (debounceRef.current) window.clearTimeout(debounceRef.current);
-      debounceRef.current = window.setTimeout(run, 450);
-    }
-  }, [fn, req]);
-
-  // abort in-flight + cancel pending debounce on unmount only
-  useEffect(
-    () => () => {
-      abortRef.current?.abort();
-      if (debounceRef.current) window.clearTimeout(debounceRef.current);
-    },
-    [],
-  );
-
-  return { result, loading, error };
-}
-
-// --- status line (recalculating / error / up to date) ----------------------
-
-function StatusLine({ loading, error }: { loading: boolean; error: string | null }) {
-  return (
-    <div className="h-5 flex items-center">
-      {loading ? (
-        <span className="inline-flex items-center text-xs font-medium text-teal">
-          <RefreshCw className="w-3.5 h-3.5 mr-1.5 animate-spin" /> recalculating…
-        </span>
-      ) : error ? (
-        <span className="inline-flex items-center text-xs font-medium text-danger">
-          <AlertTriangle className="w-3.5 h-3.5 mr-1.5" /> {error}
-        </span>
-      ) : (
-        <span className="inline-flex items-center text-xs font-medium text-ok">
-          <CheckCircle2 className="w-3.5 h-3.5 mr-1.5" /> up to date
-        </span>
-      )}
-    </div>
-  );
-}
-
-// --- generic numeric field (draft-buffered; commits on blur/Enter) ---------
-
-interface NumFieldProps {
-  label: string;
-  kind: Kind;
-  value: number | null;
-  hint?: string;
-  optional?: boolean;
-  onCommit: (v: number | null) => void;
-}
-
-function NumField({ label, kind, value, hint, optional, onCommit }: NumFieldProps) {
-  const [draft, setDraft] = useState<string | null>(null);
-
-  const commit = (raw: string) => {
-    const parsed = fromEditString(kind, raw);
-    setDraft(null);
-    if (parsed === undefined) return; // unparseable, keep prior value
-    if (parsed === null && !optional) return; // required field cleared, keep prior value
-    onCommit(parsed);
-  };
-
-  return (
-    <div>
-      <div className="flex items-center justify-between mb-1.5">
-        <label className="text-sm font-semibold text-slate">{label}</label>
-        <Badge tone="neutral">{kind === 'pct' ? '%' : kind === 'usd' ? 'USD' : kind === 'ratio' ? 'x' : '#'}</Badge>
-      </div>
-      <div className="flex items-center gap-2">
-        <input
-          className="input"
-          type="number"
-          step={kind === 'pct' ? '0.01' : kind === 'ratio' ? '0.01' : kind === 'int' ? '1' : '1000'}
-          placeholder={optional ? 'optional' : undefined}
-          value={draft ?? toEditString(kind, value)}
-          onChange={(e) => setDraft(e.target.value)}
-          onBlur={(e) => commit(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
-          }}
-          aria-label={label}
-        />
-        <span className="text-xs text-slate/50 whitespace-nowrap min-w-[56px] text-right tnum">
-          {displayValue(kind, value)}
-        </span>
-      </div>
-      {hint && <p className="text-[11px] text-slate/50 mt-1 leading-tight">{hint}</p>}
-    </div>
-  );
-}
-
-// ===========================================================================
-// EFB bond sizing (primary panel)
-// ===========================================================================
-
-// Backend EFBUnderwriteRequest defaults; stabilized_noi has no backend default,
-// so we seed a representative workforce-housing NOI as the starting point.
-const EFB_DEFAULTS: EFBUnderwriteRequest = {
-  stabilized_noi: 2_500_000,
-  target_dscr: 1.15,
-  bond_rate: 0.05,
-  amortization_years: 35,
-  annual_property_tax_exempted: null,
-  hold_years: 10,
-};
-
-function EFBPanel() {
-  const [req, setReq] = useState<EFBUnderwriteRequest>(EFB_DEFAULTS);
-  const { result, loading, error } = useLiveCalc(underwriteEFB, req);
-  const hm: EFBHeadlineMetrics | null = result?.headline_metrics ?? null;
-
-  const set = (patch: Partial<EFBUnderwriteRequest>) => setReq((prev) => ({ ...prev, ...patch }));
-
-  const tiles = useMemo(
-    () => [
-      {
-        label: 'Max Bond Proceeds',
-        value: hm?.bond_amount != null ? fmtUSD(hm.bond_amount) : '—',
-        sub: 'Largest bond the NOI supports at the target DSCR',
-      },
-      {
-        label: 'Annual Debt Service',
-        value: hm?.annual_debt_service != null ? fmtUSDFull(hm.annual_debt_service) : '—',
-        sub: 'Yearly bond payment on the sized amount',
-      },
-      {
-        label: 'Year-1 DSCR',
-        value: hm?.year1_dscr != null ? fmtEM(hm.year1_dscr) : '—',
-        sub: 'Stabilized NOI over annual debt service',
-      },
-      {
-        label: `Tax Savings (${req.hold_years}-Yr)`,
-        value: hm?.tax_savings_10yr != null ? fmtUSD(hm.tax_savings_10yr) : '—',
-        sub:
-          hm?.tax_savings_10yr != null
-            ? 'Property tax exempted over the hold'
-            : 'Enter annual property tax exempted to compute',
-      },
-    ],
-    [hm, req.hold_years],
-  );
-
-  return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <h2 className="eyebrow text-slate/60 flex items-center">
-          <TrendingUp className="w-4 h-4 mr-2" /> Bond Sizing
-        </h2>
-        <StatusLine loading={loading} error={error} />
-      </div>
-
-      {/* headline tiles */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        {tiles.map((t) => (
-          <Card
-            key={t.label}
-            className={`p-5 flex flex-col justify-between h-full border-t-4 border-t-teal ${
-              loading ? 'opacity-60' : ''
-            }`}
-          >
-            <span className="eyebrow text-slate/50">{t.label}</span>
-            <div className="font-head font-bold text-3xl lg:text-4xl text-teal tnum mt-2">
-              {t.value}
-            </div>
-            <div className="mt-2 text-xs text-slate/50">{t.sub}</div>
-          </Card>
-        ))}
-      </div>
-
-      {/* secondary echo strip */}
-      {hm && (
-        <div className="flex flex-wrap gap-x-6 gap-y-1 text-xs text-slate/60 tnum">
-          <span>
-            Max supportable debt service:{' '}
-            <b className="text-slate">
-              {hm.maximum_debt_service != null ? fmtUSDFull(hm.maximum_debt_service) : '—'}
-            </b>
-          </span>
-          <span>
-            Stabilized NOI:{' '}
-            <b className="text-slate">{hm.year1_noi != null ? fmtUSDFull(hm.year1_noi) : '—'}</b>
-          </span>
-          <span>
-            Target DSCR:{' '}
-            <b className="text-slate">{hm.target_dscr != null ? fmtEM(hm.target_dscr) : '—'}</b>
-          </span>
-          <span>
-            Bond rate:{' '}
-            <b className="text-slate">{hm.bond_rate != null ? fmtPct(hm.bond_rate) : '—'}</b>
-          </span>
-        </div>
-      )}
-
-      {/* inputs */}
-      <Card className="p-5">
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
-          <NumField
-            label="Stabilized NOI"
-            kind="usd"
-            value={req.stabilized_noi}
-            hint="Year-1 stabilized net operating income"
-            onCommit={(v) => v != null && set({ stabilized_noi: v })}
-          />
-          <NumField
-            label="Target DSCR"
-            kind="ratio"
-            value={req.target_dscr}
-            hint="1.15x with HAP · 1.20x without"
-            onCommit={(v) => v != null && set({ target_dscr: v })}
-          />
-          <NumField
-            label="Bond Rate"
-            kind="pct"
-            value={req.bond_rate}
-            hint="Tax-exempt bond coupon"
-            onCommit={(v) => v != null && set({ bond_rate: v })}
-          />
-          <NumField
-            label="Amortization (Years)"
-            kind="int"
-            value={req.amortization_years}
-            hint="35-yr standard for bond deals"
-            onCommit={(v) => v != null && set({ amortization_years: v })}
-          />
-          <NumField
-            label="Annual Property Tax Exempted"
-            kind="usd"
-            value={req.annual_property_tax_exempted ?? null}
-            hint="Optional · drives the tax-savings tile only, not sizing"
-            optional
-            onCommit={(v) => set({ annual_property_tax_exempted: v })}
-          />
-          <NumField
-            label="Hold Years"
-            kind="int"
-            value={req.hold_years}
-            hint="10-yr hold + ROFR standard"
-            onCommit={(v) => v != null && set({ hold_years: v })}
-          />
-        </div>
-      </Card>
-    </div>
-  );
-}
 
 // ===========================================================================
 // Exit-cap triangulation (companion)
@@ -649,7 +330,7 @@ export function BondScreen() {
         </Button>
       </div>
 
-      <EFBPanel key={`efb-${resetKey}`} />
+      <EFBSizingPanel key={`efb-${resetKey}`} />
 
       <div className="pt-2 border-t border-slate/10">
         <h2 className="eyebrow text-slate/60 mb-4">Companion Calculators</h2>

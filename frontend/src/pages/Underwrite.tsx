@@ -8,6 +8,9 @@ import {
   Ban,
   ArrowRight,
   FileText,
+  Building2,
+  Landmark,
+  CheckCircle2,
 } from 'lucide-react';
 import {
   submitJob,
@@ -24,6 +27,30 @@ const RUNNING_STATUSES = new Set(['submitted', 'routing', 'analyzing', 'synthesi
 
 type Stage = 'intake' | 'running' | 'questions' | 'failed';
 
+// EFB intake fields (percent fields entered as percent, e.g. 5 => 0.05 —
+// same convention as BondScreen). Defaults mirror the backend request model.
+interface EFBFields {
+  stabilizedNoi: string;
+  targetDscr: string;
+  bondRate: string; // percent
+  amortYears: string;
+  taxExempted: string; // optional
+  holdYears: string;
+}
+
+const EFB_FIELD_DEFAULTS: EFBFields = {
+  stabilizedNoi: '',
+  targetDscr: '1.15',
+  bondRate: '5',
+  amortYears: '35',
+  taxExempted: '',
+  holdYears: '10',
+};
+
+// blocking-question fields answered as a percent in the UI, sent as a decimal
+const isPctField = (field: string): boolean =>
+  field.endsWith('exit_cap') || field.endsWith('bond_rate');
+
 export function Underwrite() {
   const navigate = useNavigate();
 
@@ -33,6 +60,7 @@ export function Underwrite() {
   const [purchasePrice, setPurchasePrice] = useState('');
   const [holdYears, setHoldYears] = useState('');
   const [exitCap, setExitCap] = useState(''); // entered as percent (6.0 => 0.06)
+  const [efb, setEfb] = useState<EFBFields>(EFB_FIELD_DEFAULTS);
   const [notes, setNotes] = useState('');
 
   const [stage, setStage] = useState<Stage>('intake');
@@ -76,9 +104,21 @@ export function Underwrite() {
     setStage('running');
 
     const critical_inputs: Record<string, unknown> = {};
-    if (purchasePrice.trim() !== '') critical_inputs.purchase_price = Number(purchasePrice);
-    if (holdYears.trim() !== '') critical_inputs.hold_years = Number(holdYears);
-    if (exitCap.trim() !== '') critical_inputs.exit_cap = Number(exitCap) / 100;
+    if (routing === 'EFB') {
+      // percent entered as percent (5 => 0.05); leave a field blank and the
+      // analysts ask for it (stabilized NOI is required by the form).
+      if (efb.stabilizedNoi.trim() !== '') critical_inputs.stabilized_noi = Number(efb.stabilizedNoi);
+      if (efb.targetDscr.trim() !== '') critical_inputs.target_dscr = Number(efb.targetDscr);
+      if (efb.bondRate.trim() !== '') critical_inputs.bond_rate = Number(efb.bondRate) / 100;
+      if (efb.amortYears.trim() !== '') critical_inputs.amortization_years = Number(efb.amortYears);
+      if (efb.taxExempted.trim() !== '')
+        critical_inputs.annual_property_tax_exempted = Number(efb.taxExempted);
+      if (efb.holdYears.trim() !== '') critical_inputs.hold_years = Number(efb.holdYears);
+    } else {
+      if (purchasePrice.trim() !== '') critical_inputs.purchase_price = Number(purchasePrice);
+      if (holdYears.trim() !== '') critical_inputs.hold_years = Number(holdYears);
+      if (exitCap.trim() !== '') critical_inputs.exit_cap = Number(exitCap) / 100;
+    }
 
     const name = dealName.trim() || 'Untitled deal';
     const ctrl = new AbortController();
@@ -153,6 +193,8 @@ export function Underwrite() {
             setHoldYears,
             exitCap,
             setExitCap,
+            efb,
+            setEfb,
             notes,
             setNotes,
             busy,
@@ -188,6 +230,8 @@ interface IntakeProps {
   setHoldYears: (v: string) => void;
   exitCap: string;
   setExitCap: (v: string) => void;
+  efb: EFBFields;
+  setEfb: React.Dispatch<React.SetStateAction<EFBFields>>;
   notes: string;
   setNotes: (v: string) => void;
   busy: boolean;
@@ -212,62 +256,73 @@ function IntakeForm(p: IntakeProps) {
             />
           </div>
 
-          <div>
-            <label htmlFor="routing" className="label">
-              Routing
-            </label>
-            <select
-              id="routing"
-              value={p.routing}
-              onChange={(e) => p.setRouting(e.target.value as 'ACQ' | 'EFB')}
-              className="input"
-            >
-              <option value="ACQ">ACQ — Acquisition (value-add)</option>
-              <option value="EFB">EFB — Essential Function Bond</option>
-            </select>
+          <div className="sm:col-span-2">
+            <span className="label">Routing</span>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3" role="radiogroup" aria-label="Routing">
+              <RoutingCard
+                active={p.routing === 'ACQ'}
+                onSelect={() => p.setRouting('ACQ')}
+                icon={Building2}
+                title="Market-Rate Acquisition"
+                sub="Value-add bridge-to-agency · IRR / equity multiple / CoC"
+              />
+              <RoutingCard
+                active={p.routing === 'EFB'}
+                onSelect={() => p.setRouting('EFB')}
+                icon={Landmark}
+                title="Tax-Exempt Bond (EFB)"
+                sub="501(c)(3) essential-function bond sized to a target DSCR"
+              />
+            </div>
           </div>
 
-          <div>
-            <label htmlFor="purchasePrice" className="label">
-              Purchase price ($)
-            </label>
-            <Input
-              id="purchasePrice"
-              type="number"
-              step="100000"
-              value={p.purchasePrice}
-              onChange={(e) => p.setPurchasePrice(e.target.value)}
-              placeholder="55000000"
-            />
-          </div>
+          {p.routing === 'ACQ' ? (
+            <>
+              <div>
+                <label htmlFor="purchasePrice" className="label">
+                  Purchase price ($)
+                </label>
+                <Input
+                  id="purchasePrice"
+                  type="number"
+                  step="100000"
+                  value={p.purchasePrice}
+                  onChange={(e) => p.setPurchasePrice(e.target.value)}
+                  placeholder="55000000"
+                />
+              </div>
 
-          <div>
-            <label htmlFor="holdYears" className="label">
-              Hold (years)
-            </label>
-            <Input
-              id="holdYears"
-              type="number"
-              step="1"
-              value={p.holdYears}
-              onChange={(e) => p.setHoldYears(e.target.value)}
-              placeholder="7"
-            />
-          </div>
+              <div>
+                <label htmlFor="holdYears" className="label">
+                  Hold (years)
+                </label>
+                <Input
+                  id="holdYears"
+                  type="number"
+                  step="1"
+                  value={p.holdYears}
+                  onChange={(e) => p.setHoldYears(e.target.value)}
+                  placeholder="7"
+                />
+              </div>
 
-          <div>
-            <label htmlFor="exitCap" className="label">
-              Exit cap (%)
-            </label>
-            <Input
-              id="exitCap"
-              type="number"
-              step="0.05"
-              value={p.exitCap}
-              onChange={(e) => p.setExitCap(e.target.value)}
-              placeholder="6.0"
-            />
-          </div>
+              <div>
+                <label htmlFor="exitCap" className="label">
+                  Exit cap (%)
+                </label>
+                <Input
+                  id="exitCap"
+                  type="number"
+                  step="0.05"
+                  value={p.exitCap}
+                  onChange={(e) => p.setExitCap(e.target.value)}
+                  placeholder="6.0"
+                />
+              </div>
+            </>
+          ) : (
+            <EFBCriticalInputs efb={p.efb} setEfb={p.setEfb} />
+          )}
         </div>
 
         <div>
@@ -300,6 +355,148 @@ function IntakeForm(p: IntakeProps) {
         </div>
       </form>
     </Card>
+  );
+}
+
+// --- routing selector card ---------------------------------------------------
+function RoutingCard({
+  active,
+  onSelect,
+  icon: Icon,
+  title,
+  sub,
+}: {
+  active: boolean;
+  onSelect: () => void;
+  icon: typeof Building2;
+  title: string;
+  sub: string;
+}) {
+  return (
+    <button
+      type="button"
+      role="radio"
+      aria-checked={active ? 'true' : 'false'}
+      onClick={onSelect}
+      className={[
+        'relative text-left rounded-xl border p-4 transition-colors',
+        active
+          ? 'border-teal bg-teal-panel/60 shadow-card'
+          : 'border-slate/15 bg-white hover:border-teal/40',
+      ].join(' ')}
+    >
+      {active && <CheckCircle2 className="absolute top-3 right-3 w-4 h-4 text-teal" />}
+      <span
+        className={`flex items-center gap-2 font-label font-semibold text-sm ${
+          active ? 'text-teal' : 'text-slate'
+        }`}
+      >
+        <Icon className="w-4 h-4" /> {title}
+      </span>
+      <span className="block text-xs text-slate/60 mt-1 leading-snug">{sub}</span>
+    </button>
+  );
+}
+
+// --- EFB critical inputs (percent entered as percent, same as BondScreen) -----
+function EFBCriticalInputs({
+  efb,
+  setEfb,
+}: {
+  efb: EFBFields;
+  setEfb: React.Dispatch<React.SetStateAction<EFBFields>>;
+}) {
+  const set = (patch: Partial<EFBFields>) => setEfb((prev) => ({ ...prev, ...patch }));
+
+  return (
+    <>
+      <div>
+        <label htmlFor="efbNoi" className="label">
+          Stabilized NOI ($) <span className="text-danger">*</span>
+        </label>
+        <Input
+          id="efbNoi"
+          type="number"
+          step="10000"
+          value={efb.stabilizedNoi}
+          onChange={(e) => set({ stabilizedNoi: e.target.value })}
+          placeholder="2500000"
+          required
+        />
+      </div>
+
+      <div>
+        <label htmlFor="efbDscr" className="label">
+          Target DSCR (x)
+        </label>
+        <Input
+          id="efbDscr"
+          type="number"
+          step="0.01"
+          value={efb.targetDscr}
+          onChange={(e) => set({ targetDscr: e.target.value })}
+          placeholder="1.15"
+        />
+        <p className="text-xs text-slate/40 mt-1">1.15x with HAP · 1.20x without</p>
+      </div>
+
+      <div>
+        <label htmlFor="efbRate" className="label">
+          Bond rate (%)
+        </label>
+        <Input
+          id="efbRate"
+          type="number"
+          step="0.05"
+          value={efb.bondRate}
+          onChange={(e) => set({ bondRate: e.target.value })}
+          placeholder="5.0"
+        />
+      </div>
+
+      <div>
+        <label htmlFor="efbAmort" className="label">
+          Amortization (years)
+        </label>
+        <Input
+          id="efbAmort"
+          type="number"
+          step="1"
+          value={efb.amortYears}
+          onChange={(e) => set({ amortYears: e.target.value })}
+          placeholder="35"
+        />
+      </div>
+
+      <div>
+        <label htmlFor="efbTax" className="label">
+          Annual property tax exempted ($)
+        </label>
+        <Input
+          id="efbTax"
+          type="number"
+          step="10000"
+          value={efb.taxExempted}
+          onChange={(e) => set({ taxExempted: e.target.value })}
+          placeholder="optional"
+        />
+        <p className="text-xs text-slate/40 mt-1">Optional · drives the tax-savings metric only</p>
+      </div>
+
+      <div>
+        <label htmlFor="efbHold" className="label">
+          Hold (years)
+        </label>
+        <Input
+          id="efbHold"
+          type="number"
+          step="1"
+          value={efb.holdYears}
+          onChange={(e) => set({ holdYears: e.target.value })}
+          placeholder="10"
+        />
+      </div>
+    </>
   );
 }
 
@@ -347,8 +544,8 @@ function QuestionsPanel({
     setAnswers((a) => ({ ...a, [id]: value }));
 
   const coerce = (q: OpenQuestion, raw: string): unknown => {
-    // exit_cap entered as percent; numeric fields as numbers; routing/string as-is.
-    if (q.field.endsWith('exit_cap')) return Number(raw) / 100;
+    // exit_cap / bond_rate entered as percent; numeric fields as numbers; routing/string as-is.
+    if (isPctField(q.field)) return Number(raw) / 100;
     const n = Number(raw);
     if (!q.options && raw.trim() !== '' && Number.isFinite(n)) return n;
     return raw;
@@ -391,7 +588,7 @@ function QuestionsPanel({
           <div key={q.id}>
             <label htmlFor={q.id} className="label">
               {q.question}
-              {q.field.endsWith('exit_cap') && (
+              {isPctField(q.field) && (
                 <span className="ml-1 normal-case text-slate/40">(as %, e.g. 6.0)</span>
               )}
             </label>
