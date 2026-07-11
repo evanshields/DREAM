@@ -11,14 +11,19 @@ import {
   Building2,
   Landmark,
   CheckCircle2,
+  UploadCloud,
+  Sparkles,
+  X,
 } from 'lucide-react';
 import {
   submitJob,
   answerJob,
   cancelJob,
+  uploadIntake,
   ApiError,
   type JobView,
   type OpenQuestion,
+  type IntakeResponse,
 } from '../lib/api';
 import { Card, Button, Input, Badge } from '../components/ui';
 
@@ -51,6 +56,21 @@ const EFB_FIELD_DEFAULTS: EFBFields = {
 const isPctField = (field: string): boolean =>
   field.endsWith('exit_cap') || field.endsWith('bond_rate');
 
+// document intake — accepted upload extensions (mirrors the backend extractors)
+const INTAKE_EXTENSIONS = new Set(['pdf', 'xlsx', 'xls', 'csv']);
+
+// deal_docs bound: the analyst slice prompts truncate deal_docs JSON at ~60KB, so cap the
+// uploaded document text we ride along at ~50K chars (backend caps at the same figure).
+const DEAL_DOC_MAX_CHARS = 50_000;
+
+// summary of a processed upload, shown in the upload card
+interface UploadedDoc {
+  fileName: string;
+  docType: string;
+  fieldsApplied: number;
+  warnings: string[];
+}
+
 export function Underwrite() {
   const navigate = useNavigate();
 
@@ -68,6 +88,105 @@ export function Underwrite() {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
+
+  // document intake — extracted text rides as deal_docs.uploaded_doc on submit
+  const [uploadedDoc, setUploadedDoc] = useState<UploadedDoc | null>(null);
+  const [docText, setDocText] = useState('');
+  const [extracting, setExtracting] = useState(false);
+  const [docError, setDocError] = useState<string | null>(null);
+  // form fields populated from the document (hint cleared as soon as the user edits the field)
+  const [prefilled, setPrefilled] = useState<Set<string>>(new Set());
+
+  const markEdited = useCallback((key: string) => {
+    setPrefilled((prev) => {
+      if (!prev.has(key)) return prev;
+      const next = new Set(prev);
+      next.delete(key);
+      return next;
+    });
+  }, []);
+
+  // Map an IntakeResponse's prefill_map onto the CURRENT routing's form fields. Only fills
+  // fields that are still empty — never clobbers what the user typed. Returns the applied count.
+  const applyPrefill = (res: IntakeResponse): number => {
+    const pm = res.prefill_map ?? {};
+    const applied = new Set<string>();
+
+    const asNumStr = (v: unknown): string | null => {
+      const n = typeof v === 'number' ? v : Number(v);
+      return Number.isFinite(n) && n > 0 ? String(n) : null;
+    };
+
+    // deal name from OM property_name (both routings)
+    const name = typeof pm.property_name === 'string' ? pm.property_name.trim() : '';
+    if (name && dealName.trim() === '') {
+      setDealName(name);
+      applied.add('dealName');
+    }
+
+    if (routing === 'ACQ') {
+      const price = asNumStr(pm.purchase_price) ?? asNumStr(pm.asking_price);
+      if (price && purchasePrice.trim() === '') {
+        setPurchasePrice(price);
+        applied.add('purchasePrice');
+      }
+      // hold_years / exit_cap have no reliable document source — left to the user.
+    } else {
+      const noi = asNumStr(pm.noi_annual);
+      const tax = asNumStr(pm.property_tax_annual);
+      setEfb((prev) => {
+        const patch: Partial<EFBFields> = {};
+        if (noi && prev.stabilizedNoi.trim() === '') {
+          patch.stabilizedNoi = noi;
+          applied.add('stabilizedNoi');
+        }
+        if (tax && prev.taxExempted.trim() === '') {
+          patch.taxExempted = tax;
+          applied.add('taxExempted');
+        }
+        return Object.keys(patch).length ? { ...prev, ...patch } : prev;
+      });
+    }
+
+    if (applied.size) setPrefilled((prev) => new Set([...prev, ...applied]));
+    return applied.size;
+  };
+
+  const handleFile = async (file: File) => {
+    setDocError(null);
+    const ext = file.name.split('.').pop()?.toLowerCase() ?? '';
+    if (!INTAKE_EXTENSIONS.has(ext)) {
+      setDocError(
+        `Unsupported file type ".${ext || '?'}" — upload a PDF, XLSX, or CSV. You can still enter everything manually below.`,
+      );
+      return;
+    }
+    setExtracting(true);
+    try {
+      const res = await uploadIntake(file);
+      setDocText(res.extracted_text || '');
+      setUploadedDoc({
+        fileName: file.name,
+        docType: res.doc_type,
+        fieldsApplied: applyPrefill(res),
+        warnings: res.warnings ?? [],
+      });
+    } catch (err) {
+      if (err instanceof ApiError && err.status === 401) return; // global handler bounces to login
+      setDocError(
+        `${err instanceof Error ? err.message : String(err)} — manual entry below still works.`,
+      );
+    } finally {
+      setExtracting(false);
+    }
+  };
+
+  const clearUploadedDoc = () => {
+    setUploadedDoc(null);
+    setDocText('');
+    setDocError(null);
+    setPrefilled(new Set());
+  };
 
   // route a returned job view to the right stage / navigation.
   const applyJob = useCallback(
@@ -124,11 +243,17 @@ export function Underwrite() {
     const ctrl = new AbortController();
     abortRef.current = ctrl;
 
+    // deal_docs — excerpted source material the analyst slices read. Bounded: the slice prompt
+    // truncates deal_docs JSON at ~60KB, so the uploaded document text is capped at 50K chars.
+    const deal_docs: Record<string, string> = {};
+    if (notes.trim()) deal_docs.notes = notes.trim();
+    if (docText) deal_docs.uploaded_doc = docText.slice(0, DEAL_DOC_MAX_CHARS);
+
     try {
       const view = await submitJob(
         {
           intake_summary: { routing, deal_name: name, critical_inputs },
-          deal_docs: notes.trim() ? { notes: notes.trim() } : {},
+          deal_docs,
           owner: '',
           deal_name: name,
           routing,
@@ -181,26 +306,37 @@ export function Underwrite() {
       )}
 
       {stage === 'intake' && (
-        <IntakeForm
-          {...{
-            dealName,
-            setDealName,
-            routing,
-            setRouting,
-            purchasePrice,
-            setPurchasePrice,
-            holdYears,
-            setHoldYears,
-            exitCap,
-            setExitCap,
-            efb,
-            setEfb,
-            notes,
-            setNotes,
-            busy,
-            onSubmit: handleSubmit,
-          }}
-        />
+        <>
+          <UploadCard
+            uploadedDoc={uploadedDoc}
+            extracting={extracting}
+            docError={docError}
+            onFile={handleFile}
+            onClear={clearUploadedDoc}
+          />
+          <IntakeForm
+            {...{
+              dealName,
+              setDealName,
+              routing,
+              setRouting,
+              purchasePrice,
+              setPurchasePrice,
+              holdYears,
+              setHoldYears,
+              exitCap,
+              setExitCap,
+              efb,
+              setEfb,
+              notes,
+              setNotes,
+              busy,
+              onSubmit: handleSubmit,
+              prefilled,
+              onFieldEdit: markEdited,
+            }}
+          />
+        </>
       )}
 
       {stage === 'running' && <RunningPanel onCancel={handleCancel} />}
@@ -213,6 +349,136 @@ export function Underwrite() {
         <FailedPanel job={job} onRetry={() => setStage('intake')} />
       )}
     </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Document upload card — drop an OM / T-12 / rent roll, backend extraction prefills the form
+// ---------------------------------------------------------------------------
+function PrefilledTag() {
+  return (
+    <span className="ml-1.5 inline-flex items-center gap-1 normal-case text-[11px] font-normal text-teal">
+      <Sparkles className="w-3 h-3" /> prefilled from document
+    </span>
+  );
+}
+
+function UploadCard({
+  uploadedDoc,
+  extracting,
+  docError,
+  onFile,
+  onClear,
+}: {
+  uploadedDoc: UploadedDoc | null;
+  extracting: boolean;
+  docError: string | null;
+  onFile: (file: File) => void;
+  onClear: () => void;
+}) {
+  const inputRef = useRef<HTMLInputElement | null>(null);
+  const [dragging, setDragging] = useState(false);
+
+  const pick = (files: FileList | null) => {
+    const file = files?.[0];
+    if (file) onFile(file);
+  };
+
+  return (
+    <Card className="p-4">
+      <input
+        ref={inputRef}
+        type="file"
+        accept=".pdf,.xlsx,.xls,.csv"
+        aria-label="Upload deal document (PDF, XLSX, or CSV)"
+        title="Upload deal document"
+        className="hidden"
+        onChange={(e) => {
+          pick(e.target.files);
+          e.target.value = ''; // allow re-selecting the same file
+        }}
+      />
+
+      {extracting ? (
+        <div className="flex items-center gap-3 p-3">
+          <Loader2 className="w-5 h-5 text-teal animate-spin shrink-0" />
+          <div>
+            <p className="text-sm font-semibold text-slate-near">Extracting…</p>
+            <p className="text-xs text-slate/60">
+              A live model is reading the document — this can take 10–30 seconds.
+            </p>
+          </div>
+        </div>
+      ) : uploadedDoc ? (
+        <div className="flex items-start gap-3 p-3">
+          <CheckCircle2 className="w-5 h-5 text-teal shrink-0 mt-0.5" />
+          <div className="min-w-0 flex-1">
+            <p className="text-sm font-semibold text-slate-near truncate">
+              {uploadedDoc.fileName}
+              <Badge tone="teal" className="ml-2 align-middle">
+                {uploadedDoc.docType}
+              </Badge>
+            </p>
+            <p className="text-xs text-slate/60 mt-0.5">
+              {uploadedDoc.fieldsApplied > 0
+                ? `Prefilled ${uploadedDoc.fieldsApplied} field${uploadedDoc.fieldsApplied === 1 ? '' : 's'} — review and edit below.`
+                : 'No form fields matched — the document text still rides with the underwrite.'}{' '}
+              The analysts read the full extracted text.
+            </p>
+            {uploadedDoc.warnings.length > 0 && (
+              <ul className="text-xs text-warn mt-1 space-y-0.5">
+                {uploadedDoc.warnings.map((w, i) => (
+                  <li key={i}>{w}</li>
+                ))}
+              </ul>
+            )}
+          </div>
+          <button
+            type="button"
+            aria-label="Remove uploaded document"
+            onClick={onClear}
+            className="text-slate/40 hover:text-slate shrink-0 p-1"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+      ) : (
+        <button
+          type="button"
+          onClick={() => inputRef.current?.click()}
+          onDragOver={(e) => {
+            e.preventDefault();
+            setDragging(true);
+          }}
+          onDragLeave={() => setDragging(false)}
+          onDrop={(e) => {
+            e.preventDefault();
+            setDragging(false);
+            pick(e.dataTransfer.files);
+          }}
+          className={[
+            'w-full flex items-center gap-3 rounded-xl border-2 border-dashed p-4 text-left transition-colors',
+            dragging ? 'border-teal bg-teal-panel/60' : 'border-slate/20 hover:border-teal/50',
+          ].join(' ')}
+        >
+          <UploadCloud className="w-6 h-6 text-teal shrink-0" />
+          <span>
+            <span className="block text-sm font-semibold text-slate-near">
+              Drop an OM / T-12 / rent roll — we&apos;ll prefill what we find
+            </span>
+            <span className="block text-xs text-slate/60 mt-0.5">
+              PDF, XLSX, or CSV · optional — everything below stays editable
+            </span>
+          </span>
+        </button>
+      )}
+
+      {docError && (
+        <div className="flex items-center gap-2 text-danger text-xs mt-2 px-1">
+          <AlertTriangle className="w-3.5 h-3.5 shrink-0" /> {docError}
+        </div>
+      )}
+    </Card>
   );
 }
 
@@ -236,6 +502,8 @@ interface IntakeProps {
   setNotes: (v: string) => void;
   busy: boolean;
   onSubmit: (e: React.FormEvent) => void;
+  prefilled: Set<string>;
+  onFieldEdit: (key: string) => void;
 }
 
 function IntakeForm(p: IntakeProps) {
@@ -246,11 +514,15 @@ function IntakeForm(p: IntakeProps) {
           <div className="sm:col-span-2">
             <label htmlFor="dealName" className="label">
               Deal name
+              {p.prefilled.has('dealName') && <PrefilledTag />}
             </label>
             <Input
               id="dealName"
               value={p.dealName}
-              onChange={(e) => p.setDealName(e.target.value)}
+              onChange={(e) => {
+                p.onFieldEdit('dealName');
+                p.setDealName(e.target.value);
+              }}
               placeholder="Esplanade Apartments"
               autoFocus
             />
@@ -281,13 +553,17 @@ function IntakeForm(p: IntakeProps) {
               <div>
                 <label htmlFor="purchasePrice" className="label">
                   Purchase price ($)
+                  {p.prefilled.has('purchasePrice') && <PrefilledTag />}
                 </label>
                 <Input
                   id="purchasePrice"
                   type="number"
                   step="100000"
                   value={p.purchasePrice}
-                  onChange={(e) => p.setPurchasePrice(e.target.value)}
+                  onChange={(e) => {
+                    p.onFieldEdit('purchasePrice');
+                    p.setPurchasePrice(e.target.value);
+                  }}
                   placeholder="55000000"
                 />
               </div>
@@ -321,7 +597,12 @@ function IntakeForm(p: IntakeProps) {
               </div>
             </>
           ) : (
-            <EFBCriticalInputs efb={p.efb} setEfb={p.setEfb} />
+            <EFBCriticalInputs
+              efb={p.efb}
+              setEfb={p.setEfb}
+              prefilled={p.prefilled}
+              onFieldEdit={p.onFieldEdit}
+            />
           )}
         </div>
 
@@ -402,17 +683,25 @@ function RoutingCard({
 function EFBCriticalInputs({
   efb,
   setEfb,
+  prefilled,
+  onFieldEdit,
 }: {
   efb: EFBFields;
   setEfb: React.Dispatch<React.SetStateAction<EFBFields>>;
+  prefilled: Set<string>;
+  onFieldEdit: (key: string) => void;
 }) {
-  const set = (patch: Partial<EFBFields>) => setEfb((prev) => ({ ...prev, ...patch }));
+  const set = (patch: Partial<EFBFields>) => {
+    Object.keys(patch).forEach(onFieldEdit); // user edit clears the "prefilled" hint
+    setEfb((prev) => ({ ...prev, ...patch }));
+  };
 
   return (
     <>
       <div>
         <label htmlFor="efbNoi" className="label">
           Stabilized NOI ($) <span className="text-danger">*</span>
+          {prefilled.has('stabilizedNoi') && <PrefilledTag />}
         </label>
         <Input
           id="efbNoi"
@@ -471,6 +760,7 @@ function EFBCriticalInputs({
       <div>
         <label htmlFor="efbTax" className="label">
           Annual property tax exempted ($)
+          {prefilled.has('taxExempted') && <PrefilledTag />}
         </label>
         <Input
           id="efbTax"

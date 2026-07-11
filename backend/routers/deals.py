@@ -12,6 +12,12 @@ records; this router is the thin HTTP surface over it. TWO endpoints:
                              spec, gate_summary (spec.qa), and the latest job block
                              {job_id, status, phase, error, open_questions, blocking_questions}
                              (null when the deal has no job). 404 on an unknown deal_id.
+  GET /api/deals/{deal_id}/audit   the readable audit trail (PRD C.5): every job that ever ran
+                             for the deal (newest job first), each with its APPEND-ONLY AuditEvent
+                             list in insertion order -> {deal_id, jobs: [{job_id, status,
+                             created_at, events: [{kind, message, detail?, ts}]}]}. Read-only —
+                             it surfaces exactly what the runner already recorded (llm_call /
+                             gate / spec_mutation / phase / error); no new event kinds.
 
 `headline_metrics` is pulled from each record's spec (spec.headline_metrics), defaulting to {} for
 un-computed drafts. Read-only — no writes, no LLM (jobs.job_store imports contracts + the store
@@ -98,6 +104,41 @@ def list_deals(
     """List deals (newest first), optionally filtered by owner/routing/status. Read-only."""
     ds: DealStore = get_deal_store()
     return [_deal_view(rec) for rec in ds.list(owner=owner, routing=routing, status=status)]
+
+
+@router.get("/{deal_id}/audit")
+def get_deal_audit(deal_id: str) -> Dict[str, Any]:
+    """The deal's readable audit trail (PRD C.5): ALL jobs for the deal, newest first, each
+    carrying its append-only AuditEvent list in insertion (seq) order. Read-only; 404 on an
+    unknown deal_id; a deal with no jobs returns jobs: []."""
+    ds: DealStore = get_deal_store()
+    try:
+        ds.get(deal_id)
+    except DealNotFound:
+        raise HTTPException(status_code=404, detail=f"deal '{deal_id}' not found")
+
+    jobs = get_job_store().list_jobs(deal_id=deal_id)  # newest first (updated_at DESC)
+    return {
+        "deal_id": deal_id,
+        "jobs": [
+            {
+                "job_id": job.job_id,
+                "status": job.status.value,
+                "created_at": job.created_at,
+                "events": [
+                    {
+                        "kind": ev.kind,
+                        "message": ev.summary,
+                        **({"detail": ev.detail} if ev.detail else {}),
+                        "ts": ev.ts,
+                    }
+                    # insertion order == monotonic seq (append-only; never mutated)
+                    for ev in sorted(job.audit, key=lambda e: e.seq)
+                ],
+            }
+            for job in jobs
+        ],
+    }
 
 
 @router.get("/{deal_id}")

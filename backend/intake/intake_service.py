@@ -73,6 +73,7 @@ class IntakeResult:
     extracted_fields: dict  # raw extracted values keyed by semantic name
     prefill_map: dict       # keys match frontend form field names
     warnings: list[str] = field(default_factory=list)
+    raw_text: str = ""      # bounded plain-text excerpt (RAW_TEXT_CHARS) for downstream deal_docs
 
 
 # ---------------------------------------------------------------------------
@@ -105,6 +106,9 @@ class IntakeService:
 
     KIMI_MODEL = "moonshot-v1-8k"
     TEXT_EXCERPT_CHARS = 3_000
+    # Raw text carried back for the jobs pipeline's deal_docs. The analyst slice prompts truncate
+    # the deal_docs JSON at ~60KB, so keep this bounded below that with headroom.
+    RAW_TEXT_CHARS = 50_000
 
     def __init__(self, kimi_client: AsyncOpenAI) -> None:
         self._kimi = kimi_client
@@ -160,6 +164,16 @@ class IntakeService:
         # Step 4 — map to form fields
         prefill_map: dict = _build_prefill_map(doc_type, extracted_fields)
 
+        # Step 5 — bounded raw text so the caller can pass the document content downstream
+        # (deal_docs on the jobs pipeline). Best-effort: a text failure never fails the intake.
+        raw_text = ""
+        try:
+            raw_text = await asyncio.to_thread(
+                _extract_text_excerpt, file_bytes, ext, self.RAW_TEXT_CHARS
+            )
+        except Exception as exc:
+            warnings.append(f"Raw text extraction failed: {exc}")
+
         return IntakeResult(
             doc_type=doc_type,
             confidence=heuristic_confidence,
@@ -167,6 +181,7 @@ class IntakeService:
             extracted_fields=extracted_fields,
             prefill_map=prefill_map,
             warnings=warnings,
+            raw_text=raw_text,
         )
 
     # ------------------------------------------------------------------ #

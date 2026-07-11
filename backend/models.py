@@ -385,6 +385,9 @@ class IntakeResponse(BaseModel):
     prefill_map: dict
     warnings: List[str]
     fields_filled_count: int
+    # Raw extracted document text (bounded upstream at ~50K chars) so the client can carry it
+    # into the jobs pipeline as deal_docs. Additive with a default — existing consumers unaffected.
+    extracted_text: str = ""
 
 
 # ============================================================================

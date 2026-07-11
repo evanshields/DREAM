@@ -91,6 +91,10 @@ app.include_router(jobs_router, dependencies=[Depends(require_auth)])
 from routers.deals import router as deals_router  # noqa: E402
 app.include_router(deals_router, dependencies=[Depends(require_auth)])
 
+# Wave C.4 — deal-memo generation (Kimi-backed; own router so deals.py stays LLM-free).
+from routers.memo import router as memo_router  # noqa: E402
+app.include_router(memo_router, dependencies=[Depends(require_auth)])
+
 # Task C — username/password login (issues a short-lived app JWT accepted by require_auth
 # alongside Google OAuth). Urgent stopgap before Google Test Users propagate.
 from routers.auth_login import router as auth_login_router  # noqa: E402
@@ -458,10 +462,12 @@ def validate(deal: DealInputs, user: dict = Depends(require_auth)):
 
 
 @app.post("/api/intake", response_model=IntakeResponse)
-async def intake(file: UploadFile = File(...)):
+async def intake(file: UploadFile = File(...), user: dict = Depends(require_auth)):
     """
     Upload a deal document (PDF, XLSX, CSV).
     Auto-detects type, extracts data, returns prefill map for the form.
+    Auth-gated like /api/underwrite — extraction hits the paid Kimi API, so an
+    unauthenticated upload must 401, never trigger a paid call.
     """
     try:
         file_bytes = await file.read()
@@ -474,13 +480,14 @@ async def intake(file: UploadFile = File(...)):
             prefill_map=result.prefill_map,
             warnings=result.warnings,
             fields_filled_count=len([v for v in result.prefill_map.values() if v is not None]),
+            extracted_text=result.raw_text,
         )
     except Exception as e:
         raise HTTPException(status_code=422, detail=str(e))
 
 
 @app.post("/api/agent/chat")
-async def agent_chat(request: AgentChatRequest):
+async def agent_chat(request: AgentChatRequest, user: dict = Depends(require_auth)):
     """
     Streaming Kimi agent endpoint (SSE).
     Modes: onboarding | validation | free
@@ -541,7 +548,7 @@ async def agent_chat(request: AgentChatRequest):
 
 
 @app.post("/api/agent/memo")
-def agent_memo(request: MemoRequest):
+def agent_memo(request: MemoRequest, user: dict = Depends(require_auth)):
     """Generate a 1-page institutional deal memo."""
     try:
         generator = get_memo_generator()

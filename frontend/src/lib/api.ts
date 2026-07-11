@@ -51,13 +51,15 @@ async function request<T>(
   const { method = 'GET', body, signal, auth = true } = opts;
   const token = getAuthToken();
   const headers: Record<string, string> = {};
-  if (body !== undefined) headers['Content-Type'] = 'application/json';
+  // FormData (multipart upload) sets its own Content-Type with the boundary — never override it.
+  const isForm = typeof FormData !== 'undefined' && body instanceof FormData;
+  if (body !== undefined && !isForm) headers['Content-Type'] = 'application/json';
   if (auth && token) headers['Authorization'] = `Bearer ${token}`;
 
   const res = await fetch(`${API_BASE}${path}`, {
     method,
     headers,
-    body: body !== undefined ? JSON.stringify(body) : undefined,
+    body: body !== undefined ? (isForm ? body : JSON.stringify(body)) : undefined,
     signal,
   });
 
@@ -109,6 +111,33 @@ export function login(username: string, password: string): Promise<LoginResponse
 
 export function me(): Promise<MeResponse> {
   return request<MeResponse>('/me');
+}
+
+// ===========================================================================
+// Document intake — POST /api/intake (multipart)
+// ===========================================================================
+
+// Mirrors backend/models.py IntakeResponse. prefill_map keys vary by detected doc type:
+//   OM        → property_name, total_units, year_built, asking_price, purchase_price, address
+//   T-12      → gross_potential_rent, vacancy_rate, noi_annual, property_tax_annual,
+//               mgmt_fee_pct, *_per_unit expense fields, egi_annual, total_opex_annual, …
+//   Rent Roll → unit_mix (list), total_units, vacancy_yr1
+//   CoStar    → market_vacancy_rate, market_avg_rent_per_unit, going_in_cap_rate
+export interface IntakeResponse {
+  doc_type: string; // 'T-12' | 'Rent Roll' | 'Offering Memorandum' | 'CoStar Report' | 'Unknown'
+  confidence: number;
+  detection_method: string; // 'filename_heuristic' | 'ai_classification'
+  prefill_map: Record<string, unknown>;
+  warnings: string[];
+  fields_filled_count: number;
+  extracted_text: string; // bounded (~50K chars) raw document text — ride it as deal_docs
+}
+
+// Live LLM classification/extraction — can take ~10–30s. Same bearer + 401 handling as JSON calls.
+export function uploadIntake(file: File, signal?: AbortSignal): Promise<IntakeResponse> {
+  const form = new FormData();
+  form.append('file', file, file.name);
+  return request<IntakeResponse>('/intake', { method: 'POST', body: form, signal });
 }
 
 // ===========================================================================

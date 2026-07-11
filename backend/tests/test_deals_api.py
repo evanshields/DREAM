@@ -214,3 +214,89 @@ def test_get_deal_returns_most_recent_job(client):
                           now_iso="2026-06-10T02:00:00+00:00")
     d = c.get(f"/api/deals/{rec.deal_id}").json()
     assert d["job"]["job_id"] == newer.job_id
+
+
+# ---------------------------------------------------------------------------
+# GET /api/deals/{deal_id}/audit — the readable audit trail (PRD C.5)
+# ---------------------------------------------------------------------------
+
+def test_audit_unknown_deal_404(client):
+    _ds, _js, c = client
+    assert c.get("/api/deals/nope/audit").status_code == 404
+
+
+def test_audit_deal_with_no_jobs_empty(client):
+    """A deal that never ran: {deal_id, jobs: []} — not a 404, not null."""
+    ds, _js, c = client
+    rec = ds.create(_spec("No Jobs", "no-jobs", "ACQ"), owner="evan",
+                    now_iso="2026-06-10T00:00:00+00:00")
+    r = c.get(f"/api/deals/{rec.deal_id}/audit")
+    assert r.status_code == 200
+    assert r.json() == {"deal_id": rec.deal_id, "jobs": []}
+
+
+def test_audit_populated_after_driven_job(client):
+    """Drive a real job to CP-1 through the jobs API; the audit endpoint surfaces the runner's
+    append-only trail in insertion order — Wave 0 first, the five llm_call slices, the gate
+    verdict, the spec_mutation persist, and the CP-1 stop last. Only kinds the store already
+    records appear ({phase, llm_call, gate, spec_mutation, error})."""
+    _ds, _js, c = client
+    r = c.post("/api/jobs", json={"intake_summary": READY, "owner": "evan"})
+    assert r.status_code == 200, r.text
+    jb = r.json()
+    assert jb["status"] == "awaiting_cp1"
+
+    a = c.get(f"/api/deals/{jb['deal_id']}/audit")
+    assert a.status_code == 200
+    body = a.json()
+    assert body["deal_id"] == jb["deal_id"]
+    assert len(body["jobs"]) == 1
+    job = body["jobs"][0]
+    assert job["job_id"] == jb["job_id"]
+    assert job["status"] == "awaiting_cp1"
+    assert job["created_at"]
+
+    events = job["events"]
+    assert len(events) >= 8  # wave0 + 5 slices + gate + spec_mutation + cp1
+    # exact event shape: kind + message + ts (detail optional)
+    for ev in events:
+        assert set(ev) - {"detail"} == {"kind", "message", "ts"}
+        assert ev["ts"]
+    # closed kind vocabulary — the endpoint exposes what the store records, nothing new
+    assert {ev["kind"] for ev in events} <= {"phase", "llm_call", "gate", "spec_mutation", "error"}
+    # insertion order: Wave 0 opens the trail, the CP-1 HITL stop closes it
+    assert events[0]["kind"] == "phase"
+    assert "Wave 0" in events[0]["message"]
+    assert events[-1]["kind"] == "phase"
+    assert "CP-1" in events[-1]["message"]
+    # the five Wave-1 slices appear as llm_call events, in phase order
+    llm_msgs = [ev["message"] for ev in events if ev["kind"] == "llm_call"]
+    assert len(llm_msgs) == 5
+    assert "wave1_t12" in llm_msgs[0] and "wave1_marketdata" in llm_msgs[-1]
+    # the gate event carries its detail payload (the GateSummary dict)
+    gate_evs = [ev for ev in events if ev["kind"] == "gate"]
+    assert gate_evs and gate_evs[0]["detail"]["ok"] is True
+
+
+def test_audit_multiple_jobs_newest_first(client):
+    """Two jobs on one deal: newest job first (updated_at DESC), each with its OWN event list
+    in insertion (seq) order."""
+    ds, js, c = client
+    rec = ds.create(_spec("Two Jobs", "two-jobs", "ACQ"), owner="evan",
+                    now_iso="2026-06-10T00:00:00+00:00")
+    older = js.create_job(deal_id=rec.deal_id, routing="ACQ", owner="evan",
+                          now_iso="2026-06-10T01:00:00+00:00")
+    js.append_audit(older.job_id, "phase", "older first", ts="2026-06-10T01:00:01+00:00")
+    js.append_audit(older.job_id, "error", "older failed", detail={"why": "test"},
+                    ts="2026-06-10T01:00:02+00:00")
+    newer = js.create_job(deal_id=rec.deal_id, routing="ACQ", owner="evan",
+                          now_iso="2026-06-10T02:00:00+00:00")
+    js.append_audit(newer.job_id, "phase", "newer first", ts="2026-06-10T02:00:01+00:00")
+
+    body = c.get(f"/api/deals/{rec.deal_id}/audit").json()
+    assert [j["job_id"] for j in body["jobs"]] == [newer.job_id, older.job_id]
+    assert [e["message"] for e in body["jobs"][1]["events"]] == ["older first", "older failed"]
+    assert body["jobs"][1]["events"][1]["detail"] == {"why": "test"}
+    # an event with an EMPTY detail omits the key (the shape's `detail?`)
+    assert "detail" not in body["jobs"][1]["events"][0]
+    assert [e["message"] for e in body["jobs"][0]["events"]] == ["newer first"]
