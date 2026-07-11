@@ -1,6 +1,6 @@
 import { type ReactNode } from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
-import { LayoutGrid, FilePlus2, LogOut } from 'lucide-react';
+import { LayoutGrid, FilePlus2, Landmark, LogOut } from 'lucide-react';
 import { useAuth } from '../auth/AuthContext';
 import { Wordmark } from './Wordmark';
 
@@ -35,6 +35,9 @@ export function AppShell({ children }: { children: ReactNode }) {
               <NavLink to="/underwrite" className={navClass}>
                 <FilePlus2 className="w-4 h-4" /> New Underwrite
               </NavLink>
+              <NavLink to="/bond-screen" className={navClass}>
+                <Landmark className="w-4 h-4" /> Bond Screen
+              </NavLink>
             </nav>
           </div>
           <div className="flex items-center gap-3">
@@ -67,6 +70,9 @@ export function AppShell({ children }: { children: ReactNode }) {
           </NavLink>
           <NavLink to="/underwrite" className={navClass}>
             <FilePlus2 className="w-4 h-4" /> New Underwrite
+          </NavLink>
+          <NavLink to="/bond-screen" className={navClass}>
+            <Landmark className="w-4 h-4" /> Bond Screen
           </NavLink>
         </nav>
       </header>

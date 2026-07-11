@@ -6,8 +6,9 @@ import { Login } from './pages/Login';
 import { Pipeline } from './pages/Pipeline';
 import { Underwrite } from './pages/Underwrite';
 import { DealDetail } from './pages/DealDetail';
+import { BondScreen } from './pages/BondScreen';
 
-// Routes: /login (public) · /pipeline · /underwrite · /deal/:id (all gated).
+// Routes: /login (public) · /pipeline · /underwrite · /bond-screen · /deal/:id (all gated).
 export default function App() {
   return (
     <BrowserRouter>
@@ -31,6 +32,16 @@ export default function App() {
               <RequireAuth>
                 <AppShell>
                   <Underwrite />
+                </AppShell>
+              </RequireAuth>
+            }
+          />
+          <Route
+            path="/bond-screen"
+            element={
+              <RequireAuth>
+                <AppShell>
+                  <BondScreen />
                 </AppShell>
               </RequireAuth>
             }

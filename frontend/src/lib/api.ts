@@ -318,6 +318,99 @@ export function recalc(req: ACQRecalcRequest, signal?: AbortSignal): Promise<Rec
   return request<RecalcResponse>('/recalc', { method: 'POST', body: req, signal });
 }
 
+// ===========================================================================
+// Bond Screen — EFB bond sizing + companion calculators (all deterministic, no LLM)
+// Mirrors backend/routers/recalc.py (EFBUnderwriteRequest / ExitCapRequest /
+// AgencySizingRequest) and engine_boundary.py response dicts exactly.
+// ===========================================================================
+
+export interface EFBUnderwriteRequest {
+  stabilized_noi: number;
+  target_dscr: number; // ratio, e.g. 1.15
+  bond_rate: number; // decimal, e.g. 0.05
+  amortization_years: number;
+  annual_property_tax_exempted?: number | null;
+  hold_years: number;
+}
+
+// engine_boundary.run_efb_underwrite return shape. Non-finite engine values arrive as null.
+export interface EFBHeadlineMetrics {
+  bond_amount: number | null;
+  annual_debt_service: number | null;
+  maximum_debt_service: number | null;
+  year1_noi: number | null;
+  year1_dscr: number | null;
+  target_dscr: number | null;
+  bond_rate: number | null;
+  tax_savings_10yr: number | null;
+}
+
+export interface EFBUnderwriteResponse {
+  headline_metrics: EFBHeadlineMetrics;
+}
+
+export function underwriteEFB(
+  req: EFBUnderwriteRequest,
+  signal?: AbortSignal,
+): Promise<EFBUnderwriteResponse> {
+  return request<EFBUnderwriteResponse>('/underwrite/efb', { method: 'POST', body: req, signal });
+}
+
+export type ExitCapStrategy = 'core' | 'core_plus' | 'value_add' | 'opportunistic';
+
+export interface ExitCapRequest {
+  going_in_cap: number; // decimal, e.g. 0.055
+  strategy: ExitCapStrategy;
+  forward_treasury?: number | null;
+  agency_spread: number;
+  neg_leverage_buffer: number;
+  comp_implied_cap?: number | null;
+}
+
+// engine_boundary.triangulate_exit_cap return shape. method_treasury comes back 0 (not null)
+// when no forward treasury was supplied — treat 0 as "method not run" in the UI.
+export interface ExitCapResponse {
+  method_treasury: number | null;
+  method_comp: number | null;
+  method_entry_strategy: number | null;
+  exit_cap: number | null;
+  binding_method: string; // 'entry+strategy' | 'treasury_spread' | 'comp_validation'
+}
+
+export function recalcExitCap(req: ExitCapRequest, signal?: AbortSignal): Promise<ExitCapResponse> {
+  return request<ExitCapResponse>('/recalc/exit-cap', { method: 'POST', body: req, signal });
+}
+
+export interface AgencySizingRequest {
+  stabilized_noi: number;
+  stabilized_value: number;
+  refi_rate: number; // decimal
+  amort_years: number;
+  target_dscr: number; // ratio
+  max_ltv: number; // decimal, e.g. 0.75
+  min_debt_yield: number; // decimal, e.g. 0.085
+}
+
+// engine_boundary.size_agency_takeout return shape (MIN across the three constraints).
+export interface AgencySizingResponse {
+  by_dscr: number | null;
+  by_ltv: number | null;
+  by_debt_yield: number | null;
+  max_loan: number | null;
+  binding_constraint: string; // 'dscr' | 'ltv' | 'debt_yield'
+}
+
+export function recalcAgencySizing(
+  req: AgencySizingRequest,
+  signal?: AbortSignal,
+): Promise<AgencySizingResponse> {
+  return request<AgencySizingResponse>('/recalc/agency-sizing', {
+    method: 'POST',
+    body: req,
+    signal,
+  });
+}
+
 export function sensitivity(
   req: SensitivityRequest,
   signal?: AbortSignal,
