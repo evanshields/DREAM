@@ -446,3 +446,169 @@ export function sensitivity(
 ): Promise<SensitivityResponse> {
   return request<SensitivityResponse>('/recalc/sensitivity', { method: 'POST', body: req, signal });
 }
+
+// ===========================================================================
+// Single deal view — GET /api/deals/{deal_id}
+// List-item fields + the opaque canonical spec + gate_summary (spec.qa) + the
+// most recent job block (or null). Mirrors backend/routers/deals.py get_deal().
+// ===========================================================================
+
+export interface DealJobBlock {
+  job_id: string;
+  status: string;
+  phase: string;
+  error: string | null;
+  open_questions: OpenQuestion[];
+  blocking_questions: OpenQuestion[];
+}
+
+// spec.narrative.memo — persisted by POST /memo (regeneration overwrites).
+export interface DealMemoBlock {
+  markdown: string;
+  generated_at: string;
+}
+
+export interface DealFullView extends DealListItem {
+  spec: Record<string, unknown>;
+  gate_summary: Record<string, unknown>;
+  job: DealJobBlock | null;
+}
+
+export function getDeal(dealId: string, signal?: AbortSignal): Promise<DealFullView> {
+  return request<DealFullView>(`/deals/${encodeURIComponent(dealId)}`, { signal });
+}
+
+// ===========================================================================
+// Deal memo — POST /api/deals/{deal_id}/memo
+// LLM-written prose over the deterministic spec; takes ~10-30s. Regenerating
+// overwrites spec.narrative.memo. 409 = deal has no computed spec (pre-CP-1)
+// or a concurrent-write version conflict; 502 = upstream LLM failure.
+// ===========================================================================
+
+export interface MemoResponse {
+  memo_markdown: string;
+  generated_at: string;
+}
+
+export function generateMemo(dealId: string, signal?: AbortSignal): Promise<MemoResponse> {
+  return request<MemoResponse>(`/deals/${encodeURIComponent(dealId)}/memo`, {
+    method: 'POST',
+    signal,
+  });
+}
+
+// ===========================================================================
+// Deal audit trail — GET /api/deals/{deal_id}/audit
+// Every job that ever ran for the deal (newest job first), each with its
+// APPEND-ONLY AuditEvent list in insertion order. Read-only.
+// ===========================================================================
+
+export type AuditEventKind = 'phase' | 'llm_call' | 'gate' | 'spec_mutation' | 'error';
+
+export interface AuditEvent {
+  kind: AuditEventKind | string;
+  message: string;
+  detail?: unknown; // string or structured JSON; present only when the runner recorded one
+  ts: string;
+}
+
+export interface AuditJob {
+  job_id: string;
+  status: string;
+  created_at: string;
+  events: AuditEvent[];
+}
+
+export interface DealAuditResponse {
+  deal_id: string;
+  jobs: AuditJob[];
+}
+
+export function getDealAudit(dealId: string, signal?: AbortSignal): Promise<DealAuditResponse> {
+  return request<DealAuditResponse>(`/deals/${encodeURIComponent(dealId)}/audit`, { signal });
+}
+
+// ===========================================================================
+// Excel export — POST /api/deals/{deal_id}/export (multipart)
+// Mirrors backend/routers/export_excel.py: the user UPLOADS their Mini Model
+// .xlsx template (form field `template`) + a `download` bool form field. The
+// populator writes the deal's INPUT cells into a COPY of the template.
+//   download=true  + clean populate -> streams the draft .xlsx (PENDING EXCEL RECALC)
+//   download=true  + blocked        -> returns the WriteReport JSON (refusals enumerate why)
+//   download=false                  -> always returns the WriteReport JSON
+// Errors: 400 non-.xlsx template, 404 unknown deal, 422 populate exception.
+// ===========================================================================
+
+// Serialized populator.WriteReport (see export_excel._write_report_dict).
+export interface ExportWriteReport {
+  ok: boolean;
+  written: string[]; // cell addresses actually written
+  written_count: number;
+  identity_blocked: boolean; // BL-02: deal_identity mismatch — populate refused entirely
+  structural_diff_ok: boolean;
+  structural_diff_detail: Record<string, unknown>;
+  refusals: {
+    formula: { cell: string; existing: string }[]; // EXPECTED — populator never overwrites formulas
+    fee_bounds: { cell: string; reason: string }[]; // BL-03
+    unit_count: string[]; // BL-01
+    ltv: string[]; // BL-15
+    rubs: string[]; // BL-16
+    exit_cap: string[]; // BL-10
+  };
+  missing_cells: string[];
+  patches_applied: string[];
+  patch_log: string[]; // formula-audit verdicts (BL-07)
+  draft_path: string;
+}
+
+export type ExportOutcome =
+  | { kind: 'file'; blob: Blob; filename: string }
+  | { kind: 'report'; report: ExportWriteReport };
+
+// Raw fetch (not request<T>): the success body is EITHER a JSON WriteReport OR an
+// .xlsx byte stream — branch on Content-Type. Same bearer + global-401 handling.
+export async function exportDealToExcel(
+  dealId: string,
+  template: File,
+  download = true,
+  signal?: AbortSignal,
+): Promise<ExportOutcome> {
+  const token = getAuthToken();
+  const form = new FormData();
+  form.append('template', template, template.name);
+  form.append('download', download ? 'true' : 'false');
+
+  const res = await fetch(`${API_BASE}/deals/${encodeURIComponent(dealId)}/export`, {
+    method: 'POST',
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+    body: form,
+    signal,
+  });
+
+  if (res.status === 401) {
+    if (onUnauthorized) onUnauthorized();
+    throw new ApiError(401, 'Your session has expired. Please sign in again.');
+  }
+  if (!res.ok) {
+    let detail = `${res.status} ${res.statusText}`;
+    try {
+      const j = await res.json();
+      if (j?.detail) detail = typeof j.detail === 'string' ? j.detail : JSON.stringify(j.detail);
+    } catch {
+      /* non-JSON error body — keep status text */
+    }
+    throw new ApiError(res.status, detail);
+  }
+
+  const contentType = res.headers.get('content-type') ?? '';
+  if (contentType.includes('application/json')) {
+    return { kind: 'report', report: (await res.json()) as ExportWriteReport };
+  }
+
+  // xlsx stream — pull the server's filename off Content-Disposition when present.
+  const blob = await res.blob();
+  const cd = res.headers.get('content-disposition') ?? '';
+  const m = /filename\*?=(?:UTF-8'')?"?([^";]+)"?/i.exec(cd);
+  const filename = m ? decodeURIComponent(m[1]) : `${dealId}-DREAM-draft.xlsx`;
+  return { kind: 'file', blob, filename };
+}

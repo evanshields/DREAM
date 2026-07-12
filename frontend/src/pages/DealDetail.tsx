@@ -14,13 +14,19 @@ import {
   MinusCircle,
   Loader2,
   AlertTriangle,
+  LayoutDashboard,
+  FileText,
+  History,
+  FileSpreadsheet,
+  type LucideIcon,
 } from 'lucide-react';
 import {
-  listDeals,
+  getDeal,
   ApiError,
   type JobView,
-  type DealListItem,
+  type DealFullView,
   type DealHeadlineMetrics,
+  type DealMemoBlock,
   type EFBHeadlineMetrics,
   type EFBUnderwriteRequest,
   type OpenQuestion,
@@ -32,6 +38,9 @@ import {
   EFBSizingPanel,
   EFB_SIZING_DEFAULTS,
 } from '../components/EFBMetricTiles';
+import { DealMemo } from '../components/DealMemo';
+import { DealAudit } from '../components/DealAudit';
+import { DealExport } from '../components/DealExport';
 import { fmtUSD, fmtPct1, fmtEM, prettyStatus, fmtDate } from '../lib/format';
 
 // Pull the EFB metric keys out of the generic per-deal headline_metrics bag.
@@ -55,30 +64,47 @@ function pickEFBMetrics(hm: DealHeadlineMetrics): Partial<EFBHeadlineMetrics> {
   return out;
 }
 
+// The tab strip: Overview (CP-1 metrics + gates + live modelling), Memo (LLM deal memo),
+// Activity (audit trail), Export (App -> Excel push).
+type TabId = 'overview' | 'memo' | 'activity' | 'export';
+const TABS: { id: TabId; label: string; icon: LucideIcon }[] = [
+  { id: 'overview', label: 'Overview', icon: LayoutDashboard },
+  { id: 'memo', label: 'Memo', icon: FileText },
+  { id: 'activity', label: 'Activity', icon: History },
+  { id: 'export', label: 'Export', icon: FileSpreadsheet },
+];
+
 // The CP-1 review + assumption dashboard (PRD §4.4).
 // Two arrival paths:
 //   1. From the underwrite flow -> location.state.job carries the full CP-1 JobView
 //      (spec + headline_metrics + gate_summary + open_questions).
-//   2. Cold load (pipeline click / refresh) -> we fetch the deal from GET /api/deals
-//      for its headline_metrics. (There's no single-deal GET endpoint by contract; the
-//      live recalc dashboard is fully functional regardless.)
+//   2. Cold load (pipeline click / refresh) -> GET /api/deals/{id} carries the full view
+//      (spec + gate_summary + latest job block), so gates/questions/memo survive a refresh.
 export function DealDetail() {
   const { id } = useParams<{ id: string }>();
   const location = useLocation();
   const stateJob = (location.state as { job?: JobView } | null)?.job ?? null;
 
-  const [deal, setDeal] = useState<DealListItem | null>(null);
+  const [deal, setDeal] = useState<DealFullView | null>(null);
   const [loading, setLoading] = useState(!stateJob);
   const [error, setError] = useState<string | null>(null);
 
+  const [tab, setTab] = useState<TabId>('overview');
+  // Activity fetches on first visit and stays mounted after (tab switches just hide it).
+  const [auditVisited, setAuditVisited] = useState(false);
   useEffect(() => {
-    // If we already have the CP-1 job from navigation, we still fetch the deal index for
-    // name/status; but it's non-blocking. On a cold load it's the primary source.
+    if (tab === 'activity') setAuditVisited(true);
+  }, [tab]);
+
+  useEffect(() => {
+    // If we already have the CP-1 job from navigation, this fetch is non-blocking color
+    // (name/status/persisted memo). On a cold load it's the primary source.
+    if (!id) return;
     let cancelled = false;
-    listDeals()
-      .then((deals) => {
+    getDeal(id)
+      .then((d) => {
         if (cancelled) return;
-        setDeal(deals.find((d) => d.deal_id === id) ?? null);
+        setDeal(d);
         setLoading(false);
       })
       .catch((e) => {
@@ -107,8 +133,31 @@ export function DealDetail() {
   const isEFB = routing === 'EFB';
   const status = stateJob?.status ?? deal?.status ?? '';
 
-  const gateSummary = stateJob?.gate_summary ?? null;
-  const openQuestions = stateJob?.open_questions ?? [];
+  // Gates + open questions: fresh CP-1 job view first, then the persisted deal view
+  // (spec.qa + the latest job block), so cold loads keep them.
+  const gateSummary = useMemo<Record<string, unknown> | null>(() => {
+    if (stateJob?.gate_summary) return stateJob.gate_summary;
+    if (deal?.gate_summary && Object.keys(deal.gate_summary).length > 0) return deal.gate_summary;
+    return null;
+  }, [stateJob, deal]);
+  const openQuestions = stateJob?.open_questions ?? deal?.job?.open_questions ?? [];
+
+  // The persisted memo rides at spec.narrative.memo (POST /memo writes it there).
+  // Prefer the persisted deal spec (it reflects any memo generated after CP-1) over the
+  // navigation job's CP-1 snapshot.
+  const specMemo = useMemo<DealMemoBlock | null>(() => {
+    const spec = (deal?.spec ?? stateJob?.spec) as
+      | { narrative?: { memo?: { markdown?: unknown; generated_at?: unknown } } }
+      | undefined;
+    const m = spec?.narrative?.memo;
+    if (m && typeof m.markdown === 'string') {
+      return {
+        markdown: m.markdown,
+        generated_at: typeof m.generated_at === 'string' ? m.generated_at : '',
+      };
+    }
+    return null;
+  }, [deal, stateJob]);
 
   // Seed the live EFB sizing panel from the deal's computed headline metrics.
   const efbSeed = useMemo<Partial<EFBUnderwriteRequest> | undefined>(() => {
@@ -160,6 +209,27 @@ export function DealDetail() {
         </Card>
       )}
 
+      {/* Tab strip: Overview / Memo / Activity / Export */}
+      <div className="flex gap-1 border-b border-slate/10" role="tablist">
+        {TABS.map((t) => (
+          <button
+            key={t.id}
+            role="tab"
+            aria-selected={tab === t.id}
+            onClick={() => setTab(t.id)}
+            className={`inline-flex items-center gap-1.5 px-4 py-2.5 text-sm font-medium border-b-2 -mb-px transition-colors ${
+              tab === t.id
+                ? 'border-teal text-teal'
+                : 'border-transparent text-slate/50 hover:text-slate-near'
+            }`}
+          >
+            <t.icon className="w-4 h-4" /> {t.label}
+          </button>
+        ))}
+      </div>
+
+      {tab === 'overview' && (
+        <>
       {/* CP-1: headline metrics (routing-aware — EFB shows bond sizing tiles) */}
       {headline ? (
         isEFB ? (
@@ -196,6 +266,19 @@ export function DealDetail() {
       <div className="pt-2 border-t border-slate/10">
         {isEFB ? <EFBSizingPanel seed={efbSeed} /> : <AssumptionDashboard />}
       </div>
+        </>
+      )}
+
+      {tab === 'memo' && id && <DealMemo dealId={id} dealName={dealName} memo={specMemo} />}
+
+      {/* Activity mounts on first visit and stays mounted (hidden) so the fetch isn't repeated. */}
+      {auditVisited && id && (
+        <div className={tab === 'activity' ? '' : 'hidden'}>
+          <DealAudit dealId={id} />
+        </div>
+      )}
+
+      {tab === 'export' && id && <DealExport dealId={id} />}
     </div>
   );
 }
