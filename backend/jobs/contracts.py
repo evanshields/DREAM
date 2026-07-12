@@ -81,6 +81,16 @@ ACTIVE_STATUSES: frozenset = frozenset({
     JobStatus.AWAITING_CP1,
 })
 
+# Statuses where the pipeline is actually EXECUTING (ACTIVE minus the human-paused pair).
+# Canonical set shared by the restart sweep (jobs/queue.py) and the deal-delete guard
+# (routers/deals.py): a dead server strands these; a human answers the other two.
+RUNNING_STATUSES: frozenset = frozenset({
+    JobStatus.SUBMITTED,
+    JobStatus.ROUTING,
+    JobStatus.ANALYZING,
+    JobStatus.SYNTHESIZING,
+})
+
 # Terminal statuses — no outbound transitions.
 TERMINAL_STATUSES: frozenset = frozenset({
     JobStatus.COMPLETED,

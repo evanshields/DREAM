@@ -3,16 +3,20 @@ Shieldstone EFB Underwriting Mini-App — FastAPI Backend
 ========================================================
 Routes:
   POST /api/intake          — Upload + auto-detect + extract deal document
-  POST /api/underwrite      — Run full financial model
+  POST /api/underwrite      — RETIRED (Phase 4c, 2026-07-12) — 410; see /api/underwrite/v2, /api/underwrite/efb
   POST /api/validate        — Validate inputs vs T-Manual V2
   POST /api/agent/chat      — Streaming Kimi agent (SSE)
   POST /api/agent/memo      — Generate deal memo
   GET  /api/health          — Health check
+
+  /api/underwrite/v2 (ACQ) and /api/underwrite/efb live in routers/recalc.py.
 """
 
+import logging
 import os
 import json
 import asyncio
+from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import AsyncIterator
 
@@ -26,32 +30,16 @@ from auth_dep import require_auth, auth_enabled  # A0.2: OAuth re-enabled (confi
 # Load env
 load_dotenv(Path(__file__).parent / ".env")
 
+logger = logging.getLogger(__name__)
+
 # Internal imports
 from models import (
     DealInputs,
-    UnderwriteResponse,
     ValidationResponse,
     IntakeResponse,
     AgentChatRequest,
     MemoRequest,
-    ProFormaYear,
-    SourcesUses,
-    ExitAnalysis,
-    ReturnsSummary,
-    EFBTaxAdvantage,
-    SensitivityGrid,
     ValidationFlag,
-)
-from calculations import (
-    compute_sources_and_uses,
-    compute_pro_forma,
-    compute_exit_analysis,
-    compute_sensitivity_grid,
-    compute_efb_tax_advantage,
-    calculate_irr,
-    build_investor_cash_flows,
-    compute_returns_summary,
-    size_bond_to_dscr,
 )
 from calculations.validator import DealValidator
 from intake.intake_service import IntakeService
@@ -67,10 +55,28 @@ from agent.prompts import (
 # APP SETUP
 # ============================================================================
 
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    try:
+        from jobs.queue import sweep_stale_jobs
+        n = sweep_stale_jobs()
+        if n:
+            logger.warning("startup sweep: %d stale in-flight job(s) marked FAILED", n)
+    except Exception:
+        logger.exception("startup job sweep failed; continuing")
+    yield
+    try:
+        from jobs.queue import shutdown
+        shutdown(wait=False)
+    except Exception:
+        pass
+
+
 app = FastAPI(
     title="DREAM Underwriting API",
     version="3.0.0-wave-a",
     description="DREAM — Shieldstone Dev/RE/Asset-Mgmt underwriting (ACQ + EFB).",
+    lifespan=lifespan,
 )
 
 # /api/recalc lives in its own router whose import graph is deliberately LLM-free (A1.5).
@@ -314,136 +320,10 @@ def me(user: dict = Depends(require_auth)):
     }
 
 
-@app.post("/api/underwrite", response_model=UnderwriteResponse)
-def underwrite(deal: DealInputs, user: dict = Depends(require_auth)):
-    """Run the full EFB financial model and return all outputs."""
-    try:
-        inputs = flatten_inputs(deal)
-
-        # Core calculations — compute pro forma first so we can derive going_in_cap
-        sources_uses_raw = compute_sources_and_uses(inputs)
-        pro_forma_raw = compute_pro_forma(inputs)
-
-        # Derive going_in_cap from yr1 NOI and pass back into inputs for exit analysis
-        yr1 = pro_forma_raw[0] if pro_forma_raw else {}
-        yr1_noi = yr1.get("noi", 0.0)
-        purchase_price = float(inputs.get("purchase_price", 1.0))
-        inputs["going_in_cap"] = yr1_noi / purchase_price if purchase_price else 0.05
-
-        exit_raw = compute_exit_analysis(inputs, pro_forma_raw)
-        sensitivity_raw = compute_sensitivity_grid(inputs)
-        tax_advantage_raw = compute_efb_tax_advantage(inputs, pro_forma_raw)
-
-        # Returns — use proper signature: (pro_forma, exit_analysis, equity_invested)
-        equity_invested = max(sources_uses_raw.get("lp_equity", 0.0), 0.0)
-        returns_raw = compute_returns_summary(pro_forma_raw, exit_raw, equity_invested)
-
-        # Hurdle IRR — market_tier removed, default to secondary (16%)
-        hurdle = 0.16
-        irr_val = returns_raw.get("irr")
-        em_val = returns_raw.get("equity_multiple", 0.0)
-
-        # Flatten closing costs for SourcesUses model
-        cc = sources_uses_raw["closing_costs"]
-
-        # Compute conventional DSCR for tax advantage comparison
-        yr1_ds = yr1.get("a_bond_interest", 0.0) + yr1.get("a_bond_principal_scheduled", 0.0)
-        conventional_tax = tax_advantage_raw["conventional_annual_tax"]
-        yr1_dscr_conv = (yr1_noi - conventional_tax) / yr1_ds if yr1_ds > 0 else float("inf")
-
-        # Build exit analysis fields
-        exit_cap = exit_raw["exit_cap"]
-        sale_price = exit_raw["sale_price"]
-        total_units = int(inputs.get("total_units", 1))
-        going_in_cap = inputs["going_in_cap"]
-        exit_cap_method = "Direct Input"
-
-        return UnderwriteResponse(
-            sources_uses=SourcesUses(
-                loan_amount=sources_uses_raw["loan_amount"],
-                b_note_amount=sources_uses_raw["b_note_amount"],
-                lp_equity=sources_uses_raw["lp_equity"],
-                total_sources=sources_uses_raw["total_sources"],
-                purchase_price=purchase_price,
-                acquisition_fee=cc["acquisition_fee"],
-                gp_bond_counsel=cc["gp_bond_counsel"],
-                lenders_counsel=cc["lenders_counsel"],
-                cost_of_issuance=cc["cost_of_issuance"],
-                transfer_recordation=cc["transfer_recordation"],
-                title=cc["title"],
-                property_condition_report=cc["property_condition_report"],
-                file_inspection=cc["file_inspection"],
-                environmental=cc["environmental"],
-                survey=cc["survey"],
-                appraisal=cc["appraisal"],
-                market_study=cc["market_study"],
-                capital_reserve=cc["capital_reserve"],
-                insurance_escrow=cc["insurance_escrow"],
-                soft_cost_cushion=cc["soft_cost_cushion"],
-                working_capital=cc["working_capital"],
-                replacement_reserves_capitalized=cc["replacement_reserves_capitalized"],
-                enhancements_and_reserves=cc.get("enhancements_and_reserves", 0.0),
-                other_closing_costs=cc.get("other_closing_costs", 0.0),
-                financial_advisor_issuance=cc.get("financial_advisor_issuance", 0.0),
-                bond_counsel_coi=cc.get("bond_counsel_coi", 0.0),
-                underwriter_counsel=cc.get("underwriter_counsel", 0.0),
-                trustee=cc.get("trustee", 0.0),
-                trustee_counsel=cc.get("trustee_counsel", 0.0),
-                other_bond_closing_costs=cc.get("other_bond_closing_costs", 0.0),
-                capital_budget_reserves_account=cc.get("capital_budget_reserves_account", 0.0),
-                total_closing_costs=sources_uses_raw["total_closing_costs"],
-                total_uses=sources_uses_raw["total_uses"],
-                ltv=sources_uses_raw["ltv"],
-            ),
-            pro_forma=[ProFormaYear(**y) for y in pro_forma_raw],
-            exit_analysis=ExitAnalysis(
-                hold_year=exit_raw["hold_period"],
-                exit_noi=exit_raw["exit_noi"],
-                method1_cap=exit_raw["method1_cap"],
-                method2_cap=exit_raw["method2_cap"],
-                method3_cap=exit_raw["method3_cap"],
-                exit_cap_used=exit_cap,
-                exit_cap_method=exit_cap_method,
-                sale_price=sale_price,
-                price_per_unit=sale_price / total_units if total_units else 0.0,
-                outstanding_bonds=exit_raw["total_outstanding_bonds"],
-                sale_costs=sale_price * exit_raw["sale_transaction_cost"],
-                net_proceeds=exit_raw["net_proceeds_to_equity"],
-                going_in_cap=going_in_cap,
-            ),
-            returns=ReturnsSummary(
-                property_irr=irr_val,
-                equity_multiple=em_val,
-                coc_yr1=returns_raw.get("coc_yr1", 0.0),
-                net_proceeds=returns_raw.get("exit_proceeds", 0.0),
-                equity_invested=equity_invested,
-                irr_formatted=returns_raw.get("irr_pct", "N/A"),
-                em_formatted=f"{em_val:.2f}x",
-                coc_formatted=returns_raw.get("coc_yr1_pct", "N/A"),
-                hurdle_irr=hurdle,
-                passes_irr=(irr_val or 0) >= hurdle,
-                passes_em=em_val >= 1.5,
-            ),
-            tax_advantage=EFBTaxAdvantage(
-                efb_annual_tax=tax_advantage_raw["efb_annual_tax"],
-                conventional_annual_tax=tax_advantage_raw["conventional_annual_tax"],
-                annual_savings=tax_advantage_raw["annual_savings"],
-                cumulative_savings=tax_advantage_raw["cumulative_savings"],
-                yr1_dscr_conventional=yr1_dscr_conv,
-                yr1_dscr_efb=yr1.get("dscr", 0.0),
-            ),
-            sensitivity=SensitivityGrid(
-                a_bond_rates=sensitivity_raw["a_bond_rates"],
-                exit_caps=sensitivity_raw["exit_caps"],
-                dscr_grid=sensitivity_raw["dscr_grid"],
-            ),
-            yr1_dscr=yr1.get("dscr", 0.0),
-            yr1_noi=yr1_noi,
-            going_in_cap=going_in_cap,
-            price_per_unit=purchase_price / total_units if total_units else 0.0,
-        )
-    except Exception as e:
-        raise HTTPException(status_code=422, detail=str(e))
+@app.post("/api/underwrite")
+def underwrite_retired(user: dict = Depends(require_auth)):
+    """Retired Phase 4c (2026-07-12). Successors: /api/underwrite/v2 (ACQ) + /api/underwrite/efb — routers/recalc.py."""
+    raise HTTPException(status_code=410, detail="Retired. Use /api/underwrite/v2 (ACQ) or /api/underwrite/efb.")
 
 
 @app.post("/api/validate", response_model=ValidationResponse)

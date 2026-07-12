@@ -16,7 +16,9 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import routers.deals as deals_router  # noqa: E402
 import routers.jobs as jobs_router  # noqa: E402
+from auth_dep import require_auth  # noqa: E402
 from store import SQLiteDealStore  # noqa: E402
+from jobs.contracts import JobStatus  # noqa: E402
 from jobs.job_store import SQLiteJobStore  # noqa: E402
 from jobs.analysts import StubAnalysts  # noqa: E402
 
@@ -300,3 +302,156 @@ def test_audit_multiple_jobs_newest_first(client):
     # an event with an EMPTY detail omits the key (the shape's `detail?`)
     assert "detail" not in body["jobs"][1]["events"][0]
     assert [e["message"] for e in body["jobs"][0]["events"]] == ["newer first"]
+
+
+# ---------------------------------------------------------------------------
+# POST /api/deals/{deal_id}/archive + /unarchive — soft hide / restore
+# ---------------------------------------------------------------------------
+
+def test_archive_hides_from_default_list(client):
+    """Archived deals disappear from the DEFAULT list; ?status=archived passes through the store
+    untouched; ?include_archived=1 (or true) keeps them in the unfiltered list."""
+    ds, _js, c = client
+    a = ds.create(_spec("A", "a", "ACQ"), owner="evan",
+                  now_iso="2026-06-10T00:00:00+00:00", status="computed")
+    ds.create(_spec("B", "b", "ACQ"), owner="evan",
+              now_iso="2026-06-10T00:00:01+00:00", status="draft")
+
+    r = c.post(f"/api/deals/{a.deal_id}/archive")
+    assert r.status_code == 200
+    body = r.json()
+    assert body["status"] == "archived"
+    assert body["version"] == 2  # ds.put bumped (a real write, spec stays canonical)
+
+    # hidden from the default list
+    assert {d["deal_name"] for d in c.get("/api/deals").json()} == {"B"}
+    # explicit status filter passes through untouched
+    assert {d["deal_name"] for d in c.get("/api/deals?status=archived").json()} == {"A"}
+    # opt back in with the flag ("1" and "true" both accepted)
+    assert {d["deal_name"] for d in c.get("/api/deals?include_archived=1").json()} == {"A", "B"}
+    assert {d["deal_name"] for d in c.get("/api/deals?include_archived=true").json()} == {"A", "B"}
+    # the detail view still resolves an archived deal (soft hide, not delete)
+    assert c.get(f"/api/deals/{a.deal_id}").status_code == 200
+
+
+def test_archive_idempotent_no_version_bump(client):
+    """Archiving an already-archived deal returns the current view WITHOUT a version bump, and
+    the stashed pre-archive status keeps the ORIGINAL value (never 'archived')."""
+    ds, _js, c = client
+    rec = ds.create(_spec("A", "a", "ACQ"), owner="evan",
+                    now_iso="2026-06-10T00:00:00+00:00", status="computed")
+    first = c.post(f"/api/deals/{rec.deal_id}/archive").json()
+    second = c.post(f"/api/deals/{rec.deal_id}/archive").json()
+    assert first["version"] == 2
+    assert second["version"] == 2  # no bump on the idempotent repeat
+    assert second["status"] == "archived"
+    stored = ds.get(rec.deal_id)
+    assert stored.version == 2
+    assert stored.spec["meta"]["pre_archive_status"] == "computed"
+
+
+def test_unarchive_restores_stashed_status(client):
+    """Unarchive restores the stashed pre-archive status (a NON-draft one here: gate_failed) and
+    pops the stash off the spec."""
+    ds, _js, c = client
+    rec = ds.create(_spec("GF", "gf", "ACQ"), owner="evan",
+                    now_iso="2026-06-10T00:00:00+00:00", status="gate_failed")
+    c.post(f"/api/deals/{rec.deal_id}/archive")
+    assert ds.get(rec.deal_id).spec["meta"]["pre_archive_status"] == "gate_failed"
+
+    r = c.post(f"/api/deals/{rec.deal_id}/unarchive")
+    assert r.status_code == 200
+    assert r.json()["status"] == "gate_failed"
+    # the stash is consumed (popped), not left to go stale on the spec
+    assert "pre_archive_status" not in ds.get(rec.deal_id).spec["meta"]
+
+
+def test_unarchive_fallback_and_idempotency(client):
+    """No stash (deal born archived): fallback restores 'computed' when the spec carries a
+    non-empty headline_metrics, else 'draft'. Unarchiving a non-archived deal is a no-op."""
+    ds, _js, c = client
+    computed = ds.create(_spec("C", "c", "ACQ", headline_metrics={"irr": 0.2}), owner="evan",
+                         now_iso="2026-06-10T00:00:00+00:00", status="archived")
+    draft = ds.create(_spec("D", "d", "ACQ"), owner="evan",
+                      now_iso="2026-06-10T00:00:01+00:00", status="archived")
+    assert c.post(f"/api/deals/{computed.deal_id}/unarchive").json()["status"] == "computed"
+    assert c.post(f"/api/deals/{draft.deal_id}/unarchive").json()["status"] == "draft"
+    # idempotent: unarchiving a deal that is not archived returns the view as-is (no version bump)
+    again = c.post(f"/api/deals/{draft.deal_id}/unarchive").json()
+    assert again["status"] == "draft"
+    assert again["version"] == ds.get(draft.deal_id).version == 2
+
+
+def test_archive_unarchive_delete_unknown_id_404(client):
+    _ds, _js, c = client
+    assert c.post("/api/deals/nope/archive").status_code == 404
+    assert c.post("/api/deals/nope/unarchive").status_code == 404
+    assert c.delete("/api/deals/nope").status_code == 404
+
+
+# ---------------------------------------------------------------------------
+# DELETE /api/deals/{deal_id} — hard delete + running-job guard
+# ---------------------------------------------------------------------------
+
+def test_delete_removes_deal_and_job_rows(client):
+    """Delete a deal whose job is human-paused at CP-1 (awaiting_cp1 never blocks): the deal
+    detail + audit both 404 afterwards and the job rows are gone (delete_for_deal cascade)."""
+    _ds, js, c = client
+    r = c.post("/api/jobs", json={"intake_summary": READY, "owner": "evan"})
+    assert r.status_code == 200, r.text
+    deal_id = r.json()["deal_id"]
+    assert r.json()["status"] == "awaiting_cp1"  # paused, NOT running — must not block
+    assert js.list_jobs(deal_id=deal_id)
+
+    d = c.delete(f"/api/deals/{deal_id}")
+    assert d.status_code == 200
+    assert d.json() == {"deleted": True, "deal_id": deal_id}
+    assert c.get(f"/api/deals/{deal_id}").status_code == 404
+    assert c.get(f"/api/deals/{deal_id}/audit").status_code == 404
+    assert js.list_jobs(deal_id=deal_id) == []
+
+
+def test_delete_while_job_running_409(client):
+    """A deal whose NEWEST job is actively running (walked to ANALYZING via legal transitions)
+    refuses to delete with 409 until the job is cancelled; nothing is removed by the refusal."""
+    ds, js, c = client
+    rec = ds.create(_spec("Busy", "busy", "ACQ"), owner="evan",
+                    now_iso="2026-06-10T00:00:00+00:00")
+    job = js.create_job(deal_id=rec.deal_id, routing="ACQ", owner="evan",
+                        now_iso="2026-06-10T00:00:01+00:00")
+    # legal walk: SUBMITTED -> ROUTING -> ANALYZING (a running state)
+    js.transition(job.job_id, JobStatus.ROUTING, "2026-06-10T00:00:02+00:00")
+    js.transition(job.job_id, JobStatus.ANALYZING, "2026-06-10T00:00:03+00:00")
+
+    r = c.delete(f"/api/deals/{rec.deal_id}")
+    assert r.status_code == 409
+    assert "cancel it first" in r.json()["detail"]
+    # the refusal deleted nothing
+    assert c.get(f"/api/deals/{rec.deal_id}").status_code == 200
+    assert js.list_jobs(deal_id=rec.deal_id)
+
+    # cancel the job (legal from ANALYZING) -> the delete now goes through
+    js.transition(job.job_id, JobStatus.CANCELLED, "2026-06-10T00:00:04+00:00")
+    r = c.delete(f"/api/deals/{rec.deal_id}")
+    assert r.status_code == 200
+    assert js.list_jobs(deal_id=rec.deal_id) == []
+
+
+# ---------------------------------------------------------------------------
+# Owner derivation — server identity wins over the request body (Track A's change;
+# this file only TESTS the jobs router, it does not own it)
+# ---------------------------------------------------------------------------
+
+def test_job_submit_derives_owner_from_authenticated_user(client):
+    """POST /api/jobs with an authenticated user must set the created deal's owner from the
+    SERVER-side identity (lowercased email), not the client-supplied req.owner — a client must
+    not be able to file deals as someone else."""
+    ds, _js, c = client
+    c.app.dependency_overrides[require_auth] = lambda: {"email": "CHARLES@Example.com"}
+    try:
+        r = c.post("/api/jobs", json={"intake_summary": READY, "owner": "mallory@evil.example"})
+        assert r.status_code == 200, r.text
+        deal = ds.get(r.json()["deal_id"])
+        assert deal.owner == "charles@example.com"
+    finally:
+        c.app.dependency_overrides.pop(require_auth, None)

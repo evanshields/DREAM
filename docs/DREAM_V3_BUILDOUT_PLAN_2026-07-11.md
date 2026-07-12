@@ -78,3 +78,16 @@ green. PR #3 awaiting Evan's one-click merge.
   (9-event trail verified). SECURITY: /api/intake + /api/agent/chat + /api/agent/memo were ALL
   ungated Kimi doors — closed (401 bare verified). 356 tests. Launched: Phase 3b frontend
   (memo view + audit timeline + Excel export button).
+- 2026-07-12: **PHASE 4 BUILT (multi-agent)** — 4 parallel builders (Fable 5 / Opus 4.8 x2 /
+  Sonnet 5), strict file ownership, zero collisions. 4a async submit: jobs/queue.py in-process
+  ThreadPoolExecutor, submit/answer enqueue + poll (DREAM_JOBS_SYNC=1 = v1 sync for tests),
+  startup sweep fails restart-stranded jobs (main.py lifespan), frontend useJobPolling hook +
+  live phase readout in RunningPanel. 4b: archive/unarchive/DELETE endpoints (409 while running),
+  owner derived from auth email (req.owner deprecated), archived hidden by default, Pipeline
+  kebab menu + Archived pill, spec.engine_inputs persisted post-gates -> AssumptionDashboard
+  seeds ANY ACQ deal (partial fallback pre-4b). 4c: Google-cert transport cached, wave0
+  word-boundary regex (+plural fix from review), legacy /api/underwrite -> 410 tombstone.
+  8-angle code review: 2 confirmed bugs fixed pre-commit (plural EFB signals dropped; async runs
+  stamped with submit-time clock), 4 hardening fixes, 4 accepted tradeoffs logged. Local async
+  smoke: submit 36ms -> awaiting_cp1, Esplanade irr exact. 380 backend+engine tests green,
+  tsc/build clean. docs/CLAUDE_DESIGN_BRIEF.md added (Track E) for Evan's Claude Design pass.

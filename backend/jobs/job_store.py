@@ -283,6 +283,16 @@ class SQLiteJobStore:
             ).fetchall()
         return [JobRecord.from_dict(json.loads(r["doc_json"])) for r in rows]
 
+    def delete_for_deal(self, deal_id: str) -> int:
+        """Hard-delete every job row for a deal (the deal-delete cascade — a deleted deal must
+        leave no orphaned jobs/audit behind). Returns the number of rows removed (0 is fine:
+        a never-run deal has no jobs). Same connection/lock discipline as the neighbors —
+        NO sqlite3 import here (architectural guard)."""
+        with self._lock:
+            cur = self._conn.execute("DELETE FROM jobs WHERE deal_id=?", (deal_id,))
+            self._conn.commit()
+        return cur.rowcount
+
     def transition(self, job_id: str, new_status: JobStatus, now_iso: str,
                    phase: Optional[JobPhase] = None, error: Optional[str] = None) -> JobRecord:
         """Move the job to new_status, enforcing the contracts state machine (assert_transition

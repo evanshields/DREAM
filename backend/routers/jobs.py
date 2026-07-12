@@ -12,9 +12,13 @@ The HTTP surface over the job runner (jobs/runner.py). Four endpoints:
                             AWAITING_INPUT when the last blocking question is answered).
   POST /api/jobs/{job_id}/cancel   set the cooperative cancel flag.
 
-v1 runs the pipeline SYNCHRONOUSLY inside the request (note in run_job where an async queue plugs
-in later). The router mounts standalone in tests (TestClient(make_app())) with StubAnalysts — no
-main.py import, no live LLM.
+Execution modes (Phase 4a): when jobs/queue.py's sync_mode() is on (DREAM_JOBS_SYNC=1 — the
+tests' default, see tests/conftest.py) the pipeline runs SYNCHRONOUSLY inside the request, the
+exact v1 behavior. Otherwise (production default) submit/answer ENQUEUE the run on the in-process
+worker pool and return the job's current view immediately — clients poll GET /api/jobs/{job_id}
+to the HITL stop. HTTP status is 200 in both modes; the body's `status` field is the contract.
+The router mounts standalone in tests (TestClient(make_app())) with StubAnalysts — no main.py
+import, no live LLM.
 """
 from __future__ import annotations
 
@@ -24,14 +28,16 @@ import sys
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
 _BACKEND = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if _BACKEND not in sys.path:
     sys.path.insert(0, _BACKEND)
 
+from auth_dep import require_auth  # noqa: E402
 from store import get_deal_store, DealStore, DealNotFound  # noqa: E402
+from jobs import queue  # noqa: E402  (module import so tests can monkeypatch queue.sync_mode)
 from jobs.contracts import JobStatus, JobRecord  # noqa: E402
 from jobs.job_store import get_job_store, SQLiteJobStore, JobNotFound  # noqa: E402
 from jobs.runner import run_job  # noqa: E402
@@ -53,7 +59,11 @@ def _now() -> str:
 class SubmitJobRequest(BaseModel):
     """Submit a deal to the fast path. `intake_summary` is the already-parsed deal-package summary
     (BL-17 critical inputs may be nested under 'critical_inputs' or flat). `deal_docs` is the
-    excerpted source material the analysts read (ignored by StubAnalysts)."""
+    excerpted source material the analysts read (ignored by StubAnalysts).
+
+    `owner` is DEPRECATED (Phase 4b share prep): the deal/job owner now derives from the
+    authenticated user's email (require_auth); the request field is only a fallback when no
+    authenticated email is available."""
     intake_summary: Dict[str, Any] = Field(default_factory=dict)
     deal_docs: Dict[str, Any] = Field(default_factory=dict)
     idempotency_key: str = ""
@@ -140,9 +150,10 @@ def get_analysts():
 
 @router.post("")
 @router.post("/")
-def submit_job(req: SubmitJobRequest):
-    """Create deal + job (idempotent), run Wave 0, and either stop at AWAITING_INPUT or run the
-    full pipeline to CP-1 synchronously."""
+def submit_job(req: SubmitJobRequest, user: Optional[dict] = Depends(require_auth)):
+    """Create deal + job (idempotent), then run the pipeline: synchronously to its HITL stop in
+    sync mode (DREAM_JOBS_SYNC=1, the v1 behavior), else enqueue on the worker pool and return
+    the job's current view immediately (poll GET /api/jobs/{job_id})."""
     js: SQLiteJobStore = get_job_store()
     ds: DealStore = get_deal_store()
     ts = _now()
@@ -152,6 +163,11 @@ def submit_job(req: SubmitJobRequest):
     existing = js.find_by_idempotency(req.idempotency_key)
     if existing is not None:
         return _job_view(existing, ds)
+
+    # Owner derivation (Phase 4b share prep): the authenticated email is canonical; req.owner is
+    # the documented-deprecated fallback. In local dev / standalone test mounts require_auth
+    # returns the stub user, so owner is still deterministic.
+    owner = ((user or {}).get("email") or req.owner or "").strip().lower()
 
     # --- create the canonical deal record (the spec is filled at synthesis) ---
     # intake_payload preserves the ORIGINAL submission so an AWAITING_INPUT resume re-runs with
@@ -176,9 +192,9 @@ def submit_job(req: SubmitJobRequest):
             "deal_docs": req.deal_docs,
         },
     }
-    deal = ds.create(seed_spec, owner=req.owner, now_iso=ts, status="draft")
+    deal = ds.create(seed_spec, owner=owner, now_iso=ts, status="draft")
     job = js.create_job(
-        deal_id=deal.deal_id, routing=routing, owner=req.owner,
+        deal_id=deal.deal_id, routing=routing, owner=owner,
         now_iso=ts, idempotency_key=req.idempotency_key,
     )
 
@@ -187,15 +203,29 @@ def submit_job(req: SubmitJobRequest):
         return _job_view(js.get_job(job.job_id), ds)
 
     analysts = get_analysts()
-    try:
-        final = run_job(
-            job.job_id, analysts=analysts, now_iso=ts,
-            intake_summary=req.intake_summary, deal_docs=req.deal_docs,
-            job_store=js, deal_store=ds,
-        )
-    except Exception as e:  # noqa: BLE001 — runner already FAILed the job; surface the error
-        raise HTTPException(status_code=422, detail=str(e))
-    return _job_view(final, ds)
+    if queue.sync_mode():
+        # v1 synchronous path — EXACT prior behavior (runner errors surface as HTTP 422).
+        try:
+            final = run_job(
+                job.job_id, analysts=analysts, now_iso=ts,
+                intake_summary=req.intake_summary, deal_docs=req.deal_docs,
+                job_store=js, deal_store=ds,
+            )
+        except Exception as e:  # noqa: BLE001 — runner already FAILed the job; surface the error
+            raise HTTPException(status_code=422, detail=str(e))
+        return _job_view(final, ds)
+
+    # Async path: snapshot the accepted view BEFORE enqueueing (the worker may advance the job
+    # between submit and read), then hand the run to the pool. Clients poll GET /api/jobs/{id}.
+    # now_iso=None: the WORKER mints its own clock at execution time — passing the request ts
+    # would stamp every transition/audit line of a minutes-later run with the submit time.
+    view = _job_view(js.get_job(job.job_id), ds)
+    queue.enqueue_run(
+        job.job_id, analysts=analysts, now_iso=None,
+        intake_summary=req.intake_summary, deal_docs=req.deal_docs,
+        job_store=js, deal_store=ds,
+    )
+    return view
 
 
 @router.get("/{job_id}")
@@ -212,7 +242,8 @@ def get_job(job_id: str):
 @router.post("/{job_id}/answer")
 def answer_job(job_id: str, req: AnswerRequest):
     """Record a human answer to an OpenQuestion. When the job was AWAITING_INPUT and no blocking
-    questions remain, the pipeline RESUMES synchronously to CP-1."""
+    questions remain, the pipeline RESUMES: synchronously to its HITL stop in sync mode, else
+    enqueued on the worker pool (the response shows the job back at ROUTING; poll to follow)."""
     js = get_job_store()
     ds = get_deal_store()
     ts = _now()
@@ -243,13 +274,23 @@ def answer_job(job_id: str, req: AnswerRequest):
         if "routing" in answers:  # an answered routing question overrides the original signal
             resumed_summary["routing"] = answers["routing"]
         deal_docs = intake_payload.get("deal_docs") or {}
-        try:
-            final = run_job(job_id, analysts=get_analysts(), now_iso=ts,
-                            intake_summary=resumed_summary, deal_docs=deal_docs,
-                            job_store=js, deal_store=ds)
-        except Exception as e:  # noqa: BLE001
-            raise HTTPException(status_code=422, detail=str(e))
-        return _job_view(final, ds)
+        if queue.sync_mode():
+            # v1 synchronous resume — EXACT prior behavior.
+            try:
+                final = run_job(job_id, analysts=get_analysts(), now_iso=ts,
+                                intake_summary=resumed_summary, deal_docs=deal_docs,
+                                job_store=js, deal_store=ds)
+            except Exception as e:  # noqa: BLE001
+                raise HTTPException(status_code=422, detail=str(e))
+            return _job_view(final, ds)
+        # Async resume: the job is already back at ROUTING; snapshot that view BEFORE enqueueing
+        # (the worker may advance it), then hand the run to the pool. now_iso=None: the worker
+        # mints its own clock at execution time (see submit_job).
+        view = _job_view(js.get_job(job_id), ds)
+        queue.enqueue_run(job_id, analysts=get_analysts(), now_iso=None,
+                          intake_summary=resumed_summary, deal_docs=deal_docs,
+                          job_store=js, deal_store=ds)
+        return view
     return _job_view(job, ds)
 
 

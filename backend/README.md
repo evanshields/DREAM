@@ -48,11 +48,14 @@ and is reused **unmodified** — it is the validated source of all financial mat
 | GET  | `/api/me` | protected | authenticated user (stub in local dev) |
 | POST | `/api/recalc` | open | instant ACQ recalc, **no LLM** (A1.5) |
 | POST | `/api/recalc/exit-cap` · `/api/recalc/agency-sizing` | open | dashboard helpers, no LLM |
-| POST | `/api/underwrite` | protected | full model (EFB engine today; routing layer + acq_engine = Wave B) |
+| POST | `/api/underwrite` | protected | **RETIRED (Phase 4c, 2026-07-12)** — 410 tombstone; use the successors below |
+| POST | `/api/underwrite/v2` · `/api/underwrite/efb` | protected | ACQ + EFB models — `routers/recalc.py` |
 | POST | `/api/validate` | protected | T-Manual GREEN/AMBER/RED |
 | POST | `/api/intake` · `/api/agent/chat` · `/api/agent/memo` | (existing) | reused as-is |
 
 ## Next: Waves B & C
 
-Fully specified in `DREAM_PRD.md`. Wave B broadens `/api/underwrite` to general ACQ via a routing
-layer + the assumption dashboard; Wave C ports the 3-wave chat-bot fast path as a backend service.
+Fully specified in `DREAM_PRD.md`. Wave B broadened underwriting to general ACQ via a routing
+layer + the assumption dashboard (now served at `/api/underwrite/v2` and `/api/underwrite/efb`,
+replacing the retired `/api/underwrite`); Wave C ports the 3-wave chat-bot fast path as a backend
+service.

@@ -170,13 +170,43 @@ export function listDeals(filters?: {
   owner?: string;
   routing?: string;
   status?: string;
+  include_archived?: boolean;
 }): Promise<DealListItem[]> {
   const q = new URLSearchParams();
   if (filters?.owner) q.set('owner', filters.owner);
   if (filters?.routing) q.set('routing', filters.routing);
   if (filters?.status) q.set('status', filters.status);
+  // GET /api/deals excludes archived by default; pass include_archived=1 to fold them in.
+  if (filters?.include_archived) q.set('include_archived', '1');
   const qs = q.toString();
   return request<DealListItem[]>(`/deals${qs ? `?${qs}` : ''}`);
+}
+
+// Archive / unarchive / delete a deal. Archive + unarchive return the updated LIST-ITEM view
+// (same shape listDeals returns per item). Delete is hard + irreversible: 409 if a job is
+// running (request<T> surfaces the {detail} as an ApiError). Same bearer + global-401 handling.
+export function archiveDeal(dealId: string, signal?: AbortSignal): Promise<DealListItem> {
+  return request<DealListItem>(`/deals/${encodeURIComponent(dealId)}/archive`, {
+    method: 'POST',
+    signal,
+  });
+}
+
+export function unarchiveDeal(dealId: string, signal?: AbortSignal): Promise<DealListItem> {
+  return request<DealListItem>(`/deals/${encodeURIComponent(dealId)}/unarchive`, {
+    method: 'POST',
+    signal,
+  });
+}
+
+export function deleteDeal(
+  dealId: string,
+  signal?: AbortSignal,
+): Promise<{ deleted: boolean; deal_id: string }> {
+  return request<{ deleted: boolean; deal_id: string }>(`/deals/${encodeURIComponent(dealId)}`, {
+    method: 'DELETE',
+    signal,
+  });
 }
 
 // ===========================================================================

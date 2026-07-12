@@ -109,6 +109,68 @@ def test_efb_non_positive_noi_treated_as_missing():
     assert [q.field for q in out["awaiting"]] == ["meta.critical_inputs.stabilized_noi"]
 
 
+# ---- false-positive / true-positive substring-vs-word-boundary regression (Phase 4c) ----------
+
+def test_efb_signal_false_positive_perhaps_does_not_block():
+    """'hap' must NOT match inside 'perhaps' — naked substring test misfired here."""
+    out = run_wave0(_job(), {
+        "notes": "we will perhaps renovate the property",
+        "critical_inputs": {"purchase_price": 55000000, "hold_years": 7, "exit_cap": 0.06},
+    })
+    assert out["ready"] is True
+    assert out["routing"] == "ACQ"
+    assert "awaiting" not in out
+
+
+def test_efb_signal_false_positive_shenandoah_does_not_block():
+    """'noah' must NOT match inside 'Shenandoah' — naked substring test misfired here."""
+    out = run_wave0(_job(), {
+        "deal_name": "Shenandoah Apartments",
+        "critical_inputs": {"purchase_price": 55000000, "hold_years": 7, "exit_cap": 0.06},
+    })
+    assert out["ready"] is True
+    assert out["routing"] == "ACQ"
+
+
+def test_efb_signal_true_positive_hap_still_blocks():
+    """A standalone 'HAP' token still forces the blocking routing question."""
+    out = run_wave0(_job(), {"notes": "HAP contract in place"})
+    assert out["ready"] is False
+    routing_q = [q for q in out["awaiting"] if q.field == "meta.routing"]
+    assert len(routing_q) == 1
+    assert routing_q[0].blocking is True
+    assert out["routing"] is None
+
+
+def test_efb_signal_true_positive_noah_still_blocks():
+    """A standalone 'NOAH' token still forces the blocking routing question."""
+    out = run_wave0(_job(), {"notes": "NOAH preservation deal"})
+    assert out["ready"] is False
+    routing_q = [q for q in out["awaiting"] if q.field == "meta.routing"]
+    assert len(routing_q) == 1
+    assert routing_q[0].blocking is True
+    assert out["routing"] is None
+
+
+def test_efb_signal_true_positive_plural_bonds_still_blocks():
+    """PLURAL forms ('tax-exempt bondS') are the most common phrasing in deal prose — the
+    word-boundary regex must not drop them (regression: a bare trailing \\b silently
+    mis-routed plural-phrased EFB deals to ACQ)."""
+    out = run_wave0(_job(), {"notes": "financed with tax-exempt bonds"})
+    assert out["ready"] is False
+    routing_q = [q for q in out["awaiting"] if q.field == "meta.routing"]
+    assert len(routing_q) == 1
+    assert routing_q[0].blocking is True
+    assert out["routing"] is None
+
+
+def test_efb_signal_true_positive_plural_4pct_bonds_still_blocks():
+    """'4% bonds' (plural) still forces the blocking routing question."""
+    out = run_wave0(_job(), {"notes": "structure uses 4% bonds with a HFA issuer"})
+    assert out["ready"] is False
+    assert [q for q in out["awaiting"] if q.field == "meta.routing"]
+
+
 def test_efb_optional_scalars_ride_along():
     out = run_wave0(_job(), {
         "routing": "EFB",

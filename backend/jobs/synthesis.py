@@ -52,6 +52,7 @@ comps/forensic/narrative).
 """
 from __future__ import annotations
 
+import dataclasses
 import os
 import sys
 from dataclasses import dataclass, field
@@ -433,12 +434,14 @@ def run_synthesis(
         # protected (no equity resize is applied in v1).
         acq_inputs = _coerce_acq_inputs(slices.assumptions_engine_inputs, ci)
         headline_metrics = run_acq_underwrite(acq_inputs)  # floats; the CP-2 oracle
+        engine_inputs_used = acq_inputs
     elif routing == "EFB":
         # EFB: size the tax-exempt bonds to the target DSCR on stabilized NOI (Rayzor-validated
         # BondSizingCalculator via engine_boundary). headline_metrics carries the EFB shape
         # (bond_amount / year1_dscr / year1_noi / tax_savings_10yr ...), never irr.
         efb_inputs = _coerce_efb_inputs(slices.assumptions_engine_inputs, ci)
         headline_metrics = run_efb_underwrite(efb_inputs)  # floats; the CP-2 oracle
+        engine_inputs_used = efb_inputs
     else:
         # Unknown route. Fail closed rather than guess.
         raise ValueError(
@@ -465,6 +468,14 @@ def run_synthesis(
         user_exclusions=slices.user_exclusions,
         template_formulas=slices.template_formulas,
     )
+
+    # Persist the EXACT engine inputs the run computed on (additive; floats only; never read by
+    # the gates — added AFTER run_gates so they cannot see the key; powers the assumption
+    # dashboard seed).
+    spec["engine_inputs"] = {
+        "routing": routing,
+        **{k: v for k, v in dataclasses.asdict(engine_inputs_used).items() if v is not None},
+    }
 
     # --- OPEN-QUESTIONS ledger: every llm-inferred (non-cited) cell -> an OpenQuestion ----------
     open_questions = build_open_questions(slices)

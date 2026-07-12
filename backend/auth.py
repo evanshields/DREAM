@@ -35,6 +35,10 @@ ALLOWED_EMAILS: set[str] = {
 
 security = HTTPBearer(auto_error=False)
 
+# Long-lived transport session so google-auth reuses fetched certs + connections across calls
+# instead of re-fetching Google's public certs on every request.
+_GOOGLE_TRANSPORT = google_requests.Request()
+
 
 def verify_google_token(token: str) -> dict:
     """
@@ -52,7 +56,7 @@ def verify_google_token(token: str) -> dict:
     try:
         idinfo = id_token.verify_oauth2_token(
             token,
-            google_requests.Request(),
+            _GOOGLE_TRANSPORT,
             client_id,
         )
         return idinfo

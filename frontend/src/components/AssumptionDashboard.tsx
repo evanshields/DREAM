@@ -159,7 +159,7 @@ function buildSweepValues(kind: Kind, base: number, steps = 9): number[] {
   return out;
 }
 
-export function AssumptionDashboard({ seed }: { seed?: ACQRecalcRequest }) {
+export function AssumptionDashboard({ seed }: { seed?: Partial<ACQRecalcRequest> }) {
   const initial = useMemo(() => ({ ...ESPLANADE_DEFAULTS, ...(seed ?? {}) }), [seed]);
   const [assumptions, setAssumptions] = useState<ACQRecalcRequest>(initial);
   const [drafts, setDrafts] = useState<Record<string, string>>({});

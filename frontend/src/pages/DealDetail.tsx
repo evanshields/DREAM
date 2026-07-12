@@ -29,6 +29,7 @@ import {
   type DealMemoBlock,
   type EFBHeadlineMetrics,
   type EFBUnderwriteRequest,
+  type ACQRecalcRequest,
   type OpenQuestion,
 } from '../lib/api';
 import { Card, Badge, statusTone } from '../components/ui';
@@ -62,6 +63,65 @@ function pickEFBMetrics(hm: DealHeadlineMetrics): Partial<EFBHeadlineMetrics> {
     if (typeof v === 'number') out[k] = v;
   }
   return out;
+}
+
+// ---------------------------------------------------------------------------
+// ACQ dashboard seeding. spec.engine_inputs is an OPAQUE bag (only present on deals
+// underwritten after input-capture shipped) — never trust its shape. pickACQSeed type-guards
+// every known ACQRecalcRequest key with the correct runtime type before copying it.
+// ---------------------------------------------------------------------------
+
+// numeric scalar ACQRecalcRequest keys we accept from engine_inputs (arrays handled separately).
+const ACQ_NUMBER_KEYS = [
+  'bridge_loan',
+  'bridge_rate',
+  'bridge_io_years',
+  'refi_loan',
+  'refi_rate',
+  'refi_io_years',
+  'refi_amort_years',
+  'refi_year',
+  'total_equity',
+  'exit_cap',
+  'sale_year',
+  'costs_of_sale',
+  'servicing_spread',
+  'refi_cost_pct',
+  'years',
+] as const;
+
+// number[] series keys.
+const ACQ_SERIES_KEYS = [
+  'noi_series',
+  'gpr_series',
+  'egi_series',
+  'opex_series',
+  'vacancy_series',
+  'debt_service',
+] as const;
+
+const isNumberArray = (v: unknown): v is number[] =>
+  Array.isArray(v) && v.every((n) => typeof n === 'number' && Number.isFinite(n));
+
+// Copy ONLY the keys whose runtime type matches; ignore everything else in the opaque bag.
+function pickACQSeed(engineInputs: Record<string, unknown>): Partial<ACQRecalcRequest> {
+  const seed: Partial<ACQRecalcRequest> = {};
+  for (const k of ACQ_NUMBER_KEYS) {
+    const v = engineInputs[k];
+    if (typeof v === 'number' && Number.isFinite(v)) {
+      (seed as Record<string, unknown>)[k] = v;
+    }
+  }
+  for (const k of ACQ_SERIES_KEYS) {
+    const v = engineInputs[k];
+    if (isNumberArray(v)) {
+      (seed as Record<string, unknown>)[k] = v;
+    }
+  }
+  if (typeof engineInputs.exit_on_forward_noi === 'boolean') {
+    seed.exit_on_forward_noi = engineInputs.exit_on_forward_noi;
+  }
+  return seed;
 }
 
 // The tab strip: Overview (CP-1 metrics + gates + live modelling), Memo (LLM deal memo),
@@ -174,6 +234,47 @@ export function DealDetail() {
     return seed;
   }, [isEFB, headline]);
 
+  // Seed the ACQ assumption dashboard from THIS deal's underwrite. Two tiers:
+  //   full    — spec.engine_inputs present (deals underwritten after input-capture shipped):
+  //             the exact validated debt terms, type-guarded via pickACQSeed.
+  //   partial — pre-existing deals lack engine_inputs; recover what we can (total_equity +
+  //             noi_series from headline metrics, exit_cap + sale_year from
+  //             spec.meta.critical_inputs) and let the dashboard fill the rest with Esplanade
+  //             defaults. The caption tells the user which case they're looking at.
+  const acqSeed = useMemo<{ seed: Partial<ACQRecalcRequest> | undefined; full: boolean }>(() => {
+    if (isEFB) return { seed: undefined, full: false };
+
+    const spec = (deal?.spec ?? stateJob?.spec) as Record<string, unknown> | undefined;
+
+    // Tier 1 — full validated inputs captured on the deal.
+    const engineInputs = spec?.engine_inputs;
+    if (engineInputs && typeof engineInputs === 'object' && !Array.isArray(engineInputs)) {
+      const seed = pickACQSeed(engineInputs as Record<string, unknown>);
+      return { seed, full: true };
+    }
+
+    // Tier 2 — partial recovery for deals that predate input capture.
+    const seed: Partial<ACQRecalcRequest> = {};
+
+    if (headline) {
+      if (typeof headline.total_equity === 'number' && Number.isFinite(headline.total_equity))
+        seed.total_equity = headline.total_equity;
+      if (isNumberArray(headline.noi_series)) seed.noi_series = headline.noi_series;
+    }
+
+    // exit_cap + sale_year come off the intake critical_inputs (sale_year from hold_years).
+    const meta = spec?.meta as { critical_inputs?: Record<string, unknown> } | undefined;
+    const ci = meta?.critical_inputs;
+    if (ci && typeof ci === 'object') {
+      if (typeof ci.exit_cap === 'number' && Number.isFinite(ci.exit_cap)) seed.exit_cap = ci.exit_cap;
+      if (typeof ci.hold_years === 'number' && Number.isFinite(ci.hold_years))
+        seed.sale_year = ci.hold_years;
+    }
+
+    // nothing recoverable → let the dashboard run pure Esplanade defaults (undefined seed).
+    return Object.keys(seed).length ? { seed, full: false } : { seed: undefined, full: false };
+  }, [isEFB, deal, stateJob, headline]);
+
   if (loading) {
     return (
       <div className="flex items-center justify-center py-24 text-slate/50">
@@ -262,9 +363,23 @@ export function DealDetail() {
       {openQuestions.length > 0 && <OpenQuestionsBlock questions={openQuestions} />}
 
       {/* Live modelling — EFB gets the bond sizing panel (seeded from the deal's
-          computed metrics); ACQ keeps the full assumption dashboard. */}
+          computed metrics); ACQ keeps the full assumption dashboard (seeded from the deal's
+          captured engine inputs, or partially from headline metrics + intake for older deals). */}
       <div className="pt-2 border-t border-slate/10">
-        {isEFB ? <EFBSizingPanel seed={efbSeed} /> : <AssumptionDashboard />}
+        {isEFB ? (
+          <EFBSizingPanel seed={efbSeed} />
+        ) : (
+          <>
+            {acqSeed.seed && (
+              <p className="text-xs text-slate/50 mb-3">
+                {acqSeed.full
+                  ? 'Seeded from this deal’s underwrite'
+                  : 'Partially seeded. Debt terms show Esplanade defaults (deal predates input capture).'}
+              </p>
+            )}
+            <AssumptionDashboard seed={acqSeed.seed} />
+          </>
+        )}
       </div>
         </>
       )}

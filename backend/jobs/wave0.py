@@ -33,6 +33,7 @@ No clock, no DB, no LLM — the runner persists the result and drives the transi
 from __future__ import annotations
 
 import os
+import re
 import sys
 from typing import Any, Dict, List, Optional
 
@@ -74,6 +75,12 @@ _EFB_SIGNAL_TOKENS = (
     "efb", "tax-exempt bond", "tax exempt bond", "4% bond", "lihtc",
     "workforce housing", "hap", "noah",
 )
+# Word-boundary compiled regex — a naked substring test (`t in blob`) misfires on short tokens
+# like "hap" (matches inside "perhaps") or "noah" (matches inside "Shenandoah"). \b boundaries
+# require the token to stand alone as a word. The optional trailing `s?` keeps plural forms
+# matching ("tax-exempt bondS", "4% bondS") — the most common phrasing in deal prose; a bare
+# \b would silently drop them and mis-route EFB deals to ACQ.
+_EFB_SIGNAL_RE = re.compile(r"\b(?:" + "|".join(re.escape(t) for t in _EFB_SIGNAL_TOKENS) + r")s?\b")
 
 
 def _extract_critical_inputs(intake_summary: Dict[str, Any]):
@@ -201,7 +208,8 @@ def _detect_routing(intake_summary: Dict[str, Any]) -> Dict[str, Any]:
             intake_summary.get("summary", ""),
         )
     ).lower()
-    hit = next((t for t in _EFB_SIGNAL_TOKENS if t in blob), None)
+    m = _EFB_SIGNAL_RE.search(blob)
+    hit = m.group(0) if m else None
     if hit:
         return {"routing": None, "basis": f"ambiguous: EFB signal '{hit}' detected", "ambiguous": True}
 

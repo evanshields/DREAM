@@ -95,6 +95,8 @@ export function statusTone(status: string): BadgeTone {
     case 'exported':
     case 'populated':
       return 'teal';
+    case 'archived': // shelved
+      return 'neutral';
     default:
       return 'neutral';
   }

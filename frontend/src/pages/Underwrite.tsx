@@ -26,11 +26,32 @@ import {
   type IntakeResponse,
 } from '../lib/api';
 import { Card, Button, Input, Badge } from '../components/ui';
-
-// Phase text shown while the synchronous submit runs (20s–4min with live Kimi).
-const RUNNING_STATUSES = new Set(['submitted', 'routing', 'analyzing', 'synthesizing']);
+import { useJobPolling, RUNNING_STATUSES } from '../hooks/useJobPolling';
 
 type Stage = 'intake' | 'running' | 'questions' | 'failed';
+
+// Friendly labels for the backend JobPhase strings (backend/jobs/contracts.py JobPhase).
+// Anything not listed falls back to a prettified snake_case → Title Case rendering.
+const PHASE_LABELS: Record<string, string> = {
+  wave0_routing: 'Routing the deal',
+  wave1_t12: 'Reading the T-12',
+  wave1_rentroll: 'Reading the rent roll',
+  wave1_assumptions: 'Setting assumptions',
+  wave1_comps: 'Pulling comparables',
+  wave1_marketdata: 'Checking market data',
+  wave2_synthesis: 'Synthesizing + running the engine',
+  cp1: 'Preparing CP-1 review',
+};
+
+const phaseLabel = (phase: string | undefined): string => {
+  if (!phase) return 'Working…';
+  if (PHASE_LABELS[phase]) return PHASE_LABELS[phase];
+  // prettified fallback for any unknown/new phase string (snake_case → Title Case).
+  return phase
+    .split('_')
+    .map((w) => (w ? w.charAt(0).toUpperCase() + w.slice(1) : w))
+    .join(' ');
+};
 
 // EFB intake fields (percent fields entered as percent, e.g. 5 => 0.05 —
 // same convention as BondScreen). Defaults mirror the backend request model.
@@ -216,6 +237,16 @@ export function Underwrite() {
     [navigate],
   );
 
+  // Async submit/answer now return immediately (status submitted/routing) instead of blocking
+  // through CP-1, so poll the job forward. Polling is active only while we're showing the running
+  // stage; it delivers every view to applyJob (which routes each status) and stops itself once the
+  // job leaves a running status (awaiting_input / awaiting_cp1 / failed / cancelled).
+  useJobPolling(
+    stage === 'running' && job ? job.job_id : null,
+    applyJob,
+    (msg) => setError(msg),
+  );
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
@@ -243,6 +274,10 @@ export function Underwrite() {
     const ctrl = new AbortController();
     abortRef.current = ctrl;
 
+    // One key per submit attempt — a retried/duplicated POST reuses the same job/deal
+    // instead of spawning a duplicate underwrite (backend JobRecord.idempotency_key).
+    const idempotencyKey = crypto.randomUUID();
+
     // deal_docs — excerpted source material the analyst slices read. Bounded: the slice prompt
     // truncates deal_docs JSON at ~60KB, so the uploaded document text is capped at 50K chars.
     const deal_docs: Record<string, string> = {};
@@ -257,6 +292,7 @@ export function Underwrite() {
           owner: '',
           deal_name: name,
           routing,
+          idempotency_key: idempotencyKey,
         },
         ctrl.signal,
       );
@@ -275,6 +311,9 @@ export function Underwrite() {
   };
 
   const handleCancel = async () => {
+    // Abort the in-flight submit/poll fetch, then flag the run for cancellation. job_id is now
+    // available immediately after submit (async mode), so this reaches the server even mid-run —
+    // cancel is cooperative: honored at the next phase checkpoint, not an instant kill.
     abortRef.current?.abort();
     if (job?.job_id) {
       try {
@@ -339,7 +378,7 @@ export function Underwrite() {
         </>
       )}
 
-      {stage === 'running' && <RunningPanel onCancel={handleCancel} />}
+      {stage === 'running' && <RunningPanel job={job} onCancel={handleCancel} />}
 
       {stage === 'questions' && job && (
         <QuestionsPanel job={job} onResolved={applyJob} onError={setError} onCancel={handleCancel} />
@@ -793,16 +832,22 @@ function EFBCriticalInputs({
 // ---------------------------------------------------------------------------
 // Running (synchronous long call) panel
 // ---------------------------------------------------------------------------
-function RunningPanel({ onCancel }: { onCancel: () => void }) {
+function RunningPanel({ job, onCancel }: { job?: JobView | null; onCancel: () => void }) {
   return (
     <Card className="p-10 flex flex-col items-center text-center">
       <div className="w-16 h-16 rounded-full bg-teal-panel flex items-center justify-center mb-5">
         <Loader2 className="w-8 h-8 text-teal animate-spin" />
       </div>
       <h3 className="font-head font-bold text-xl text-slate-near mb-2">Underwriting…</h3>
+      {job && (
+        <Badge tone="teal" className="mb-3">
+          {phaseLabel(job.phase)}
+        </Badge>
+      )}
       <p className="text-sm text-slate/60 max-w-md mb-1">
-        The analysts are reading the deal, routing it, and running the validated engine. This can
-        take a few minutes with a full deal package — please keep this tab open.
+        The run continues in the background — you can leave this page and the deal will appear in
+        the Pipeline. Reading the deal, routing it, and running the validated engine can take a few
+        minutes with a full deal package.
       </p>
       <p className="text-xs text-slate/40 mb-6">No LLM is used for any number once at CP-1.</p>
       <Button variant="secondary" icon={Ban} onClick={onCancel}>

@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useCallback } from 'react';
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import {
   FilePlus2,
@@ -10,18 +10,30 @@ import {
   Landmark,
   Activity,
   Loader2,
+  MoreVertical,
+  Archive,
+  ArchiveRestore,
+  Trash2,
 } from 'lucide-react';
-import { listDeals, ApiError, type DealListItem } from '../lib/api';
+import {
+  listDeals,
+  archiveDeal,
+  unarchiveDeal,
+  deleteDeal,
+  ApiError,
+  type DealListItem,
+} from '../lib/api';
 import { Card, Button, Badge, statusTone } from '../components/ui';
 import { fmtEM, fmtPct1, fmtUSD, fmtDate, prettyStatus } from '../lib/format';
 
-type Filter = 'all' | 'computed' | 'awaiting_input' | 'gate_failed' | 'draft';
+type Filter = 'all' | 'computed' | 'awaiting_input' | 'gate_failed' | 'draft' | 'archived';
 const FILTERS: { key: Filter; label: string }[] = [
   { key: 'all', label: 'All' },
   { key: 'computed', label: 'Computed' },
   { key: 'awaiting_input', label: 'Awaiting Input' },
   { key: 'gate_failed', label: 'Gate Failed' },
   { key: 'draft', label: 'Draft' },
+  { key: 'archived', label: 'Archived' },
 ];
 
 export function Pipeline() {
@@ -31,10 +43,12 @@ export function Pipeline() {
   const [error, setError] = useState<string | null>(null);
   const [filter, setFilter] = useState<Filter>('all');
 
+  // Pull EVERYTHING (archived folded in) so the per-status pills + the Archived pill all render
+  // from one fetch; the client filters below decide what each view shows.
   const load = useCallback(() => {
     setLoading(true);
     setError(null);
-    listDeals()
+    listDeals({ include_archived: true })
       .then((d) => setDeals(d))
       .catch((e) => {
         if (e instanceof ApiError && e.status === 401) return; // handled globally
@@ -47,10 +61,15 @@ export function Pipeline() {
     load();
   }, [load]);
 
-  const filtered = useMemo(
-    () => (filter === 'all' ? deals : deals.filter((d) => d.status === filter)),
-    [deals, filter],
-  );
+  // 'all' = every NON-archived deal; 'archived' = only archived; per-status pills match that status.
+  const filtered = useMemo(() => {
+    if (filter === 'all') return deals.filter((d) => d.status !== 'archived');
+    if (filter === 'archived') return deals.filter((d) => d.status === 'archived');
+    return deals.filter((d) => d.status === filter);
+  }, [deals, filter]);
+
+  // Count of NON-archived deals for the header + the "All" pill (archived never counts there).
+  const activeCount = useMemo(() => deals.filter((d) => d.status !== 'archived').length, [deals]);
 
   return (
     <div className="space-y-6">
@@ -58,7 +77,7 @@ export function Pipeline() {
         <div>
           <h1 className="text-3xl font-head font-bold text-slate-near">Pipeline</h1>
           <p className="text-sm text-slate/60 mt-1">
-            {loading ? 'Loading deals…' : `${deals.length} deal${deals.length === 1 ? '' : 's'}`}
+            {loading ? 'Loading deals…' : `${activeCount} deal${activeCount === 1 ? '' : 's'}`}
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -74,8 +93,9 @@ export function Pipeline() {
       {/* status filter pills */}
       <div className="flex flex-wrap gap-2">
         {FILTERS.map((f) => {
+          // "All" counts only non-archived; every other pill counts its own status.
           const count =
-            f.key === 'all' ? deals.length : deals.filter((d) => d.status === f.key).length;
+            f.key === 'all' ? activeCount : deals.filter((d) => d.status === f.key).length;
           const active = filter === f.key;
           return (
             <button
@@ -112,7 +132,7 @@ export function Pipeline() {
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {filtered.map((d) => (
-            <DealCard key={d.deal_id} deal={d} />
+            <DealCard key={d.deal_id} deal={d} onChanged={load} onError={setError} />
           ))}
         </div>
       )}
@@ -120,9 +140,18 @@ export function Pipeline() {
   );
 }
 
-function DealCard({ deal }: { deal: DealListItem }) {
+function DealCard({
+  deal,
+  onChanged,
+  onError,
+}: {
+  deal: DealListItem;
+  onChanged: () => void;
+  onError: (msg: string) => void;
+}) {
   const hm = deal.headline_metrics ?? {};
   const isEFB = deal.routing === 'EFB';
+  const isArchived = deal.status === 'archived';
 
   // ACQ headline pair
   const irr = typeof hm.irr === 'number' ? hm.irr : null;
@@ -136,11 +165,12 @@ function DealCard({ deal }: { deal: DealListItem }) {
   return (
     <Link to={`/deal/${encodeURIComponent(deal.deal_id)}`} className="block group">
       <Card
-        className={`p-5 h-full transition-shadow group-hover:shadow-cardHover border-t-4 ${
+        className={`relative p-5 h-full transition-shadow group-hover:shadow-cardHover border-t-4 ${
           isEFB ? 'border-t-taupe' : 'border-t-teal'
         }`}
       >
-        <div className="flex items-start justify-between gap-2 mb-3">
+        <CardMenu deal={deal} isArchived={isArchived} onChanged={onChanged} onError={onError} />
+        <div className="flex items-start justify-between gap-2 mb-3 pr-8">
           <h3 className="font-head font-bold text-lg text-slate-near leading-tight">
             {deal.deal_name || 'Untitled deal'}
           </h3>
@@ -180,6 +210,135 @@ function DealCard({ deal }: { deal: DealListItem }) {
         )}
       </Card>
     </Link>
+  );
+}
+
+// Kebab menu overlaid on a card that is itself a <Link>. Every interactive handler calls
+// preventDefault() + stopPropagation() FIRST so a click never triggers the card's navigation.
+// Open/close is local useState; an outside pointerdown (or blur) closes it — no new deps.
+function CardMenu({
+  deal,
+  isArchived,
+  onChanged,
+  onError,
+}: {
+  deal: DealListItem;
+  isArchived: boolean;
+  onChanged: () => void;
+  onError: (msg: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const menuRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const onDown = (e: PointerEvent) => {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener('pointerdown', onDown);
+    return () => document.removeEventListener('pointerdown', onDown);
+  }, [open]);
+
+  // Run a mutating action, then refresh the list. ApiError messages (e.g. 409 "job running")
+  // surface via the page-level error state. `stop` is the event whose default/propagation we kill.
+  const act = async (
+    e: React.MouseEvent,
+    fn: () => Promise<unknown>,
+  ) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (busy) return;
+    setBusy(true);
+    setOpen(false);
+    try {
+      await fn();
+      onChanged();
+    } catch (err) {
+      if (err instanceof ApiError && err.status === 401) return; // handled globally
+      onError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const onDelete = (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (busy) return;
+    if (!window.confirm(`Permanently delete "${deal.deal_name}"? This cannot be undone.`)) {
+      setOpen(false);
+      return;
+    }
+    void act(e, () => deleteDeal(deal.deal_id));
+  };
+
+  const toggle = (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (busy) return;
+    setOpen((v) => !v);
+  };
+
+  return (
+    <div ref={menuRef} className="absolute top-3 right-3 z-10">
+      <button
+        type="button"
+        aria-label="Deal actions"
+        aria-haspopup="true"
+        aria-expanded={open ? true : undefined}
+        onClick={toggle}
+        disabled={busy}
+        className="p-1 rounded-lg text-slate/40 hover:text-slate hover:bg-slate/5 disabled:opacity-50 transition-colors"
+      >
+        {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : <MoreVertical className="w-4 h-4" />}
+      </button>
+
+      {open && (
+        <div
+          className="absolute top-full right-0 mt-1 w-40 rounded-xl border border-slate/15 bg-white shadow-cardHover py-1 text-sm"
+        >
+          {isArchived ? (
+            <MenuItem
+              icon={ArchiveRestore}
+              label="Unarchive"
+              onClick={(e) => act(e, () => unarchiveDeal(deal.deal_id))}
+            />
+          ) : (
+            <MenuItem
+              icon={Archive}
+              label="Archive"
+              onClick={(e) => act(e, () => archiveDeal(deal.deal_id))}
+            />
+          )}
+          <MenuItem icon={Trash2} label="Delete" danger onClick={onDelete} />
+        </div>
+      )}
+    </div>
+  );
+}
+
+function MenuItem({
+  icon: Icon,
+  label,
+  danger,
+  onClick,
+}: {
+  icon: typeof Archive;
+  label: string;
+  danger?: boolean;
+  onClick: (e: React.MouseEvent) => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`w-full flex items-center gap-2 px-3 py-1.5 text-left font-label font-medium transition-colors ${
+        danger ? 'text-danger hover:bg-danger/5' : 'text-slate hover:bg-teal-panel/60'
+      }`}
+    >
+      <Icon className="w-3.5 h-3.5 shrink-0" /> {label}
+    </button>
   );
 }
 
