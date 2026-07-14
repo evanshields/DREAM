@@ -97,6 +97,11 @@ app.include_router(jobs_router, dependencies=[Depends(require_auth)])
 from routers.deals import router as deals_router  # noqa: E402
 app.include_router(deals_router, dependencies=[Depends(require_auth)])
 
+# Phase 5 — CRM layer (contacts + tasks/notes + links + unified deal timeline). LLM-free import
+# graph (store package + job_store only); auth-gated at mount time like every Wave A-D router.
+from routers.crm import router as crm_router  # noqa: E402
+app.include_router(crm_router, dependencies=[Depends(require_auth)])
+
 # Wave C.4 — deal-memo generation (Kimi-backed; own router so deals.py stays LLM-free).
 from routers.memo import router as memo_router  # noqa: E402
 app.include_router(memo_router, dependencies=[Depends(require_auth)])

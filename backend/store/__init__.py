@@ -16,6 +16,21 @@ from .user_store import (
     UserExists,
     get_user_store,
 )
+from .crm_store import (
+    CRMStore,
+    SQLiteCRMStore,
+    ContactRecord,
+    ItemRecord,
+    LinkRecord,
+    ContactNotFound,
+    ItemNotFound,
+    get_crm_store,
+    CONTACT_KINDS,
+    CONTACT_ROLES,
+    ITEM_KINDS,
+    TASK_STATUSES,
+    LINKABLE_KINDS,
+)
 
 __all__ = [
     "DealStore",
@@ -31,4 +46,17 @@ __all__ = [
     "UserNotFound",
     "UserExists",
     "get_user_store",
+    "CRMStore",
+    "SQLiteCRMStore",
+    "ContactRecord",
+    "ItemRecord",
+    "LinkRecord",
+    "ContactNotFound",
+    "ItemNotFound",
+    "get_crm_store",
+    "CONTACT_KINDS",
+    "CONTACT_ROLES",
+    "ITEM_KINDS",
+    "TASK_STATUSES",
+    "LINKABLE_KINDS",
 ]
