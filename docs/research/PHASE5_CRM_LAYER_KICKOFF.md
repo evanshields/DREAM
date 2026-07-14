@@ -2,7 +2,7 @@
 
 **Date:** 2026-07-13
 **Status:** Ready to hand to Fable as the orchestration blueprint.
-**Source:** [TWENTY-CRM-BORROW-LIST-2026-07-13.md](TWENTY-CRM-BORROW-LIST-2026-07-13.md) (the 10 ranked items) + license audit [2026-07-13-twenty-crm.md](../../../shieldstone_os/shieldstone_operations/third-party-audits/2026-07-13-twenty-crm.md).
+**Source:** [TWENTY-CRM-BORROW-LIST-2026-07-13.md](TWENTY-CRM-BORROW-LIST-2026-07-13.md) (the 10 ranked items) + the license audit at the absolute path `c:\Users\evana\shieldstone_os\shieldstone_operations\third-party-audits\2026-07-13-twenty-crm.md` (in the shieldstone_os repo, opens directly in VS Code).
 **Branch to build on:** `wave-a-foundation` (the live app lives here; `main` is a stale pre-consolidation codebase, see Cross-Phase Impact below).
 
 ---

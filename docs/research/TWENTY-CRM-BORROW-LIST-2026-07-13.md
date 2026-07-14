@@ -2,8 +2,8 @@
 
 Synthesis of a 5-agent study of github.com/twentyhq/twenty (clone studied at `c:\tmp\twenty-research`,
 v2.20.0 era). Agents covered: data model, views layer, record page + timeline, frontend UX patterns,
-and license/audit. Full license audit:
-`shieldstone_os/shieldstone_operations/third-party-audits/2026-07-13-twenty-crm.md`.
+and license/audit. Full license audit (absolute path, opens in VS Code):
+`c:\Users\evana\shieldstone_os\shieldstone_operations\third-party-audits\2026-07-13-twenty-crm.md`.
 
 ## The license rule (governs everything below)
 
