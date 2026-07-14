@@ -91,3 +91,33 @@ green. PR #3 awaiting Evan's one-click merge.
   stamped with submit-time clock), 4 hardening fixes, 4 accepted tradeoffs logged. Local async
   smoke: submit 36ms -> awaiting_cp1, Esplanade irr exact. 380 backend+engine tests green,
   tsc/build clean. docs/CLAUDE_DESIGN_BRIEF.md added (Track E) for Evan's Claude Design pass.
+
+## Phase 5 — CRM layer (Twenty-inspired; branch `phase5-crm-layer`)
+
+Blueprint: docs/research/PHASE5_CRM_LAYER_KICKOFF.md (10 items, 3 sessions). Everything
+inspiration-only from Twenty CRM (AGPL) — no source copied. Three decisions locked: delete =
+undo-toast; DealDetail = right rail on Overview (no 5th tab); roles =
+broker/seller/lender/bond_counsel/issuer/nonprofit_sponsor/other.
+
+- 2026-07-13: **Phase 5 Session 1 SHIPPED (backend spine)** — commit 10586ff, backup
+  backend.bak-20260713-225057. New backend/store/crm_store.py (SQLiteCRMStore cloned from the
+  DealStore/JobStore idiom: opaque doc + derived index, integer version + shared VersionConflict,
+  now_iso passed in, connection via the store package so NO sqlite3 leaks outside backend/store/,
+  own CREATE TABLE IF NOT EXISTS). Three tables discriminated by `kind`: crm_contacts
+  (person|company, 7-role enum), crm_items (task|note), crm_links (source->target index adapted
+  from Twenty's TaskTarget/NoteTarget). Cascade deletes + the deal-delete hook
+  delete_links_for_target. New backend/routers/crm.py (LLM-free, owner from auth): contacts/items
+  CRUD, task toggle (Twenty's useCompleteTask, re-implemented), link attach/detach (idempotent,
+  endpoint-existence checked), deal-scoped read helpers, and GET /api/deals/{id}/timeline — a
+  READ-TIME merge of the append-only job audit with pinned notes+tasks into one newest-first,
+  month-grouped feed (the audit log is a view here, never mutated). Wiring (additive, contracts
+  intact): store/__init__ export; main.py mounts crm_router auth-gated; deals.py::delete_deal
+  appends the link cascade AFTER the delete (409-while-running guard untouched). 42 new tests
+  (test_crm_store.py + test_crm_api.py: CRUD, version conflict, idempotent links, both cascades,
+  timeline interleave/sort/month buckets). Full suite **422 passed, 1 skipped**. Live-verified on
+  prod: created contact(issuer)/note/task, pinned to the real Rayzor EFB deal, timeline returned
+  11 merged events (9 audit + note + task, newest-first, July-2026 bucket, group ids match feed),
+  then deleted the 3 records — cascade cleaned every link, deal audit untouched. LIVE-VERIFY
+  finding for Session 2: a note has no title (item view title=""), so the deal-items list + the
+  timeline must render the note `body` (timeline already carries `body`). NEXT: Session 2
+  (frontend surfaces on the deal) — awaiting Evan go-ahead.
