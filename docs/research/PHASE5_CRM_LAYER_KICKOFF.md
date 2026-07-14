@@ -67,16 +67,23 @@ Per Evan's decision, use ONE `crm_store.py` with `kind`-discriminated tables (no
 ### Item 2 — Unified deal timeline  [Session 1 backend + Session 2 frontend]
 - **New endpoint:** `GET /api/deals/{deal_id}/timeline` in a new `backend/routers/crm.py` (or extend `deals.py`; prefer a new router to keep collision boundaries clean). READ-TIME projection: interleave the existing job-audit events (reuse `deals.py::get_deal_audit` logic / the job store) with `crm_items` (notes + tasks) linked to this deal, sorted by ts. Shape: `{deal_id, events: [{id, source:'audit'|'note'|'task', kind, ts, actor?, title, detail?}]}`.
 - **Guardrail:** the append-only audit system is NEVER mutated. The timeline is a view, not a second source of truth. Do not write timeline rows (that is Twenty's queue-driven approach; read-time merge is correct at DREAM volume).
-- **Frontend:** extend [DealAudit.tsx](../../frontend/src/components/DealAudit.tsx). Add `note` / `task` / `doc_event` to the `KIND_STYLE` map (icon + color). The component becomes the "Activity" tab's unified feed. Consider month-grouping for readability.
-- **Tests:** timeline projection test (audit + note + task interleave, correct sort) in `test_crm_api.py`.
+- **Frontend:** extend [DealAudit.tsx](../../frontend/src/components/DealAudit.tsx). Add `note` / `task` / `doc_event` to the `KIND_STYLE` map (icon + color). The component becomes the "Activity" tab's unified feed.
+- **Month-grouping is a firm spec, not optional** (confirmed from Twenty's `activities/timeline-activities/components/EventsGroup.tsx` + `utils/groupEventsByMonth`): group events under a "Month Year" separator line, newest month first, with the vertical connector spine DealAudit already draws. This is the standard CRM timeline shape; match it.
+- **Tests:** timeline projection test (audit + note + task interleave, correct sort, correct month buckets) in `test_crm_api.py`.
 
 ### Item 3 — Task row UX  [Session 2, frontend, mostly DESIGN]
-- **New component:** `frontend/src/components/TaskList.tsx` (title, due date, done checkbox; strikethrough on done; overdue due-date in `text-danger`). Hand-rolled Tailwind, reuse `ui.tsx` primitives.
-- Toggling done calls `PATCH`-equivalent (`put` through the item's store via a route). Optimistic (see item 9 pattern).
+- **New component:** `frontend/src/components/TaskList.tsx`. Confirmed mechanics from Twenty's `activities/tasks/components/TaskRow.tsx` + `hooks/useCompleteTask.ts` (replicate as patterns, do not paste):
+  - Rounded checkbox toggles status; **`line-through` on title when done**.
+  - **Due date shows in `text-danger` ONLY when past AND still open** (`isPast = hasDatePassed(due) && status === 'open'`), with a calendar icon. A past date on a DONE task is NOT red.
+  - Empty-title placeholder ("Task title") so a blank row is still clickable.
+  - Group by status (open first, done below), each group with an "add task" button on the open group. Warm empty state ("All tasks addressed") echoing Twenty's.
+- Toggle completion = flip `status` between `'open'`/`'done'` (Twenty's `useCompleteTask` does exactly this, nothing more) via a `put` through the item store's route. Optimistic (see item 9 pattern).
+- Hand-rolled Tailwind, reuse `ui.tsx` primitives; no rich-text editor (Twenty uses BlockNote for the body, DREAM uses a plain textarea per the refuse-to-copy list).
 
 ### Item 4 — Right-rail relations on DealDetail  [Session 2, frontend]
 - **Edit:** [DealDetail.tsx](../../frontend/src/pages/DealDetail.tsx). Build a RIGHT RAIL on the Overview tab (Decision 2): two-column layout on wide screens (metrics/dashboard left, rail right), stacking below on narrow screens. Rail shows role slots (Broker / Seller / Lender / Bond Counsel / Issuer / Nonprofit Sponsor) with attach-or-create-contact, plus note/task composers (plain textarea, no rich-text editor).
 - **Constraint:** DealDetail tab ids stay EXACTLY `'overview' | 'memo' | 'activity' | 'export'` (no fifth tab, per Decision 2). Do not rename ids. Prop shapes of existing components stay byte-for-byte.
+- **Pattern backing:** Twenty's record page is a left main panel + a right side panel (`object-record/record-show/`, `useOpenRecordInSidePanel`); clicking a related record (e.g. a task) opens it in that side panel. DREAM's right-rail-on-Overview is the right-sized version. Clicking a contact/task/note in the rail can navigate to its own view later; for Phase 5, an inline expand or a simple modal is enough (do not build Twenty's full side-panel navigation stack).
 
 ### Item 5 — Pipeline views (table + kanban + presets + sort)  [Session 3, frontend]
 - **Edit:** [Pipeline.tsx](../../frontend/src/pages/Pipeline.tsx). Keep the single `listDeals({include_archived})` fetch. Add a `viewMode: 'cards'|'table'|'kanban'` toggle, a generalized filter object, 3 hardcoded presets, and column sort. Persist `{layout, filter, sort}` in `localStorage` (2 users, no backend view store).
