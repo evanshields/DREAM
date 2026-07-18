@@ -121,3 +121,22 @@ broker/seller/lender/bond_counsel/issuer/nonprofit_sponsor/other.
   finding for Session 2: a note has no title (item view title=""), so the deal-items list + the
   timeline must render the note `body` (timeline already carries `body`). NEXT: Session 2
   (frontend surfaces on the deal) — awaiting Evan go-ahead.
+- 2026-07-17: **Phase 5 Session 2 SHIPPED (CRM surfaces on the deal)** — commit follows; frontend
+  backup frontend.bak-20260717-223907. Evan set the bar to "elevate + bake in polish" (design pass
+  folded in, seed real deals, resolve main-branch drift at the end). Built: lib/api.ts CRM layer
+  (contacts/items/links/timeline fetch fns + 7-role enum, mirrors crm.py); contexts/ToastContext.tsx
+  (queued toasts, countdown + hover-pause + action slot + dedupe; deferred action fires on EXPIRE,
+  the action button cancels — zero-backend undo); components/DealTimeline.tsx (the Activity tab is
+  now the unified month-grouped feed — audit + notes + tasks, per-source dots + connector spine;
+  replaces the removed DealAudit); components/TaskList.tsx (checkbox toggle, line-through done, due
+  red ONLY when past AND open, inline composer); components/DealRail.tsx (right rail — deal team by
+  role w/ inline attach-or-create, tasks, notes; owns deal-scoped CRM data + optimistic writes,
+  signals the parent to refresh the timeline). Edited: DealDetail.tsx (two-column Overview,
+  metrics left + rail right, stacks narrow; Activity -> DealTimeline; tab ids unchanged);
+  Pipeline.tsx (delete = optimistic + 6s "Undo" toast, real DELETE on expire, 409 restores; skeleton
+  cards replace the spinner). tsc + build clean; full suite **422 passed, 1 skipped**. Seeded
+  realistic demo CRM data (8 contacts / 7 tasks / 3 notes, backdated June+July) on the Rayzor (EFB)
+  + Esplanade (ACQ) deals so the rail + timeline look alive — DEMO DATA, removable from the UI.
+  Deployed to prod + screenshot-verified with Playwright (pipeline, both deal overviews w/ rail,
+  the month-grouped timeline, the undo toast); undo confirmed live (seeded note survived). NEXT:
+  Session 3 (pipeline power + Cmd-K) + merge Phase 5 -> main — awaiting Evan go-ahead.
