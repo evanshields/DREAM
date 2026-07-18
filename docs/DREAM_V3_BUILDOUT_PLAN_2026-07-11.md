@@ -140,3 +140,21 @@ broker/seller/lender/bond_counsel/issuer/nonprofit_sponsor/other.
   Deployed to prod + screenshot-verified with Playwright (pipeline, both deal overviews w/ rail,
   the month-grouped timeline, the undo toast); undo confirmed live (seeded note survived). NEXT:
   Session 3 (pipeline power + Cmd-K) + merge Phase 5 -> main — awaiting Evan go-ahead.
+- 2026-07-18: **Phase 5 Session 3 SHIPPED (pipeline power + Cmd-K + polish)** — commit 617a0ec;
+  frontend backup frontend.bak-20260718-111906. New components/CommandMenu.tsx: global Cmd/Ctrl-K
+  jump palette (fuzzy jump-to-deal + nav actions, item shape {label,icon?,to?,onClick?}), mounted
+  once in AppShell + a header "Jump to…" affordance via a custom event. Pipeline.tsx rewritten head
+  (sub-components preserved): Cards/Table/Kanban view toggle with the whole view state
+  {view,preset,sort} persisted in localStorage; 3 presets (My Open / EFB Pipeline / Needs Attention)
+  + All + Archived, each a predicate; column sort (Updated/Name/Status/Routing, asc/desc). DealTable
+  (hand-rolled <table>, clickable sort headers, hover row actions, rows navigate). KanbanBoard
+  (grouped by status; status columns are NOT drop targets — status is engine-derived; ONLY the
+  Archived column acts, drag in -> archive / out -> unarchive, no generic status PATCH). Polish:
+  ui.tsx InlineEdit primitive (Enter save / Escape cancel / blur save; skips network on unchanged)
+  wired to task titles; DealDetail gate summary now shows a neutral "Recorded" badge (payload in a
+  tooltip) instead of raw JSON for verdict-less object rows. tsc + build clean; full suite **422
+  passed, 1 skipped**. Deployed to prod + Playwright screenshot-verified (table, kanban board, Cmd-K
+  palette). **PR #5 opened** (phase5-crm-layer -> wave-a-foundation; 25 files / ~4.7K lines = the
+  clean Phase 5 diff). STALE MAIN flagged separately: a PR into main would be ~48K lines (main
+  predates the app consolidation); recommend making wave-a-foundation the default branch after
+  merge, or merging wave-a-foundation -> main once. PHASE 5 COMPLETE — awaiting Evan's review + merge.
