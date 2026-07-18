@@ -524,9 +524,17 @@ function GateSummaryBlock({ gates }: { gates: Record<string, unknown> }) {
                   <Badge tone="danger">
                     <XCircle className="w-3 h-3" /> Fail
                   </Badge>
+                ) : typeof v === 'object' && v !== null ? (
+                  // a metric row with no pass/fail verdict (e.g. unit_count reconciliation counts):
+                  // show a neutral badge, keep the raw payload in a tooltip rather than dumping JSON
+                  <span title={JSON.stringify(v)}>
+                    <Badge tone="neutral">
+                      <MinusCircle className="w-3 h-3" /> Recorded
+                    </Badge>
+                  </span>
                 ) : (
                   <span className="text-xs text-slate/50 font-mono max-w-[50%] truncate">
-                    {typeof v === 'object' ? JSON.stringify(v) : String(v)}
+                    {String(v)}
                   </span>
                 )}
               </li>

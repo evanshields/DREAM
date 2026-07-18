@@ -1,8 +1,9 @@
 import { type ReactNode } from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
-import { LayoutGrid, FilePlus2, Landmark, LogOut } from 'lucide-react';
+import { LayoutGrid, FilePlus2, Landmark, LogOut, Search } from 'lucide-react';
 import { useAuth } from '../auth/AuthContext';
 import { Wordmark } from './Wordmark';
+import { CommandMenu } from './CommandMenu';
 
 // The authenticated chrome: top bar (wordmark · nav · user/logout) + content slot.
 export function AppShell({ children }: { children: ReactNode }) {
@@ -41,6 +42,16 @@ export function AppShell({ children }: { children: ReactNode }) {
             </nav>
           </div>
           <div className="flex items-center gap-3">
+            <button
+              onClick={() => window.dispatchEvent(new CustomEvent('dream:command-menu'))}
+              className="hidden sm:inline-flex items-center gap-2 rounded-lg border border-slate/15 bg-white px-2.5 py-1.5 text-xs text-slate/50 hover:text-teal hover:border-teal/40 transition-colors"
+              aria-label="Open command menu"
+              title="Search / jump to a deal (Ctrl-K)"
+            >
+              <Search className="w-3.5 h-3.5" />
+              <span className="hidden md:inline">Jump to…</span>
+              <kbd className="font-mono text-[10px] border border-slate/15 rounded px-1 py-px">⌘K</kbd>
+            </button>
             <span className="hidden md:inline text-sm text-slate/70 tnum">
               {user?.email ?? 'signed in'}
             </span>
@@ -82,6 +93,9 @@ export function AppShell({ children }: { children: ReactNode }) {
       <footer className="border-t border-slate/10 py-4 text-center text-xs text-slate/50">
         DREAM · Shieldstone Dev / Real-Estate / Asset-Management underwriting
       </footer>
+
+      {/* Global Cmd/Ctrl-K jump palette — one instance for every authed page. */}
+      <CommandMenu />
     </div>
   );
 }

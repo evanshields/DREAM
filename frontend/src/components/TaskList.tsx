@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { Plus, Trash2, Check, CalendarClock } from 'lucide-react';
+import { InlineEdit } from './ui';
 import { type ItemView } from '../lib/api';
 
 // ---------------------------------------------------------------------------
@@ -28,10 +29,12 @@ function TaskRow({
   task,
   onToggle,
   onDelete,
+  onRename,
 }: {
   task: ItemView;
   onToggle: (t: ItemView) => void;
   onDelete: (t: ItemView) => void;
+  onRename: (t: ItemView, title: string) => void;
 }) {
   const done = task.status === 'done';
   const overdue = isOverdue(task.due_at, task.status);
@@ -52,13 +55,15 @@ function TaskRow({
       </button>
 
       <div className="min-w-0 flex-1">
-        <p
-          className={`text-sm leading-snug ${
+        <InlineEdit
+          value={task.title}
+          onSave={(title) => onRename(task, title)}
+          placeholder="Task title"
+          ariaLabel="Task title"
+          className={`block w-full text-sm leading-snug ${
             done ? 'text-slate/45 line-through' : 'text-slate'
           }`}
-        >
-          {task.title || <span className="text-slate/40">Task title</span>}
-        </p>
+        />
         {task.due_at && (
           <span
             className={`inline-flex items-center gap-1 text-[11px] mt-0.5 ${
@@ -88,11 +93,13 @@ export function TaskList({
   onToggle,
   onDelete,
   onAdd,
+  onRename,
 }: {
   tasks: ItemView[];
   onToggle: (t: ItemView) => void;
   onDelete: (t: ItemView) => void;
   onAdd: (title: string, dueAt: string) => void;
+  onRename: (t: ItemView, title: string) => void;
 }) {
   const open = tasks.filter((t) => t.status !== 'done');
   const done = tasks.filter((t) => t.status === 'done');
@@ -117,7 +124,13 @@ export function TaskList({
       ) : (
         <ul className="divide-y divide-slate/8">
           {open.map((t) => (
-            <TaskRow key={t.item_id} task={t} onToggle={onToggle} onDelete={onDelete} />
+            <TaskRow
+              key={t.item_id}
+              task={t}
+              onToggle={onToggle}
+              onDelete={onDelete}
+              onRename={onRename}
+            />
           ))}
         </ul>
       )}
@@ -185,7 +198,13 @@ export function TaskList({
           <p className="eyebrow text-slate/40 mb-1">Done · {done.length}</p>
           <ul className="divide-y divide-slate/8">
             {done.map((t) => (
-              <TaskRow key={t.item_id} task={t} onToggle={onToggle} onDelete={onDelete} />
+              <TaskRow
+              key={t.item_id}
+              task={t}
+              onToggle={onToggle}
+              onDelete={onDelete}
+              onRename={onRename}
+            />
             ))}
           </ul>
         </div>

@@ -20,6 +20,7 @@ import {
   deleteLink,
   deleteItem,
   toggleItem,
+  updateItem,
   ApiError,
   CONTACT_ROLES,
   ROLE_LABELS,
@@ -166,6 +167,19 @@ export function DealRail({ dealId, onChanged }: { dealId: string; onChanged?: ()
     }
   };
 
+  const renameTask = async (task: ItemView, title: string) => {
+    setTasks((prev) => prev.map((t) => (t.item_id === task.item_id ? { ...t, title } : t)));
+    try {
+      const updated = await updateItem(task.item_id, { ...task.doc, title, version: task.version });
+      setTasks((prev) => prev.map((t) => (t.item_id === task.item_id ? updated : t)));
+      notify();
+    } catch (e) {
+      setTasks((prev) => prev.map((t) => (t.item_id === task.item_id ? task : t))); // revert
+      if (e instanceof ApiError && e.status === 401) return;
+      setError(e instanceof Error ? e.message : String(e));
+    }
+  };
+
   const deleteTask = (task: ItemView) => {
     setTasks((prev) => prev.filter((t) => t.item_id !== task.item_id));
     showToast({
@@ -252,7 +266,13 @@ export function DealRail({ dealId, onChanged }: { dealId: string; onChanged?: ()
         <h3 className="eyebrow text-slate/55 flex items-center mb-3">
           <ListTodo className="w-3.5 h-3.5 mr-2" /> Tasks
         </h3>
-        <TaskList tasks={tasks} onToggle={toggleTask} onDelete={deleteTask} onAdd={addTask} />
+        <TaskList
+          tasks={tasks}
+          onToggle={toggleTask}
+          onDelete={deleteTask}
+          onAdd={addTask}
+          onRename={renameTask}
+        />
       </Card>
 
       {/* Notes */}

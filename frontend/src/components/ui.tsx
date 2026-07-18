@@ -1,4 +1,10 @@
-import { type ReactNode, type ButtonHTMLAttributes, type InputHTMLAttributes } from 'react';
+import {
+  useEffect,
+  useState,
+  type ReactNode,
+  type ButtonHTMLAttributes,
+  type InputHTMLAttributes,
+} from 'react';
 import { type LucideIcon } from 'lucide-react';
 
 // ---------------------------------------------------------------------------
@@ -109,5 +115,69 @@ export function Spinner({ className }: { className?: string }) {
       style={{ width: '1em', height: '1em' }}
       aria-hidden
     />
+  );
+}
+
+// Click-to-edit text (Phase 5). Enter saves, Escape cancels, blur saves. Skips the network on an
+// unchanged (or empty) value — the caller's onSave never fires unless the text actually changed.
+export function InlineEdit({
+  value,
+  onSave,
+  placeholder,
+  className,
+  inputClassName,
+  ariaLabel,
+}: {
+  value: string;
+  onSave: (next: string) => void;
+  placeholder?: string;
+  className?: string;
+  inputClassName?: string;
+  ariaLabel?: string;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(value);
+  useEffect(() => {
+    setDraft(value);
+  }, [value]);
+
+  const commit = () => {
+    setEditing(false);
+    const next = draft.trim();
+    if (next && next !== value) onSave(next);
+    else setDraft(value); // unchanged/empty -> no network, revert the draft
+  };
+
+  if (editing) {
+    return (
+      <input
+        autoFocus
+        value={draft}
+        aria-label={ariaLabel ?? 'Edit'}
+        onChange={(e) => setDraft(e.target.value)}
+        onBlur={commit}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') {
+            e.preventDefault();
+            commit();
+          } else if (e.key === 'Escape') {
+            setDraft(value);
+            setEditing(false);
+          }
+        }}
+        className={cx('input py-1 text-sm', inputClassName)}
+      />
+    );
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={() => setEditing(true)}
+      title="Click to edit"
+      className={cx('text-left rounded px-1 -mx-1 hover:bg-slate/5 transition-colors', className)}
+    >
+      {value || <span className="text-slate/40">{placeholder ?? 'Empty'}</span>}
+    </button>
   );
 }
