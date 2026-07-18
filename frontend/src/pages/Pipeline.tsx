@@ -24,6 +24,7 @@ import {
   type DealListItem,
 } from '../lib/api';
 import { Card, Button, Badge, statusTone } from '../components/ui';
+import { useToast } from '../contexts/ToastContext';
 import { fmtEM, fmtPct1, fmtUSD, fmtDate, prettyStatus } from '../lib/format';
 
 type Filter = 'all' | 'computed' | 'awaiting_input' | 'gate_failed' | 'draft' | 'archived';
@@ -38,6 +39,7 @@ const FILTERS: { key: Filter; label: string }[] = [
 
 export function Pipeline() {
   const navigate = useNavigate();
+  const { showToast } = useToast();
   const [deals, setDeals] = useState<DealListItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -60,6 +62,29 @@ export function Pipeline() {
   useEffect(() => {
     load();
   }, [load]);
+
+  // Undo-delete (Phase 5): remove the card optimistically, show a 6s "Deleted. Undo" toast, and
+  // fire the REAL delete only when the countdown completes (onExpire) — so Undo needs zero backend.
+  // If the deferred delete is refused (409 while a job runs), restore the list + surface the error.
+  const handleDelete = useCallback(
+    (deal: DealListItem) => {
+      setDeals((prev) => prev.filter((d) => d.deal_id !== deal.deal_id));
+      showToast({
+        message: `Deleted “${deal.deal_name || 'Untitled deal'}”`,
+        tone: 'danger',
+        action: { label: 'Undo', onClick: () => load() },
+        dedupeKey: `del-deal-${deal.deal_id}`,
+        onExpire: () => {
+          deleteDeal(deal.deal_id).catch((e) => {
+            load(); // restore — the delete did not happen
+            if (e instanceof ApiError && e.status === 401) return;
+            setError(e instanceof Error ? e.message : String(e));
+          });
+        },
+      });
+    },
+    [showToast, load],
+  );
 
   // 'all' = every NON-archived deal; 'archived' = only archived; per-status pills match that status.
   const filtered = useMemo(() => {
@@ -124,15 +149,23 @@ export function Pipeline() {
       )}
 
       {loading ? (
-        <div className="flex items-center justify-center py-20 text-slate/50">
-          <Loader2 className="w-6 h-6 animate-spin mr-2" /> Loading pipeline…
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          {Array.from({ length: 6 }).map((_, i) => (
+            <SkeletonCard key={i} />
+          ))}
         </div>
       ) : filtered.length === 0 ? (
         <EmptyState filtered={filter !== 'all'} />
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {filtered.map((d) => (
-            <DealCard key={d.deal_id} deal={d} onChanged={load} onError={setError} />
+            <DealCard
+              key={d.deal_id}
+              deal={d}
+              onChanged={load}
+              onError={setError}
+              onDelete={handleDelete}
+            />
           ))}
         </div>
       )}
@@ -144,10 +177,12 @@ function DealCard({
   deal,
   onChanged,
   onError,
+  onDelete,
 }: {
   deal: DealListItem;
   onChanged: () => void;
   onError: (msg: string) => void;
+  onDelete: (deal: DealListItem) => void;
 }) {
   const hm = deal.headline_metrics ?? {};
   const isEFB = deal.routing === 'EFB';
@@ -169,7 +204,13 @@ function DealCard({
           isEFB ? 'border-t-taupe' : 'border-t-teal'
         }`}
       >
-        <CardMenu deal={deal} isArchived={isArchived} onChanged={onChanged} onError={onError} />
+        <CardMenu
+          deal={deal}
+          isArchived={isArchived}
+          onChanged={onChanged}
+          onError={onError}
+          onDelete={onDelete}
+        />
         <div className="flex items-start justify-between gap-2 mb-3 pr-8">
           <h3 className="font-head font-bold text-lg text-slate-near leading-tight">
             {deal.deal_name || 'Untitled deal'}
@@ -221,11 +262,13 @@ function CardMenu({
   isArchived,
   onChanged,
   onError,
+  onDelete,
 }: {
   deal: DealListItem;
   isArchived: boolean;
   onChanged: () => void;
   onError: (msg: string) => void;
+  onDelete: (deal: DealListItem) => void;
 }) {
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -262,15 +305,14 @@ function CardMenu({
     }
   };
 
-  const onDelete = (e: React.MouseEvent) => {
+  // Delete = optimistic remove + 6s "Undo" toast (the real DELETE is deferred to the toast's
+  // onExpire, owned by the Pipeline). No confirm popup — Undo is the safety net.
+  const onDeleteClick = (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
     if (busy) return;
-    if (!window.confirm(`Permanently delete "${deal.deal_name}"? This cannot be undone.`)) {
-      setOpen(false);
-      return;
-    }
-    void act(e, () => deleteDeal(deal.deal_id));
+    setOpen(false);
+    onDelete(deal);
   };
 
   const toggle = (e: React.MouseEvent) => {
@@ -311,7 +353,7 @@ function CardMenu({
               onClick={(e) => act(e, () => archiveDeal(deal.deal_id))}
             />
           )}
-          <MenuItem icon={Trash2} label="Delete" danger onClick={onDelete} />
+          <MenuItem icon={Trash2} label="Delete" danger onClick={onDeleteClick} />
         </div>
       )}
     </div>
@@ -358,6 +400,35 @@ function Metric({
       </span>
       <div className="font-head font-bold text-xl text-teal tnum mt-0.5">{value}</div>
     </div>
+  );
+}
+
+// Loading placeholder shaped like a DealCard (replaces the spinner — the layout doesn't jump when
+// real cards arrive). Pure CSS pulse; no data.
+function SkeletonCard() {
+  return (
+    <Card className="p-5 h-full border-t-4 border-t-slate/10">
+      <div className="animate-pulse">
+        <div className="flex items-start justify-between gap-2 mb-3">
+          <div className="h-5 bg-slate/10 rounded w-1/2" />
+          <div className="h-5 bg-slate/10 rounded-full w-12" />
+        </div>
+        <div className="flex items-center gap-2 mb-4">
+          <div className="h-5 bg-slate/10 rounded-full w-20" />
+          <div className="h-3 bg-slate/8 rounded w-16" />
+        </div>
+        <div className="grid grid-cols-2 gap-3 pt-3 border-t border-slate/10">
+          <div>
+            <div className="h-2.5 bg-slate/8 rounded w-12 mb-2" />
+            <div className="h-6 bg-slate/10 rounded w-16" />
+          </div>
+          <div>
+            <div className="h-2.5 bg-slate/8 rounded w-12 mb-2" />
+            <div className="h-6 bg-slate/10 rounded w-16" />
+          </div>
+        </div>
+      </div>
+    </Card>
   );
 }
 

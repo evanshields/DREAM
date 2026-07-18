@@ -40,7 +40,8 @@ import {
   EFB_SIZING_DEFAULTS,
 } from '../components/EFBMetricTiles';
 import { DealMemo } from '../components/DealMemo';
-import { DealAudit } from '../components/DealAudit';
+import { DealTimeline } from '../components/DealTimeline';
+import { DealRail } from '../components/DealRail';
 import { DealExport } from '../components/DealExport';
 import { fmtUSD, fmtPct1, fmtEM, prettyStatus, fmtDate } from '../lib/format';
 
@@ -155,6 +156,9 @@ export function DealDetail() {
   useEffect(() => {
     if (tab === 'activity') setAuditVisited(true);
   }, [tab]);
+  // Bumped when the Overview rail adds/removes a note or task so the (already-mounted) Activity
+  // timeline re-fetches to include it.
+  const [timelineRefresh, setTimelineRefresh] = useState(0);
 
   useEffect(() => {
     // If we already have the CP-1 job from navigation, this fetch is non-blocking color
@@ -330,7 +334,8 @@ export function DealDetail() {
       </div>
 
       {tab === 'overview' && (
-        <>
+        <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_20rem] gap-6 items-start">
+          <div className="space-y-8 min-w-0">
       {/* CP-1: headline metrics (routing-aware — EFB shows bond sizing tiles) */}
       {headline ? (
         isEFB ? (
@@ -381,7 +386,16 @@ export function DealDetail() {
           </>
         )}
       </div>
-        </>
+          </div>
+
+          {/* Right rail — deal team + tasks + notes (Phase 5). Sticky on wide screens; stacks
+              below the main content on narrow ones. */}
+          {id && (
+            <aside className="lg:sticky lg:top-6">
+              <DealRail dealId={id} onChanged={() => setTimelineRefresh((n) => n + 1)} />
+            </aside>
+          )}
+        </div>
       )}
 
       {tab === 'memo' && id && <DealMemo dealId={id} dealName={dealName} memo={specMemo} />}
@@ -389,7 +403,7 @@ export function DealDetail() {
       {/* Activity mounts on first visit and stays mounted (hidden) so the fetch isn't repeated. */}
       {auditVisited && id && (
         <div className={tab === 'activity' ? '' : 'hidden'}>
-          <DealAudit dealId={id} />
+          <DealTimeline dealId={id} refreshKey={timelineRefresh} />
         </div>
       )}
 
