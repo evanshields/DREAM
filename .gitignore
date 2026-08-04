@@ -28,3 +28,10 @@ __pycache__/
 *.pyc
 .pytest_cache/
 *-DREAM-draft.xlsx
+.venv/
+venv/
+*.db
+backend/.env
+
+# TS build info
+*.tsbuildinfo

@@ -3,6 +3,7 @@ import { ViewState } from './types';
 import { Layout } from './components/Layout';
 import Dashboard from './pages/Dashboard';
 import AnalysisView from './pages/AnalysisView';
+import AssumptionDashboard from './pages/AssumptionDashboard';
 import PipelineBoard from './pages/PipelineBoard';
 import DealIntake from './pages/DealIntake';
 
@@ -13,7 +14,7 @@ const App: React.FC = () => {
   useEffect(() => {
     const handleHashChange = () => {
       const hash = window.location.hash.slice(1);
-      if (hash && ['dashboard', 'analysis', 'pipeline', 'intake'].includes(hash)) {
+      if (hash && ['dashboard', 'analysis', 'assumptions', 'pipeline', 'intake'].includes(hash)) {
         setView(hash as ViewState);
       }
     };
@@ -38,6 +39,7 @@ const App: React.FC = () => {
     <Layout activeView={view} onNavigate={navigate}>
       {view === 'dashboard' && <Dashboard onNavigate={navigate} />}
       {view === 'analysis' && <AnalysisView />}
+      {view === 'assumptions' && <AssumptionDashboard />}
       {view === 'pipeline' && <PipelineBoard />}
       {view === 'intake' && <DealIntake onComplete={() => navigate('analysis')} />}
     </Layout>
