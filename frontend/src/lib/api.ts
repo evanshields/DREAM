@@ -559,6 +559,246 @@ export function getDealAudit(dealId: string, signal?: AbortSignal): Promise<Deal
 }
 
 // ===========================================================================
+// CRM (Phase 5) — contacts + tasks/notes + links + the unified deal timeline.
+// Mirrors backend/routers/crm.py. All auth-gated (bearer + global-401 like the rest).
+// ===========================================================================
+
+export type ContactKind = 'person' | 'company';
+export type ContactRole =
+  | 'broker'
+  | 'seller'
+  | 'lender'
+  | 'bond_counsel'
+  | 'issuer'
+  | 'nonprofit_sponsor'
+  | 'other';
+
+// The full role list + display labels — the rail renders one slot per role, in this order.
+export const CONTACT_ROLES: ContactRole[] = [
+  'broker',
+  'seller',
+  'lender',
+  'bond_counsel',
+  'issuer',
+  'nonprofit_sponsor',
+  'other',
+];
+export const ROLE_LABELS: Record<ContactRole, string> = {
+  broker: 'Broker',
+  seller: 'Seller',
+  lender: 'Lender',
+  bond_counsel: 'Bond Counsel',
+  issuer: 'Issuer',
+  nonprofit_sponsor: 'Nonprofit Sponsor',
+  other: 'Other',
+};
+
+// A contact view (backend crm.py _contact_view). `doc` is the opaque canonical document;
+// the flat fields are its derived index. `link_id` is present only on deal-scoped reads.
+export interface ContactView {
+  contact_id: string;
+  kind: ContactKind;
+  name: string;
+  role: string; // ContactRole for persons, '' for companies
+  company_id: string;
+  primary_email: string;
+  owner: string;
+  version: number;
+  created_at: string;
+  updated_at: string;
+  doc: Record<string, unknown>;
+  link_id?: string; // present on GET /deals/{id}/contacts
+}
+
+export type ItemKind = 'task' | 'note';
+export type TaskStatus = 'open' | 'done';
+
+// A task/note view (backend crm.py _item_view). A note has no title (title=''), so render `doc.body`.
+export interface ItemView {
+  item_id: string;
+  kind: ItemKind;
+  status: string; // 'open' | 'done' for tasks, '' for notes
+  title: string;
+  due_at: string;
+  author: string;
+  owner: string;
+  version: number;
+  created_at: string;
+  updated_at: string;
+  doc: Record<string, unknown>;
+  link_id?: string; // present on GET /deals/{id}/items
+}
+
+export interface LinkView {
+  link_id: string;
+  source_kind: string;
+  source_id: string;
+  target_kind: string;
+  target_id: string;
+  created_at: string;
+}
+
+// --- contacts ---
+export function createContact(
+  doc: Record<string, unknown>,
+  signal?: AbortSignal,
+): Promise<ContactView> {
+  return request<ContactView>('/contacts', { method: 'POST', body: doc, signal });
+}
+
+export function updateContact(
+  contactId: string,
+  docWithVersion: Record<string, unknown> & { version: number },
+  signal?: AbortSignal,
+): Promise<ContactView> {
+  return request<ContactView>(`/contacts/${encodeURIComponent(contactId)}`, {
+    method: 'PUT',
+    body: docWithVersion,
+    signal,
+  });
+}
+
+export function listContacts(
+  filters?: { kind?: ContactKind; role?: ContactRole; owner?: string },
+  signal?: AbortSignal,
+): Promise<ContactView[]> {
+  const q = new URLSearchParams();
+  if (filters?.kind) q.set('kind', filters.kind);
+  if (filters?.role) q.set('role', filters.role);
+  if (filters?.owner) q.set('owner', filters.owner);
+  const qs = q.toString();
+  return request<ContactView[]>(`/contacts${qs ? `?${qs}` : ''}`, { signal });
+}
+
+export function deleteContact(
+  contactId: string,
+  signal?: AbortSignal,
+): Promise<{ deleted: boolean; contact_id: string }> {
+  return request<{ deleted: boolean; contact_id: string }>(
+    `/contacts/${encodeURIComponent(contactId)}`,
+    { method: 'DELETE', signal },
+  );
+}
+
+// --- items (tasks + notes) ---
+export function createItem(
+  doc: Record<string, unknown>,
+  signal?: AbortSignal,
+): Promise<ItemView> {
+  return request<ItemView>('/items', { method: 'POST', body: doc, signal });
+}
+
+export function updateItem(
+  itemId: string,
+  docWithVersion: Record<string, unknown> & { version: number },
+  signal?: AbortSignal,
+): Promise<ItemView> {
+  return request<ItemView>(`/items/${encodeURIComponent(itemId)}`, {
+    method: 'PUT',
+    body: docWithVersion,
+    signal,
+  });
+}
+
+// Flip a task open<->done (Twenty's useCompleteTask). Optional version for concurrency; the
+// backend uses the current version when omitted, so a blind toggle is safe.
+export function toggleItem(
+  itemId: string,
+  version?: number,
+  signal?: AbortSignal,
+): Promise<ItemView> {
+  return request<ItemView>(`/items/${encodeURIComponent(itemId)}/toggle`, {
+    method: 'POST',
+    body: version != null ? { version } : {},
+    signal,
+  });
+}
+
+export function deleteItem(
+  itemId: string,
+  signal?: AbortSignal,
+): Promise<{ deleted: boolean; item_id: string }> {
+  return request<{ deleted: boolean; item_id: string }>(`/items/${encodeURIComponent(itemId)}`, {
+    method: 'DELETE',
+    signal,
+  });
+}
+
+// --- links (attach / detach source -> target) ---
+export function createLink(
+  link: { source_kind: string; source_id: string; target_kind: string; target_id: string },
+  signal?: AbortSignal,
+): Promise<LinkView> {
+  return request<LinkView>('/links', { method: 'POST', body: link, signal });
+}
+
+export function deleteLink(
+  linkId: string,
+  signal?: AbortSignal,
+): Promise<{ detached: boolean; link_id: string }> {
+  return request<{ detached: boolean; link_id: string }>(`/links/${encodeURIComponent(linkId)}`, {
+    method: 'DELETE',
+    signal,
+  });
+}
+
+// --- deal-scoped read helpers (the rail) ---
+export function listDealContacts(dealId: string, signal?: AbortSignal): Promise<ContactView[]> {
+  return request<ContactView[]>(`/deals/${encodeURIComponent(dealId)}/contacts`, { signal });
+}
+
+export function listDealItems(
+  dealId: string,
+  kind?: ItemKind,
+  signal?: AbortSignal,
+): Promise<ItemView[]> {
+  const qs = kind ? `?kind=${kind}` : '';
+  return request<ItemView[]>(`/deals/${encodeURIComponent(dealId)}/items${qs}`, { signal });
+}
+
+// --- the unified timeline (audit + notes + tasks, month-grouped) ---
+export type TimelineSource = 'audit' | 'note' | 'task';
+
+// One event in the merged feed (backend crm.py get_deal_timeline). Fields vary by source:
+//   audit -> kind (phase|llm_call|gate|spec_mutation|error), detail?, job_id
+//   note  -> body, item_id, link_id
+//   task  -> status, due_at, item_id, link_id, version
+export interface TimelineEvent {
+  id: string;
+  source: TimelineSource;
+  kind: string;
+  ts: string;
+  actor: string | null;
+  title: string;
+  detail?: unknown;
+  job_id?: string;
+  body?: string;
+  status?: string;
+  due_at?: string;
+  item_id?: string;
+  link_id?: string;
+  version?: number;
+}
+
+export interface TimelineGroup {
+  month: string; // 'July 2026' | 'Undated'
+  ids: string[];
+}
+
+export interface DealTimelineResponse {
+  deal_id: string;
+  events: TimelineEvent[];
+  groups: TimelineGroup[];
+}
+
+export function getDealTimeline(
+  dealId: string,
+  signal?: AbortSignal,
+): Promise<DealTimelineResponse> {
+  return request<DealTimelineResponse>(`/deals/${encodeURIComponent(dealId)}/timeline`, { signal });
+}
+
+// ===========================================================================
 // Excel export — POST /api/deals/{deal_id}/export (multipart)
 // Mirrors backend/routers/export_excel.py: the user UPLOADS their Mini Model
 // .xlsx template (form field `template`) + a `download` bool form field. The

@@ -59,6 +59,7 @@ if _BACKEND not in sys.path:
 
 from auth_dep import require_auth  # noqa: E402
 from store import get_deal_store, DealStore, DealRecord, DealNotFound  # noqa: E402
+from store import get_crm_store  # noqa: E402  (Phase 5 — deal-delete CRM link cascade)
 from jobs.contracts import JobRecord, RUNNING_STATUSES  # noqa: E402
 from jobs.job_store import get_job_store  # noqa: E402
 
@@ -226,6 +227,11 @@ def delete_deal(deal_id: str, user: Optional[dict] = Depends(require_auth)) -> D
 
     ds.delete(deal_id)
     js.delete_for_deal(deal_id)
+    # Phase 5 CRM cascade: a deleted deal leaves no dangling CRM links behind (contacts/tasks/notes
+    # pinned to it are unpinned). The records themselves survive (a contact can belong to many
+    # deals); only the target-pointers into THIS deal are removed. delete_links_for_target is a
+    # single index DELETE in the store package (no sqlite3 here). 0 removed is fine (no CRM attached).
+    get_crm_store().delete_links_for_target("deal", deal_id)
     return {"deleted": True, "deal_id": deal_id}
 
 

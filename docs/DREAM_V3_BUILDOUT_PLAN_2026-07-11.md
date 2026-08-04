@@ -91,3 +91,70 @@ green. PR #3 awaiting Evan's one-click merge.
   stamped with submit-time clock), 4 hardening fixes, 4 accepted tradeoffs logged. Local async
   smoke: submit 36ms -> awaiting_cp1, Esplanade irr exact. 380 backend+engine tests green,
   tsc/build clean. docs/CLAUDE_DESIGN_BRIEF.md added (Track E) for Evan's Claude Design pass.
+
+## Phase 5 — CRM layer (Twenty-inspired; branch `phase5-crm-layer`)
+
+Blueprint: docs/research/PHASE5_CRM_LAYER_KICKOFF.md (10 items, 3 sessions). Everything
+inspiration-only from Twenty CRM (AGPL) — no source copied. Three decisions locked: delete =
+undo-toast; DealDetail = right rail on Overview (no 5th tab); roles =
+broker/seller/lender/bond_counsel/issuer/nonprofit_sponsor/other.
+
+- 2026-07-13: **Phase 5 Session 1 SHIPPED (backend spine)** — commit 10586ff, backup
+  backend.bak-20260713-225057. New backend/store/crm_store.py (SQLiteCRMStore cloned from the
+  DealStore/JobStore idiom: opaque doc + derived index, integer version + shared VersionConflict,
+  now_iso passed in, connection via the store package so NO sqlite3 leaks outside backend/store/,
+  own CREATE TABLE IF NOT EXISTS). Three tables discriminated by `kind`: crm_contacts
+  (person|company, 7-role enum), crm_items (task|note), crm_links (source->target index adapted
+  from Twenty's TaskTarget/NoteTarget). Cascade deletes + the deal-delete hook
+  delete_links_for_target. New backend/routers/crm.py (LLM-free, owner from auth): contacts/items
+  CRUD, task toggle (Twenty's useCompleteTask, re-implemented), link attach/detach (idempotent,
+  endpoint-existence checked), deal-scoped read helpers, and GET /api/deals/{id}/timeline — a
+  READ-TIME merge of the append-only job audit with pinned notes+tasks into one newest-first,
+  month-grouped feed (the audit log is a view here, never mutated). Wiring (additive, contracts
+  intact): store/__init__ export; main.py mounts crm_router auth-gated; deals.py::delete_deal
+  appends the link cascade AFTER the delete (409-while-running guard untouched). 42 new tests
+  (test_crm_store.py + test_crm_api.py: CRUD, version conflict, idempotent links, both cascades,
+  timeline interleave/sort/month buckets). Full suite **422 passed, 1 skipped**. Live-verified on
+  prod: created contact(issuer)/note/task, pinned to the real Rayzor EFB deal, timeline returned
+  11 merged events (9 audit + note + task, newest-first, July-2026 bucket, group ids match feed),
+  then deleted the 3 records — cascade cleaned every link, deal audit untouched. LIVE-VERIFY
+  finding for Session 2: a note has no title (item view title=""), so the deal-items list + the
+  timeline must render the note `body` (timeline already carries `body`). NEXT: Session 2
+  (frontend surfaces on the deal) — awaiting Evan go-ahead.
+- 2026-07-17: **Phase 5 Session 2 SHIPPED (CRM surfaces on the deal)** — commit follows; frontend
+  backup frontend.bak-20260717-223907. Evan set the bar to "elevate + bake in polish" (design pass
+  folded in, seed real deals, resolve main-branch drift at the end). Built: lib/api.ts CRM layer
+  (contacts/items/links/timeline fetch fns + 7-role enum, mirrors crm.py); contexts/ToastContext.tsx
+  (queued toasts, countdown + hover-pause + action slot + dedupe; deferred action fires on EXPIRE,
+  the action button cancels — zero-backend undo); components/DealTimeline.tsx (the Activity tab is
+  now the unified month-grouped feed — audit + notes + tasks, per-source dots + connector spine;
+  replaces the removed DealAudit); components/TaskList.tsx (checkbox toggle, line-through done, due
+  red ONLY when past AND open, inline composer); components/DealRail.tsx (right rail — deal team by
+  role w/ inline attach-or-create, tasks, notes; owns deal-scoped CRM data + optimistic writes,
+  signals the parent to refresh the timeline). Edited: DealDetail.tsx (two-column Overview,
+  metrics left + rail right, stacks narrow; Activity -> DealTimeline; tab ids unchanged);
+  Pipeline.tsx (delete = optimistic + 6s "Undo" toast, real DELETE on expire, 409 restores; skeleton
+  cards replace the spinner). tsc + build clean; full suite **422 passed, 1 skipped**. Seeded
+  realistic demo CRM data (8 contacts / 7 tasks / 3 notes, backdated June+July) on the Rayzor (EFB)
+  + Esplanade (ACQ) deals so the rail + timeline look alive — DEMO DATA, removable from the UI.
+  Deployed to prod + screenshot-verified with Playwright (pipeline, both deal overviews w/ rail,
+  the month-grouped timeline, the undo toast); undo confirmed live (seeded note survived). NEXT:
+  Session 3 (pipeline power + Cmd-K) + merge Phase 5 -> main — awaiting Evan go-ahead.
+- 2026-07-18: **Phase 5 Session 3 SHIPPED (pipeline power + Cmd-K + polish)** — commit 617a0ec;
+  frontend backup frontend.bak-20260718-111906. New components/CommandMenu.tsx: global Cmd/Ctrl-K
+  jump palette (fuzzy jump-to-deal + nav actions, item shape {label,icon?,to?,onClick?}), mounted
+  once in AppShell + a header "Jump to…" affordance via a custom event. Pipeline.tsx rewritten head
+  (sub-components preserved): Cards/Table/Kanban view toggle with the whole view state
+  {view,preset,sort} persisted in localStorage; 3 presets (My Open / EFB Pipeline / Needs Attention)
+  + All + Archived, each a predicate; column sort (Updated/Name/Status/Routing, asc/desc). DealTable
+  (hand-rolled <table>, clickable sort headers, hover row actions, rows navigate). KanbanBoard
+  (grouped by status; status columns are NOT drop targets — status is engine-derived; ONLY the
+  Archived column acts, drag in -> archive / out -> unarchive, no generic status PATCH). Polish:
+  ui.tsx InlineEdit primitive (Enter save / Escape cancel / blur save; skips network on unchanged)
+  wired to task titles; DealDetail gate summary now shows a neutral "Recorded" badge (payload in a
+  tooltip) instead of raw JSON for verdict-less object rows. tsc + build clean; full suite **422
+  passed, 1 skipped**. Deployed to prod + Playwright screenshot-verified (table, kanban board, Cmd-K
+  palette). **PR #5 opened** (phase5-crm-layer -> wave-a-foundation; 25 files / ~4.7K lines = the
+  clean Phase 5 diff). STALE MAIN flagged separately: a PR into main would be ~48K lines (main
+  predates the app consolidation); recommend making wave-a-foundation the default branch after
+  merge, or merging wave-a-foundation -> main once. PHASE 5 COMPLETE — awaiting Evan's review + merge.
