@@ -1,4 +1,4 @@
-import { Deal } from './types';
+import type { Deal } from './types';
 
 export const MOCK_ANALYSIS_DEAL: Deal = {
   id: '1',

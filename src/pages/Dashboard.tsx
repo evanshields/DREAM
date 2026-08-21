@@ -1,6 +1,6 @@
 import React from 'react';
 import { Card, Button } from '../components/UIComponents';
-import { Upload, FileText, Activity, Calendar, ArrowUpRight, ArrowRight } from 'lucide-react';
+import { Upload, Activity, ArrowUpRight, ArrowRight } from 'lucide-react';
 import { PIPELINE_DEALS } from '../constants';
 
 const Dashboard: React.FC<{ onNavigate: (view: any) => void }> = ({ onNavigate }) => {
