@@ -1,10 +1,10 @@
-# Operations Record — app.dreamcre.co Preparation — 2026-09-02
+# Operations Record — app.dreamcre.co Cutover — 2026-09-02
 
 ## Status
 
-Preparation is complete through the DNS gate. The live CRM remains at `https://dreamcre.co` and stayed healthy throughout. No hostname, TLS, database schema, container, or Hermes change has been activated.
+`https://app.dreamcre.co` is live with valid TLS and is now Twenty's configured public URL. Evan authenticated successfully and reached the existing All Companies route at the new hostname. The original `https://dreamcre.co` endpoint remains live as a rollback path until Evan confirms that the expected CRM records are present.
 
-Current blocker: the Spaceship domain manager requires Evan to sign in and complete any 2FA. The prepared browser tab points directly to the domain manager login.
+The database schema, PostgreSQL container, Redis container, and Hermes environment were not changed.
 
 ## Confirmed live state
 
@@ -30,7 +30,7 @@ The live Compose file used floating tags. Immutable identities recorded from the
 - PostgreSQL: `postgres@sha256:e17e86066e5ef83e0952a9347f5c792b7ece00972e2aa787a6986f471b3dd3d5`
 - Redis: `redis@sha256:344e3945a0b431c8ff1eecd58c5573538126bd756f02fc7e218ddf1fc2546366`
 
-A pinned Compose candidate is staged at `/opt/twenty-crm/docker-compose.pinned.yml`. It passed `docker compose config --quiet` but has not been activated.
+The Twenty server and worker now run through `/opt/twenty-crm/docker-compose.pinned.yml` at the recorded Twenty digest. PostgreSQL and Redis were deliberately left running without recreation during the hostname cutover.
 
 ## Backups and hardening completed
 
@@ -54,20 +54,24 @@ A pinned Compose candidate is staged at `/opt/twenty-crm/docker-compose.pinned.y
 - No dependency install, build, or source execution has occurred.
 - GitHub authentication is available; `evanshields/dream-crm` does not yet exist. Do not publish the source until repository visibility and licensing are deliberately selected.
 
-## Staged nginx change
+## Cutover completed
 
-An HTTP-only nginx candidate for `app.dreamcre.co` is staged at `/etc/nginx/sites-available/app.dreamcre.co.prepared`. It is not enabled.
+- Added the Spaceship A record `app.dreamcre.co` to `187.124.113.118` and verified it against the authoritative nameserver and the public resolver.
+- Enabled the prepared nginx site and passed `nginx -t` before reload.
+- Issued and installed a Let's Encrypt certificate for `app.dreamcre.co`; automatic renewal is configured. The initial certificate expires on 2026-12-01.
+- Verified `https://app.dreamcre.co/` returns HTTP 200.
+- Changed Twenty's `SERVER_URL` to `https://app.dreamcre.co`.
+- Recreated only the Twenty server and worker on the pinned Twenty image digest.
+- Verified the server is healthy, the worker is running, and both the new and original hostnames return HTTP 200.
+- Verified the new hostname renders the password-login screen in Chrome and the Codex in-app browser.
+- Confirmed a real authenticated browser session reaches the All Companies route at `app.dreamcre.co` with no browser-console errors.
+- Kept `dreamcre.co` serving the CRM. Do not redirect it until Evan confirms the expected records on `app.dreamcre.co`.
 
-After DNS resolves, the safe activation sequence is:
+## Remaining acceptance checks
 
-1. Enable the HTTP site and pass `nginx -t`.
-2. Reload nginx.
-3. Obtain the `app.dreamcre.co` certificate with the installed Certbot/nginx flow.
-4. Verify TLS and the login page on the new hostname.
-5. Change Twenty's single active public URL variable, `SERVER_URL`, to `https://app.dreamcre.co`.
-6. Activate the pinned Compose file and restart only the Twenty stack.
-7. Verify login, sessions, objects, fields, views, settings, API, MCP, and generated links.
-8. Only after the target is healthy, redirect root traffic from `dreamcre.co` to `app.dreamcre.co` while preserving the old configuration for rollback.
+1. Evan confirms that the expected companies and deals are present in the authenticated session.
+2. Verify fields, views, settings, file handling, generated links, API, MCP, and webhook behavior under the new hostname.
+3. After those checks pass, redirect root traffic from `dreamcre.co` to `app.dreamcre.co` while preserving the old nginx configuration for rollback.
 
 ## Risks still open
 
@@ -75,5 +79,5 @@ After DNS resolves, the safe activation sequence is:
 - The server is already using substantial swap. Do not add a source build or heavy CI workload to this host.
 - The exact source-to-image mapping is not cryptographically provable from Twenty's published metadata.
 - Google/Microsoft OAuth and email/calendar integration remain unconfigured.
-- MCP and webhook cutover cannot be verified until the hostname is live.
+- MCP and webhook behavior at the new hostname has not yet been authenticated and verified.
 - Automated off-box backup transfer is not configured; one verified off-box copy exists. Choose a durable encrypted destination before real deal data accumulates.
