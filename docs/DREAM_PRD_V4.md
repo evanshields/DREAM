@@ -58,7 +58,7 @@ The full record is `AGENTIC_LESSONS_2026-08-31.md` (182 items, each cited). It m
 | Box | Runs | v4 adds |
 |---|---|---|
 | **US VPS** (72.61.5.208, tailnet `shieldstone-us`) | dream-api (PM2 :8001, Caddy), OpenBrain, Mission Driven's production Twenty (crm.mission-driven.ai — NEVER touch) | Postgres 16 (Docker), job worker with drivers, CI/CD deploy target |
-| **UK VPS** (srv1476276, tailnet `shieldstone-uk-avery`) | Hermes v0.16.0 (avery + execs — frozen, another workstream), Twenty at dreamcre.co (`/opt/twenty-crm`), bd-edit | `dream` Hermes profile; Twenty hardening (pin tag, Google OAuth, pg_dump cron); swapfile (neither box has swap; UK ~3.4GB free) |
+| **UK VPS** (srv1476276, tailnet `shieldstone-uk-avery`) | Hermes v0.16.0 (avery + execs — frozen, another workstream), Twenty at dreamcre.co (`/opt/twenty-crm`), bd-edit | `dream` Hermes profile; Twenty hardening (pin digest, Google OAuth, verified pg_dump timer); monitor the existing 4GB swapfile and resize trigger |
 
 Connectivity: app worker (US) → tailnet SSH → `hermes -p dream -z '<HermesInvoke JSON>'` (UK); results back via `ssh cat` (no scp on UK box). v0.16 has no HTTP invoke endpoint. DREAM-agent → Twenty via its built-in MCP server (moving from `https://dreamcre.co/mcp` to `https://app.dreamcre.co/mcp`) and role-scoped API key. DREAM-agent → OpenBrain via MCP over tailnet. Browsers never receive Tailscale access or long-lived service credentials; private connectivity is server-to-server.
 
@@ -70,7 +70,7 @@ Working pattern every phase: full suite green (422+) → `tsc --noEmit` + build 
 - ~~Twenty instance~~ (exists: dreamcre.co). ~~CRM diff~~ (`EVAL_2026-08_CRM_DIFF.md`). Checklist written (`EVAL_2026-08_DREAM_TOUR.md`).
 - ~~Branch A decision gate~~ confirmed by Evan on 2026-09-02 after an authenticated walkthrough.
 - REMAINING: Evan's two operational test drives; Chuck sync on configuration ownership; role-scoped API key; exact deployed Twenty commit/tag; license path for a production derivative.
-- No-regrets now (CC): pin the Twenty image tag (runs `:latest` = silent version jumps), nightly pg_dump + off-box copy, Google OAuth app for email sync, verify webhook filtering in UI, UK swapfile, and the reversible `app.dreamcre.co` cutover in `HANDOFF_APP_DREAMCRE_CO_2026-09-02.md`.
+- No-regrets now: activate the prepared immutable image pins; keep the verified nightly pg_dump + off-box copy healthy; configure Google OAuth for email sync; verify webhook filtering in UI; monitor UK swap pressure; and complete the reversible `app.dreamcre.co` nginx cutover in `HANDOFF_APP_DREAMCRE_CO_2026-09-02.md`.
 
 ### Phase 1 — Full auth + RBAC (CC + CX)
 Build `backend/WAVE_F_FULL_AUTH_DESIGN.md` on SQLite first (its §7 migration path): lockout, revocable sessions, reset/invite flows (thin SMTP mailer), DB allowlist union, role column admin|analyst|viewer with `require_role` — analysts write own deals (activate `DREAM_STRICT_OWNERSHIP` for writes only; reads stay everyone-sees-all), admin = user mgmt/driver selection/delete. Pull-forward CI-lite (GitHub Actions: pytest + tsc/build on every PR). CX tickets: login page, reset/invite landing, `/admin/users`.
@@ -124,6 +124,6 @@ Verify: tagged deploy ships; deliberate smoke failure rolls back.
 - `backend/WAVE_F_FULL_AUTH_DESIGN.md` · `backend/store/WAVE_F_POSTGRES_DESIGN.md` (build as written)
 - `backend/routers/jobs.py` + `backend/jobs/` (state machine + driver seam) · `backend/jobs/HERMES_INTAKE_SEAM.md`
 - `backend/store/crm_store.py` (Phase 4 export point)
-- `docs/DREAM_CRM_PRODUCT_EXECUTION_PLAN_2026-09-02.md` · `docs/HANDOFF_APP_DREAMCRE_CO_2026-09-02.md`
+- `docs/DREAM_CRM_PRODUCT_EXECUTION_PLAN_2026-09-02.md` · `docs/HANDOFF_APP_DREAMCRE_CO_2026-09-02.md` · `docs/OPS_APP_DREAMCRE_PREP_2026-09-02.md`
 - `docs/EVAL_2026-08_CRM_DIFF.md` · `docs/EVAL_2026-08_DREAM_TOUR.md` · `docs/AGENTIC_LESSONS_2026-08-31.md` (builder-only; never in DREAM-agent corpus)
 - dream-underwrite repo: `ARCHITECTURE-V5-HYPERAGENT.md` (six-phase payload), `fastpath/underwrite-spec.schema.json`, `fastpath/agent-contracts.md`, `deployments/gates/REGISTRY.json` (reusable assets — lesson 144)

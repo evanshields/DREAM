@@ -32,7 +32,7 @@ Treat the server configuration and exact environment-variable names as live fact
 ## Preflight
 
 - Confirm the exact UK host and `/opt/twenty-crm` deployment.
-- Record the running container images, immutable digests, application version, Compose configuration, Caddy configuration, health, disk, memory, and database size.
+- Record the running container images, immutable digests, application version, Compose configuration, nginx configuration, health, disk, memory, and database size.
 - Identify every configured public/base/server URL variable from the live deployment and the version-pinned Twenty documentation.
 - Inventory callback and integration URLs:
   - Login and invite/reset links.
@@ -48,7 +48,7 @@ Treat the server configuration and exact environment-variable names as live fact
 
 - Create a timestamped Postgres dump and verify that it is non-empty and readable.
 - Copy the dump off the UK VPS.
-- Back up Compose, Caddy, and environment configuration without printing secrets.
+- Back up Compose, nginx, and environment configuration without printing secrets.
 - Record the exact rollback commands and prior DNS values.
 - If restore has not been proven, prove it in an isolated database before cutover.
 
@@ -56,7 +56,7 @@ Treat the server configuration and exact environment-variable names as live fact
 
 1. Add the `app` DNS record in Spaceship pointing to the current CRM ingress.
 2. Verify public DNS resolution from more than one resolver.
-3. Add `app.dreamcre.co` to Caddy and obtain a valid TLS certificate.
+3. Add `app.dreamcre.co` to nginx and obtain a valid TLS certificate.
 4. Update Twenty's canonical/public URL configuration using the exact variables supported by the deployed version.
 5. Update trusted origins, secure-cookie scope, redirect URLs, callback URLs, webhook destinations, MCP URL, and generated-link bases as applicable.
 6. Restart only the Twenty stack using the normal deployment method.
@@ -84,7 +84,7 @@ Treat the server configuration and exact environment-variable names as live fact
 Rollback immediately if authentication, data access, MCP, webhooks, or generated links fail and cannot be corrected within the maintenance window:
 
 1. Restore the prior canonical URL configuration.
-2. Restore the prior Caddy configuration.
+2. Restore the prior nginx configuration.
 3. Restore the prior DNS behavior.
 4. Restart the pinned prior deployment.
 5. Verify login and record access on `dreamcre.co`.
@@ -98,5 +98,5 @@ Rollback immediately if authentication, data access, MCP, webhooks, or generated
 - DNS and TLS verification.
 - Authentication and primary-screen smoke results.
 - MCP and webhook verification.
-- Final Caddy/Twenty configuration diff with secrets redacted.
+- Final nginx/Twenty configuration diff with secrets redacted.
 - Rollback status and any remaining operational risks.

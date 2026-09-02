@@ -106,7 +106,7 @@ Claude Code owns these contracts. Codex does not invent them.
 ### Claude Code — architecture, backend, VPS, deploys
 
 - Harden and back up Twenty.
-- Move the product hostname to `app.dreamcre.co` using the companion handoff.
+- Move the product hostname to `app.dreamcre.co` using the companion nginx handoff.
 - Define the contracts above.
 - Build the Twenty adapter, webhook verification, deal-link store, service authentication, and Hermes driver boundary.
 - Own production deploys and live verification.
