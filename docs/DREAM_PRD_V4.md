@@ -8,11 +8,11 @@
 
 DREAM is ONE product with three legs, fronted by a web app a team member anywhere can use:
 
-1. **CRM (the sales book):** Twenty CRM at **dreamcre.co** (UK VPS, `/opt/twenty-crm`) is the system of record for companies, people, and the sourcing pipeline across deal partners (sellers, brokers, housing authorities, HFAs, banks). *Decision status: Branch A provisional — confirmed by the 2026-08-31 diff, pending Evan's hands-on spin (`EVAL_2026-08_DREAM_TOUR.md`).*
+1. **CRM (the sales book):** Twenty CRM, currently at **dreamcre.co** and moving to **app.dreamcre.co** (UK VPS, `/opt/twenty-crm`), is the system of record for companies, people, and the sourcing pipeline across deal partners (sellers, brokers, housing authorities, HFAs, banks). *Decision status: Branch A confirmed by Evan on 2026-09-02. DREAM will retain Twenty's existing CRM foundation and add DREAM-owned underwriting and agentic functionality rather than recreate a CRM.*
 2. **Agentic infrastructure (the brain):** **DREAM the Hermes super agent** — a `dream` profile on the UK-VPS Nous Hermes Agent install — is the underwriting brain and the standing agentic engine for workflows, cron jobs, and analysis. Hyperagent agents are per-task muscle she hires (burning the ~$17K credits). ChatGPT (openai-codex OAuth) brain now; OpenRouter later via per-profile provider override.
 3. **Shared memory:** OpenBrain MCP (US VPS) + DREAM's own inbox **dream@shieldstone.co via AgentMail** (third-party audit required before install). A productized DREAMBrain is explicitly DEFERRED.
 
-The **DREAM app (dream.shieldstone.co, US VPS)** is the team's front door: pipeline, document intake, push-button underwrites landing at CP-1, assumption dashboards, memos, exports. v1 team scope: analysts log in from anywhere and run FULL underwrites; Evan is only in the review loop; nothing requires the Z13.
+The existing **DREAM app (dream.shieldstone.co, US VPS)** remains the underwriting application and rollback surface during the transition. The target team front door is **app.dreamcre.co**: CRM, pipeline, document intake, conversational underwriting, push-button runs landing at CP-1, assumption dashboards, memos, and exports. The root **dreamcre.co** becomes the public landing page later; until then it may redirect to the app. v1 team scope: analysts log in from anywhere and run FULL underwrites; Evan is only in the review loop; nothing requires the Z13.
 
 **The one sentence that governs the architecture:** DREAM-the-agent is the underwriting *brain*, never the *calculator*. Headline metrics come only from the deterministic Python engines she is required to call; an LLM number is at most a cross-check flag at CP-1.
 
@@ -49,7 +49,9 @@ The full record is `AGENTIC_LESSONS_2026-08-31.md` (182 items, each cited). It m
 | 2026-08-31 | Three-legged stool framing; DREAM-the-agent IS the underwriting brain (engines stay the calculator) |
 | 2026-08-31 | Avery→Ada migration spun out entirely (separate chat); v4 touches nothing of hers |
 | 2026-08-31 | dreamcre.co (Chuck's Twenty instance, v2.32.0) discovered = the Phase 0 eval instance; CRM diff completed; Branch A provisional |
-| Pending | Evan's formal decision-gate call after his spin; what Chuck already configured in dreamcre.co |
+| 2026-09-02 | Branch A confirmed: retain Twenty's full CRM foundation and add DREAM underwriting + agentic functionality; do not rebuild Twenty |
+| 2026-09-02 | Target domains: dreamcre.co = future public landing page; app.dreamcre.co = authenticated DREAM product |
+| 2026-09-02 | Any Twenty-derived source lives in a separately licensed/versioned repository (planned `evanshields/dream-crm`), never inside `evanshields/DREAM`; keep modifications thin and upstream-compatible |
 
 ## 5. Topology
 
@@ -58,16 +60,17 @@ The full record is `AGENTIC_LESSONS_2026-08-31.md` (182 items, each cited). It m
 | **US VPS** (72.61.5.208, tailnet `shieldstone-us`) | dream-api (PM2 :8001, Caddy), OpenBrain, Mission Driven's production Twenty (crm.mission-driven.ai — NEVER touch) | Postgres 16 (Docker), job worker with drivers, CI/CD deploy target |
 | **UK VPS** (srv1476276, tailnet `shieldstone-uk-avery`) | Hermes v0.16.0 (avery + execs — frozen, another workstream), Twenty at dreamcre.co (`/opt/twenty-crm`), bd-edit | `dream` Hermes profile; Twenty hardening (pin tag, Google OAuth, pg_dump cron); swapfile (neither box has swap; UK ~3.4GB free) |
 
-Connectivity: app worker (US) → tailnet SSH → `hermes -p dream -z '<HermesInvoke JSON>'` (UK); results back via `ssh cat` (no scp on UK box). v0.16 has no HTTP invoke endpoint. DREAM-agent → Twenty via its built-in MCP server (`https://dreamcre.co/mcp`) and role-scoped API key. DREAM-agent → OpenBrain via MCP over tailnet.
+Connectivity: app worker (US) → tailnet SSH → `hermes -p dream -z '<HermesInvoke JSON>'` (UK); results back via `ssh cat` (no scp on UK box). v0.16 has no HTTP invoke endpoint. DREAM-agent → Twenty via its built-in MCP server (moving from `https://dreamcre.co/mcp` to `https://app.dreamcre.co/mcp`) and role-scoped API key. DREAM-agent → OpenBrain via MCP over tailnet. Browsers never receive Tailscale access or long-lived service credentials; private connectivity is server-to-server.
 
 ## 6. Phases
 
 Working pattern every phase: full suite green (422+) → `tsc --noEmit` + build → commit/push → VPS timestamped backup → deploy → live-verify with minted token (`docs/HANDOFF_2026-07-12.md`). Each phase ships live-verified before the next.
 
-### Phase 0 — Evaluation + decision gate (mostly DONE)
+### Phase 0 — Evaluation + decision gate (mostly DONE; Branch A confirmed)
 - ~~Twenty instance~~ (exists: dreamcre.co). ~~CRM diff~~ (`EVAL_2026-08_CRM_DIFF.md`). Checklist written (`EVAL_2026-08_DREAM_TOUR.md`).
-- REMAINING: Evan's two spins + decision-gate call; Chuck sync on what's configured; dreamcre.co credentials → authenticated walkthrough + role-scoped API key.
-- No-regrets now (CC): pin the Twenty image tag (runs `:latest` = silent 5-version jumps), nightly pg_dump + off-box copy, Google OAuth app for email sync, verify webhook filtering in UI, UK swapfile.
+- ~~Branch A decision gate~~ confirmed by Evan on 2026-09-02 after an authenticated walkthrough.
+- REMAINING: Evan's two operational test drives; Chuck sync on configuration ownership; role-scoped API key; exact deployed Twenty commit/tag; license path for a production derivative.
+- No-regrets now (CC): pin the Twenty image tag (runs `:latest` = silent version jumps), nightly pg_dump + off-box copy, Google OAuth app for email sync, verify webhook filtering in UI, UK swapfile, and the reversible `app.dreamcre.co` cutover in `HANDOFF_APP_DREAMCRE_CO_2026-09-02.md`.
 
 ### Phase 1 — Full auth + RBAC (CC + CX)
 Build `backend/WAVE_F_FULL_AUTH_DESIGN.md` on SQLite first (its §7 migration path): lockout, revocable sessions, reset/invite flows (thin SMTP mailer), DB allowlist union, role column admin|analyst|viewer with `require_role` — analysts write own deals (activate `DREAM_STRICT_OWNERSHIP` for writes only; reads stay everyone-sees-all), admin = user mgmt/driver selection/delete. Pull-forward CI-lite (GitHub Actions: pytest + tsc/build on every PR). CX tickets: login page, reset/invite landing, `/admin/users`.
@@ -85,11 +88,11 @@ Verify: Esplanade persist/reload byte-identical; live flip.
 **3.4 Leg 3 wiring:** OpenBrain MCP into the `dream` profile; AgentMail mailbox dream@shieldstone.co (AUDIT FIRST per global third-party rule) feeding the existing `backend/jobs/HERMES_INTAKE_SEAM.md` seam. Memory rule 98 applies: DREAM's memories hold doctrine and deal facts, never live-system state.
 Verify: push-button Esplanade by a non-Evan analyst from a non-Z13 machine; forced-stall → automatic Kimi fallback delivers.
 
-### Phase 4 — CRM integration, Branch A (CC backend + CX frontend) — pending formal gate call
+### Phase 4 — CRM integration, Branch A (CC backend + CX frontend) — confirmed 2026-09-02
 - Twenty owns companies/people/sourcing pipeline (Target→Contacted→OM received→Underwriting→LOI→Dead/Won), email capture, team permissions (object+field level; row-level is paywalled — plan everyone-sees-all).
 - The weld: `backend/adapters/twenty_client.py` (GraphQL, role-scoped key in env); deal↔opportunity link table; DREAM headline metrics write back to the opportunity; webhook receiver (HMAC-verified) for stage changes — stage hits "Underwriting" → deal created/linked; deep links both ways; the app's CRM rail becomes Twenty-backed; one-time crm_store export into Twenty, crm_store read-only legacy.
 - DREAM-the-agent reads/writes the sales book via Twenty's MCP; a Hermes cron covers the shared no-reminders gap (neither system pings due dates).
-- AGPL guard: Twenty code NEVER copied into DREAM — API/webhooks + UI inspiration only (audit 2026-07-13). CI grep for Twenty source headers.
+- Repository/license guard: Twenty code NEVER enters this DREAM repository. A separately licensed/versioned Twenty-derived repository may retain the CRM base and carry minimal upstream-compatible patches plus a DREAM-owned application layer. Keep the existing CI grep for Twenty source headers. Production commercialization requires either AGPL compliance or reviewed commercial rights.
 - Rate limits: 100 req/min, 60-record batches — incremental sync fine; backfills via import path.
 Verify: one real week of Evan's partner outreach lives in Twenty and shows against real deals.
 
@@ -121,5 +124,6 @@ Verify: tagged deploy ships; deliberate smoke failure rolls back.
 - `backend/WAVE_F_FULL_AUTH_DESIGN.md` · `backend/store/WAVE_F_POSTGRES_DESIGN.md` (build as written)
 - `backend/routers/jobs.py` + `backend/jobs/` (state machine + driver seam) · `backend/jobs/HERMES_INTAKE_SEAM.md`
 - `backend/store/crm_store.py` (Phase 4 export point)
+- `docs/DREAM_CRM_PRODUCT_EXECUTION_PLAN_2026-09-02.md` · `docs/HANDOFF_APP_DREAMCRE_CO_2026-09-02.md`
 - `docs/EVAL_2026-08_CRM_DIFF.md` · `docs/EVAL_2026-08_DREAM_TOUR.md` · `docs/AGENTIC_LESSONS_2026-08-31.md` (builder-only; never in DREAM-agent corpus)
 - dream-underwrite repo: `ARCHITECTURE-V5-HYPERAGENT.md` (six-phase payload), `fastpath/underwrite-spec.schema.json`, `fastpath/agent-contracts.md`, `deployments/gates/REGISTRY.json` (reusable assets — lesson 144)
