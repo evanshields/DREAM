@@ -2,9 +2,9 @@
 
 ## Status
 
-`https://app.dreamcre.co` is live with valid TLS and remains Twenty's configured public URL. Evan authenticated successfully and reached the existing All Companies route at the new hostname. The original `https://dreamcre.co` endpoint now returns a temporary HTTP 302 redirect to `https://app.dreamcre.co`, preserving the deep-link path and query string. The CRM remains healthy at `app.dreamcre.co`; the pre-redirect nginx configuration is retained for rollback at `/etc/nginx/sites-available/dreamcre.pre-redirect-20260902T181641Z`.
+`https://app.dreamcre.co` is live with valid TLS and is the CRM's configured public URL. The server and worker now run the private DREAM-branded image built from `evanshields/dream-crm`. An authenticated browser session shows the DREAM title, favicon, workspace mark, Companies page, Deals page, and workflow navigation. The original `https://dreamcre.co` endpoint returns a temporary HTTP 302 redirect to `https://app.dreamcre.co`, preserving the deep-link path and query string. The pre-redirect nginx configuration is retained for rollback at `/etc/nginx/sites-available/dreamcre.pre-redirect-20260902T181641Z`.
 
-The database schema, PostgreSQL container, Redis container, and Hermes environment were not changed.
+The PostgreSQL container, Redis container, and Hermes environment were not changed during the branded-image deployment. Only the CRM server and worker were recreated.
 
 ## Confirmed live state
 
@@ -26,11 +26,12 @@ The database schema, PostgreSQL container, Redis container, and Hermes environme
 
 The live Compose file used floating tags. Immutable identities recorded from the running artifacts:
 
-- Twenty server/worker: `twentycrm/twenty@sha256:cb80b05bc2619a88a3a83293f45f2be495a55ac77a90946fa1f7d85f0b7fde24`
+- DREAM server/worker: `ghcr.io/evanshields/dream-crm@sha256:6d06ccd23cce5a76bac89b49c53fda22d0d0ac9d57e93d8e8c0f315fef1b0794`
+- Rollback server/worker: `twentycrm/twenty@sha256:cb80b05bc2619a88a3a83293f45f2be495a55ac77a90946fa1f7d85f0b7fde24`
 - PostgreSQL: `postgres@sha256:e17e86066e5ef83e0952a9347f5c792b7ece00972e2aa787a6986f471b3dd3d5`
 - Redis: `redis@sha256:344e3945a0b431c8ff1eecd58c5573538126bd756f02fc7e218ddf1fc2546366`
 
-The Twenty server and worker now run through `/opt/twenty-crm/docker-compose.pinned.yml` at the recorded Twenty digest. PostgreSQL and Redis were deliberately left running without recreation during the hostname cutover.
+The DREAM server and worker run through `/opt/twenty-crm/docker-compose.pinned.yml` at the recorded DREAM digest. PostgreSQL and Redis were deliberately left running without recreation. At live verification, the server was healthy, the worker was running, and both had zero restarts on the new image.
 
 ## Backups and hardening completed
 
@@ -44,15 +45,23 @@ The Twenty server and worker now run through `/opt/twenty-crm/docker-compose.pin
 - Installed and enabled `twenty-crm-backup.timer` for a verified nightly custom-format dump at 03:15 local time with a small randomized delay.
 - The backup service validates every dump with `pg_restore --list`, writes a SHA-256 receipt, and retains 14 days on-box.
 - Ran the backup service once successfully; its checksum check passed.
+- Ran a fresh pre-deployment database backup: `/var/backups/twenty-crm/twenty-20260903T040353Z.dump` (1,002,226 bytes).
+- Fresh database dump SHA-256: `1fd6c0ff4a5d7e7e0737f00a6c44389f77078ff1e1fed04a0efb153e7612d0ec`.
+- Copied that dump to `C:/Users/evana/DREAM-backups/twenty-crm/20260903T040353Z/twenty-20260903T040353Z.dump` and confirmed the same checksum off-box.
+- Saved fresh root-only configuration copies under `/root/twenty-crm-predeploy/20260903T040414Z` and an immediately pre-image-change Compose copy at `/root/twenty-crm-predeploy/20260903T043000Z-docker-compose.pinned.yml`.
 
 ## Source/fork preparation
 
 - Refreshed the Twenty audit at `shieldstone_operations/third-party-audits/2026-09-02-twenty-crm.md`.
 - Twenty publishes no `v2.32.0` Git tag, and the Docker image has no source-revision label.
 - Strongest source candidate: `2711d27e9276fff05ecc611c8cd43a35cd5c4dbd`, the last `main` commit before the image build timestamp. It contains the 2.32.0 upgrade commands and SDK references. This is an inference, not a byte-proven mapping.
-- Prepared a clean local worktree at `C:/tmp/dream-crm` on branch `dream-v232-base` at that commit.
-- No dependency install, build, or source execution has occurred.
-- GitHub authentication is available; `evanshields/dream-crm` does not yet exist. Do not publish the source until repository visibility and licensing are deliberately selected.
+- Created the private repository `https://github.com/evanshields/dream-crm` and retained `twentyhq/twenty` as a fetch-only upstream; upstream push is disabled locally.
+- Prepared the clean local worktree at `C:/tmp/dream-crm`. The DREAM branding commit is `ca2969e350`, and the pinned image-workflow commit is `b81cfc9a33`.
+- The DREAM repository retains Twenty's AGPL-3.0 license and upstream history. It is intentionally separate from `evanshields/DREAM`; no Twenty source is copied into the DREAM application repository.
+- The pinned GitHub Actions build passed: `https://github.com/evanshields/dream-crm/actions/runs/33712738756`.
+- The workflow publishes an amd64 image with SBOM and provenance and records the immutable digest used for deployment.
+- The private GHCR package is `ghcr.io/evanshields/dream-crm`. The VPS package credential is stored only in root's Docker configuration, with directory mode 0700 and file mode 0600.
+- All 46 inherited and DREAM-specific GitHub Actions workflows are active; none are disabled.
 
 ## Cutover completed
 
@@ -69,10 +78,39 @@ The Twenty server and worker now run through `/opt/twenty-crm/docker-compose.pin
 - Confirmed the CRM remains healthy at `app.dreamcre.co` after the redirect change.
 - Retained the rollback configuration at `/etc/nginx/sites-available/dreamcre.pre-redirect-20260902T181641Z`.
 
+## DREAM image deployment completed — 2026-09-03
+
+- Pulled the exact private image digest before changing the live Compose file.
+- Backed up the live Compose file immediately before replacing the server/worker image reference.
+- Recreated only `server`, waited for a healthy `/healthz`, and then recreated only `worker`.
+- Confirmed the original PostgreSQL container ID `aa07de8a5378` and Redis container ID `09181b601ead` remained running and healthy.
+- Confirmed the new server and worker use digest `sha256:6d06ccd23cce5a76bac89b49c53fda22d0d0ac9d57e93d8e8c0f315fef1b0794` with zero restarts.
+- Confirmed public `/healthz`, `/.well-known/api-catalog`, and `/.well-known/mcp/server-card.json` return HTTP 200.
+- Confirmed an unauthenticated MCP initialization request returns HTTP 401, preserving the fail-closed boundary.
+- Confirmed `dreamcre.co` still returns HTTP 302 to `https://app.dreamcre.co/`.
+- Confirmed the live favicon SHA-256 is `336973e59075d718d4cadaf0473588e2b020930587605a39a00391f6221ba576`, byte-identical to the reviewed DREAM asset.
+- Confirmed the authenticated Companies and Deals routes render with DREAM branding and no browser-console errors. Workflow navigation renders both existing CRM workflows as Active.
+- Re-ran the DREAM application gates after documenting the deployment: 403 tests passed and 20 skipped; frontend TypeScript checking and the production build passed. The existing large-chunk advisory remains non-blocking.
+
+### Image rollback
+
+If the branded image must be rolled back, do not recreate PostgreSQL or Redis:
+
+```bash
+cd /opt/twenty-crm
+cp /root/twenty-crm-predeploy/20260903T043000Z-docker-compose.pinned.yml docker-compose.pinned.yml
+docker compose --env-file .env -f docker-compose.pinned.yml up -d --no-deps --force-recreate server
+curl --fail http://127.0.0.1:3010/healthz
+docker compose --env-file .env -f docker-compose.pinned.yml up -d --no-deps --force-recreate worker
+```
+
+The restored Compose file pins the prior Twenty image digest recorded above. Verify the public health endpoint and authenticated CRM after rollback.
+
 ## Remaining acceptance checks
 
-1. Evan confirms that the expected companies and deals are present in the authenticated session.
-2. Verify fields, views, settings, file handling, generated links, API, MCP, and webhook behavior under the new hostname.
+1. Evan confirms that the intentionally empty Companies and Deals views match the current expected CRM data.
+2. Exercise a reversible test record and sample file upload before real deal intake begins.
+3. Verify an authenticated API call, authenticated MCP call, and webhook delivery when their production credentials and target workflow are defined.
 
 ## Automation incident note
 
@@ -84,7 +122,7 @@ The replacement task-attached heartbeat, `continue-dream-crm-overnight`, is pers
 
 - The application currently connects to PostgreSQL as the bootstrap superuser. Migrate to a dedicated non-superuser role in a separate maintenance window.
 - The server is already using substantial swap. Do not add a source build or heavy CI workload to this host.
-- The exact source-to-image mapping is not cryptographically provable from Twenty's published metadata.
+- The exact mapping from Twenty's earlier public image to upstream source remains an inference. The deployed DREAM image is reproducibly tied to DREAM CRM commit `b81cfc9a33` by the pinned build workflow and image provenance.
 - Google/Microsoft OAuth and email/calendar integration remain unconfigured.
-- MCP and webhook behavior at the new hostname has not yet been authenticated and verified.
+- Public API/MCP discovery and fail-closed MCP authentication are verified. Authenticated MCP execution and webhook delivery still need a defined production credential and test target.
 - Automated off-box backup transfer is not configured; one verified off-box copy exists. Choose a durable encrypted destination before real deal data accumulates.
