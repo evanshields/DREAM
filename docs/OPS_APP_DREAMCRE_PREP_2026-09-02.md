@@ -2,7 +2,7 @@
 
 ## Status
 
-`https://app.dreamcre.co` is live with valid TLS and is now Twenty's configured public URL. Evan authenticated successfully and reached the existing All Companies route at the new hostname. The original `https://dreamcre.co` endpoint remains live as a rollback path until Evan confirms that the expected CRM records are present.
+`https://app.dreamcre.co` is live with valid TLS and remains Twenty's configured public URL. Evan authenticated successfully and reached the existing All Companies route at the new hostname. The original `https://dreamcre.co` endpoint now returns a temporary HTTP 302 redirect to `https://app.dreamcre.co`, preserving the deep-link path and query string. The CRM remains healthy at `app.dreamcre.co`; the pre-redirect nginx configuration is retained for rollback at `/etc/nginx/sites-available/dreamcre.pre-redirect-20260902T181641Z`.
 
 The database schema, PostgreSQL container, Redis container, and Hermes environment were not changed.
 
@@ -62,16 +62,23 @@ The Twenty server and worker now run through `/opt/twenty-crm/docker-compose.pin
 - Verified `https://app.dreamcre.co/` returns HTTP 200.
 - Changed Twenty's `SERVER_URL` to `https://app.dreamcre.co`.
 - Recreated only the Twenty server and worker on the pinned Twenty image digest.
-- Verified the server is healthy, the worker is running, and both the new and original hostnames return HTTP 200.
+- Before enabling the root redirect, verified the server was healthy, the worker was running, and both hostnames returned HTTP 200.
 - Verified the new hostname renders the password-login screen in Chrome and the Codex in-app browser.
 - Confirmed a real authenticated browser session reaches the All Companies route at `app.dreamcre.co` with no browser-console errors.
-- Kept `dreamcre.co` serving the CRM. Do not redirect it until Evan confirms the expected records on `app.dreamcre.co`.
+- Changed `dreamcre.co` to return a temporary HTTP 302 redirect to `app.dreamcre.co`, preserving the requested deep-link path and query string.
+- Confirmed the CRM remains healthy at `app.dreamcre.co` after the redirect change.
+- Retained the rollback configuration at `/etc/nginx/sites-available/dreamcre.pre-redirect-20260902T181641Z`.
 
 ## Remaining acceptance checks
 
 1. Evan confirms that the expected companies and deals are present in the authenticated session.
 2. Verify fields, views, settings, file handling, generated links, API, MCP, and webhook behavior under the new hostname.
-3. After those checks pass, redirect root traffic from `dreamcre.co` to `app.dreamcre.co` while preserving the old nginx configuration for rollback.
+
+## Automation incident note
+
+The 18:37 heartbeat was rendered only as `suggested_create` after a `DTSTART` validation failure. It was not accepted or persisted, and therefore never ran. Prevention rule: every future schedule must be verified as active and persisted after creation; an unaccepted `suggested_create` is not a running schedule.
+
+The replacement task-attached heartbeat, `continue-dream-crm-overnight`, is persisted and ACTIVE at 23:30, 00:30, 01:30, 02:30, 03:30, 04:30, and 05:30 Eastern every night. Its prompt resumes only the first incomplete step, avoids duplicate work when another run is active, and makes no changes when the plan is complete. Failure-only notifications are enabled so a capacity or execution failure is visible.
 
 ## Risks still open
 
