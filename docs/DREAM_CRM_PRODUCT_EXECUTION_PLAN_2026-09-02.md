@@ -119,7 +119,22 @@ Claude Code owns these contracts. Codex does not invent them.
 - Integrate only after the corresponding API contract is written.
 - Verify accessibility, responsive behavior, honest loading/error/blocked states, and DREAM-dominant branding.
 
+### Parallel-agent operating rule
+
+- Use sub-agents when the work naturally splits into independent lanes.
+- Match the model to the work: Sol for architecture, high-risk review, and final reconciliation; Terra for implementation; Luna for focused audits, inventories, and fast verification; GPT-5.5 only for bounded checks where it is clearly sufficient.
+- Keep the primary agent accountable for reconciling results, enforcing DREAM guardrails, and deciding what actually ships.
+- Do not split tightly coupled edits just to create motion.
+
 ## Phased execution
+
+### Execution snapshot — 2026-09-03
+
+- **Stage 0 — substantially complete:** the CRM image is digest-pinned; a verified nightly database backup and one checksum-matched off-box copy exist; configuration backups and a 4GB swapfile are in place. A full database restore drill and durable automated off-box transfer remain open.
+- **Stage 1 — complete:** `app.dreamcre.co` is live with valid TLS, and `dreamcre.co` temporarily redirects to it with rollback configuration retained.
+- **Stage 2 — in progress:** the private `evanshields/dream-crm` fork, fetch-only Twenty upstream, reproducible image workflow, and dedicated `C:/tmp/dream-crm` worktree exist. An earlier baseline DREAM-branded image (`sha256:6d06ccd23cce5a76bac89b49c53fda22d0d0ac9d57e93d8e8c0f315fef1b0794`) is live and verified. The newer Nocturne Iris light/dark system, approved DREAM mark, self-hosted typography, localization-aware shell copy, and conservative static-cache policy are implemented but not yet deployed on `codex/dream-branding-shell`. Focused review, the full 6,362-test frontend suite, shared-UI tests, and a production frontend build pass; the newer branch's combined commit, fork CI, deployment, and authenticated live verification remain.
+- **Stage 3 — contract-blocked:** no Deal-workspace or Hermes UI implementation starts until the identity, deal-link, and conversation API contracts are written.
+- **Stages 4–5 — not started.** Their gates and ownership boundaries below remain unchanged.
 
 ### Stage 0 — Protect what exists
 
@@ -188,9 +203,10 @@ The integrated product passes only when:
 
 ## Immediate next actions
 
-1. Claude Code executes the infrastructure handoff after reviewing the live VPS configuration.
-2. Evan chooses the fork's production license path before external commercialization: AGPL-compliant source availability or reviewed commercial rights.
-3. Refresh the Twenty audit at the exact deployed commit.
-4. Create the separate repository and worktree.
-5. Claude Code writes the identity, link, and conversation contracts.
-6. Codex builds the first vertical-slice UI.
+1. Complete the combined branch review; then commit, run fork CI, deploy by immutable digest, and verify authenticated light/dark routes without changing CRM data or workflows.
+2. Deploy the tested CRM static-cache policy with the branded image, and separately enable nginx compression on the UK VPS after `nginx -t`; verify live HTML, hashed-JavaScript cache, and compression headers with rollback available.
+3. Complete a full database restore drill and configure durable encrypted off-box backup transfer before real deal data accumulates.
+4. Configure and test authenticated CRM API/MCP access and one webhook only after role-scoped credentials and a reversible test target are defined.
+5. Claude Code writes the identity, opportunity-to-deal-link, and Hermes conversation contracts.
+6. Codex builds the first vertical-slice Deal-workspace UI against those written contracts and fail-closed fixtures.
+7. Evan chooses the fork's production license path before external commercialization: AGPL-compliant source availability or reviewed commercial rights.

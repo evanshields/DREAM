@@ -9,7 +9,7 @@ This file boots ANY coding agent (Codex, Claude Code, future sessions) identical
 
 ## What this repo is
 
-The DREAM web app — FastAPI (Python 3.13) + React 19/Vite/Tailwind — LIVE at dream.shieldstone.co (US VPS, PM2 `dream-api` :8001 behind Caddy). 422+ tests. The app is the team front door; the agentic brain (Hermes `dream` profile, UK VPS) and the sales CRM (Twenty at dreamcre.co) live elsewhere and connect via drivers/APIs per the PRD.
+The deterministic DREAM underwriting web app — FastAPI (Python 3.13) + React 19/Vite/Tailwind — is LIVE at dream.shieldstone.co (US VPS, PM2 `dream-api` :8001 behind Caddy). 422+ tests. The Twenty-derived DREAM CRM shell lives separately at `app.dreamcre.co` and is the target team front door; the agentic brain (Hermes `dream` profile, UK VPS) connects through the drivers/APIs defined in the PRD.
 
 ## Non-negotiables (full list in the PRD §2–3)
 
@@ -25,6 +25,10 @@ The DREAM web app — FastAPI (Python 3.13) + React 19/Vite/Tailwind — LIVE at
 ## Working pattern (every change)
 
 Full pytest suite green → `tsc --noEmit` + `npm run build` green → commit with scoped staging → deploy per `docs/backend/DEPLOY_US_VPS.md` with timestamped VPS backup → live-verify on production with a minted token → then the next task. Never deploy unverified; never hand-edit the server.
+
+## Parallel-agent preference
+
+When work can be divided into independent, well-bounded tasks, use Sol, Terra, Luna, and—when demonstrably sufficient—GPT-5.5 sub-agents in parallel to save time and primary-agent context. Match the model to the work: Sol for higher-risk architecture and final review, Terra for implementation, Luna for focused audits and fast verification, and GPT-5.5 for bounded work where it offers a practical speed or cost advantage. The primary agent remains responsible for reconciling results, enforcing this file's guardrails, and completing end-to-end validation. Do not split tightly coupled edits merely to create parallel activity.
 
 ## Repo boundaries
 

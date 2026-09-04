@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="320" height="320" viewBox="0 0 320 320" role="img" aria-labelledby="title desc">
+  <title id="title">DREAM four-way interlock</title>
+  <desc id="desc">Four open rounded paths joined into DREAM's balanced interlock mark.</desc>
+  <g fill="none" stroke="#6657E8" stroke-width="14" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M117 160V91C117 67.25 136.25 48 160 48S203 67.25 203 91V117"/>
+    <path d="M145 117H230C252.09 117 270 136.25 270 160S252.09 203 230 203H203V160"/>
+    <path d="M203 160V231C203 253.09 183.75 271 160 271S117 253.09 117 231V203H175"/>
+    <path d="M175 203H74C60.19 203 49 183.75 49 160S60.19 117 74 117H117V160H203V203"/>
+  </g>
+</svg>

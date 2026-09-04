@@ -78,7 +78,9 @@ The DREAM server and worker run through `/opt/twenty-crm/docker-compose.pinned.y
 - Confirmed the CRM remains healthy at `app.dreamcre.co` after the redirect change.
 - Retained the rollback configuration at `/etc/nginx/sites-available/dreamcre.pre-redirect-20260902T181641Z`.
 
-## DREAM image deployment completed — 2026-09-03
+## Initial DREAM-branded image deployment completed — 2026-09-03
+
+This records the baseline branded image at the digest below. It does not describe the newer Nocturne Iris work on `codex/dream-branding-shell`, which still requires commit, CI, deployment, and authenticated live verification.
 
 - Pulled the exact private image digest before changing the live Compose file.
 - Backed up the live Compose file immediately before replacing the server/worker image reference.
@@ -116,7 +118,16 @@ The restored Compose file pins the prior Twenty image digest recorded above. Ver
 
 The 18:37 heartbeat was rendered only as `suggested_create` after a `DTSTART` validation failure. It was not accepted or persisted, and therefore never ran. Prevention rule: every future schedule must be verified as active and persisted after creation; an unaccepted `suggested_create` is not a running schedule.
 
-The replacement task-attached heartbeat, `continue-dream-crm-overnight`, is persisted and ACTIVE at 23:30, 00:30, 01:30, 02:30, 03:30, 04:30, and 05:30 Eastern every night. Its prompt resumes only the first incomplete step, avoids duplicate work when another run is active, and makes no changes when the plan is complete. Failure-only notifications are enabled so a capacity or execution failure is visible.
+The replacement task-attached heartbeat, `continue-dream-crm-overnight`, is persisted and ACTIVE every two hours for 36 runs (a maximum three-day window). Its prompt resumes the exact first incomplete step and makes no changes when the plan is complete. It stays quiet when nothing material changes, notifies Evan for completion, failure, a blocker, or a required decision, and removes itself when the full plan is genuinely complete.
+
+## Performance findings — 2026-09-03
+
+- The live app is served through nginx 1.28, which proxies the Twenty Nest/Express container.
+- The generated entry document contains 393 JavaScript module preloads and 41 stylesheet links; the main entry JavaScript is approximately 2.46MB before compression.
+- Live HTML is gzip-compressed, but the measured main JavaScript response is not. Both HTML and hashed assets currently return `Cache-Control: public, max-age=0`.
+- The CRM branch now includes a focused, tested static policy: `index.html` is `no-store`; only Vite-fingerprinted files under `/assets/` receive a one-year immutable policy; unhashed public files must revalidate.
+- Remaining VPS action: enable nginx gzip for JavaScript, CSS, JSON, SVG, and WebAssembly after configuration validation. Do not assume Brotli exists; verify the module before considering it.
+- Do not introduce manual Vite chunk splitting as a quick fix. The preload fan-out and eager shell graph require a separate measured bundle exercise.
 
 ## Risks still open
 

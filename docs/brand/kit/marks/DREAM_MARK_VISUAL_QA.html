@@ -1,0 +1,172 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>DREAM mark visual QA</title>
+    <style>
+      :root {
+        color: #1b1d29;
+        font-family: "Noto Sans", Inter, system-ui, sans-serif;
+        background: #f4f1eb;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        padding: 48px;
+      }
+
+      header {
+        align-items: baseline;
+        border-bottom: 1px solid #ded9d2;
+        display: flex;
+        justify-content: space-between;
+        margin-bottom: 32px;
+        padding-bottom: 20px;
+      }
+
+      h1,
+      h2,
+      p {
+        margin: 0;
+      }
+
+      h1 {
+        font-size: 24px;
+        letter-spacing: 0.08em;
+      }
+
+      h2 {
+        font-size: 13px;
+        letter-spacing: 0.1em;
+        margin-bottom: 18px;
+        text-transform: uppercase;
+      }
+
+      .eyebrow {
+        color: #6657e8;
+        font-size: 12px;
+        font-weight: 700;
+        letter-spacing: 0.12em;
+        text-transform: uppercase;
+      }
+
+      .comparison {
+        display: grid;
+        gap: 24px;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        margin-bottom: 24px;
+      }
+
+      .card {
+        background: #fff;
+        border: 1px solid #ded9d2;
+        border-radius: 20px;
+        min-height: 410px;
+        padding: 24px;
+      }
+
+      .card.dark {
+        background: #10131d;
+        border-color: #303444;
+        color: #f6f3ee;
+      }
+
+      .hero {
+        align-items: center;
+        display: flex;
+        height: 320px;
+        justify-content: center;
+      }
+
+      .hero img {
+        height: 280px;
+        object-fit: contain;
+        width: 280px;
+      }
+
+      .reference img {
+        height: 280px;
+        object-fit: contain;
+        width: 300px;
+      }
+
+      .sizes {
+        align-items: end;
+        display: flex;
+        gap: 40px;
+        justify-content: center;
+        min-height: 128px;
+      }
+
+      .sample {
+        align-items: center;
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+      }
+
+      .sample span {
+        color: #686978;
+        font-size: 11px;
+      }
+
+      .dark .sample span {
+        color: #a9a9b6;
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <div>
+        <p class="eyebrow">Nocturne Iris · corrected geometry</p>
+        <h1>DREAM MARK VISUAL QA</h1>
+      </div>
+      <p>Reference → production vector → compact sizes</p>
+    </header>
+
+    <main>
+      <section class="comparison">
+        <article class="card reference">
+          <h2>Original Shieldstone reference</h2>
+          <div class="hero">
+            <img src="../../DREAM_MARK_REFERENCE_2026-09-03.png" alt="Original Shieldstone interlock reference" />
+          </div>
+        </article>
+
+        <article class="card">
+          <h2>Corrected DREAM vector</h2>
+          <div class="hero">
+            <img src="dream-mark-primary.svg" alt="Corrected DREAM interlock in primary iris" />
+          </div>
+        </article>
+      </section>
+
+      <section class="comparison">
+        <article class="card">
+          <h2>Light surface</h2>
+          <div class="sizes">
+            <div class="sample"><img src="dream-mark-icon.svg" width="64" height="64" alt="" /><span>64px</span></div>
+            <div class="sample"><img src="dream-mark-icon.svg" width="32" height="32" alt="" /><span>32px</span></div>
+            <div class="sample"><img src="dream-mark-icon.svg" width="24" height="24" alt="" /><span>24px</span></div>
+            <div class="sample"><img src="dream-favicon.svg" width="16" height="16" alt="" /><span>16px</span></div>
+          </div>
+        </article>
+
+        <article class="card dark">
+          <h2>Dark surface</h2>
+          <div class="sizes">
+            <div class="sample"><img src="dream-mark-icon-dark-surface.svg" width="64" height="64" alt="" /><span>64px</span></div>
+            <div class="sample"><img src="dream-mark-icon-dark-surface.svg" width="32" height="32" alt="" /><span>32px</span></div>
+            <div class="sample"><img src="dream-mark-icon-dark-surface.svg" width="24" height="24" alt="" /><span>24px</span></div>
+            <div class="sample"><img src="dream-favicon-dark-surface.svg" width="16" height="16" alt="" /><span>16px</span></div>
+          </div>
+        </article>
+      </section>
+    </main>
+  </body>
+</html>

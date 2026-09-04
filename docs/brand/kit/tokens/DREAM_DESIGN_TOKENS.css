@@ -1,0 +1,296 @@
+/*
+ * DREAM — Nocturne Iris design tokens
+ * Version: 0.2 / Step 2
+ *
+ * Portable CSS custom properties. Apply data-theme="light" or
+ * data-theme="dark" to the document root (or any component boundary).
+ * With no explicit theme, the OS preference selects the mode.
+ */
+
+:root,
+[data-theme="light"] {
+  color-scheme: light;
+
+  /* Source palette — use semantic tokens below in components. */
+  --dream-color-canvas: #f4f1eb;
+  --dream-color-surface: #ffffff;
+  --dream-color-surface-raised: #ffffff;
+  --dream-color-surface-inset: #eeece7;
+  --dream-color-surface-selected: #e9e6ff;
+  --dream-color-surface-conversation: #f3f1ff;
+  --dream-color-text-primary: #1b1d29;
+  --dream-color-text-secondary: #686978;
+  --dream-color-text-tertiary: #7e7f8c; /* Decorative metadata only; use -accessible for readable captions. */
+  --dream-color-text-tertiary-accessible: #5f606c;
+  --dream-color-text-disabled: #a4a3aa;
+  --dream-color-text-on-accent: #ffffff;
+  --dream-color-border-subtle: #ebe7e0; /* Decorative separation only. */
+  --dream-color-border: #ded9d2; /* Decorative card structure only. */
+  --dream-color-border-strong: #c6c1bb; /* Decorative emphasis only. */
+  --dream-color-border-control: #696a75; /* AA-safe boundary for interactive controls. */
+
+  /* Nocturne Iris and the quiet Shieldstone family cue. */
+  --dream-color-iris: #6657e8;
+  --dream-color-iris-bright: #9288ff;
+  --dream-color-iris-soft: #e9e6ff;
+  --dream-color-teal: #2f7773;
+  --dream-color-teal-bright: #70aaa5;
+
+  /* State source colors from the brand brief. */
+  --dream-color-amber: #a86612;
+  --dream-color-amber-bright: #e5ad52;
+  --dream-color-red: #b84350;
+  --dream-color-red-bright: #f07882;
+  --dream-color-green: #2f7d5a;
+  --dream-color-green-bright: #67b88f;
+
+  /* Semantic surface / content pairs. Keep the pair together. */
+  --dream-state-agent-fg: #3d34a8;
+  --dream-state-agent-accent: var(--dream-color-iris);
+  --dream-state-agent-bg: var(--dream-color-iris-soft);
+  --dream-state-agent-border: #c9c2ff;
+
+  --dream-state-engine-fg: #235d5a;
+  --dream-state-engine-accent: var(--dream-color-teal);
+  --dream-state-engine-bg: #e5f1f0;
+  --dream-state-engine-border: #b7d9d6;
+
+  --dream-state-review-fg: #8b5200;
+  --dream-state-review-accent: var(--dream-color-amber);
+  --dream-state-review-bg: #fff1d9;
+  --dream-state-review-border: #e9c889;
+
+  --dream-state-blocked-fg: #993640;
+  --dream-state-blocked-accent: var(--dream-color-red);
+  --dream-state-blocked-bg: #fce5e7;
+  --dream-state-blocked-border: #e8b6bc;
+
+  --dream-state-pass-fg: #236044;
+  --dream-state-pass-accent: var(--dream-color-green);
+  --dream-state-pass-bg: #e2f2e8;
+  --dream-state-pass-border: #b9dbc7;
+
+  /* Interaction states. Color is paired with shape, label, and/or icon. */
+  --dream-interaction-hover-surface: #f8f7f4;
+  --dream-interaction-hover-border: var(--dream-color-border-strong);
+  --dream-interaction-active-surface: #f0eefb;
+  --dream-interaction-selected-surface: var(--dream-color-surface-selected);
+  --dream-interaction-selected-border: var(--dream-color-iris);
+  --dream-interaction-disabled-surface: #f0efed;
+  --dream-interaction-disabled-content: var(--dream-color-text-disabled);
+  --dream-focus-ring: var(--dream-color-iris);
+  --dream-focus-ring-offset: var(--dream-color-canvas);
+
+  /* Typography — load these families in the host application. */
+  --dream-font-display: "Playfair Display", Georgia, serif;
+  --dream-font-heading: "Josefin Sans", Arial, sans-serif;
+  --dream-font-ui: "Noto Sans", Arial, sans-serif;
+  --dream-font-body: var(--dream-font-ui);
+  --dream-font-mono: "Noto Sans Mono", ui-monospace, SFMono-Regular, Consolas, monospace;
+  --dream-font-weight-regular: 400;
+  --dream-font-weight-medium: 500;
+  --dream-font-weight-semibold: 600;
+  --dream-font-weight-bold: 700;
+  /* Approved self-hosted OFL WOFF2 weights: Noto 400/500/600/700; Josefin 500/600/700; Playfair 600/700. */
+  --dream-type-display-size: 3rem;
+  --dream-type-display-line: 1.05;
+  --dream-type-display-tracking: -0.025em;
+  --dream-type-title-size: 2rem;
+  --dream-type-title-line: 1.15;
+  --dream-type-title-tracking: -0.015em;
+  --dream-type-heading-size: 1.25rem;
+  --dream-type-heading-line: 1.3;
+  --dream-type-heading-tracking: 0.01em;
+  --dream-type-nav-size: 0.8125rem;
+  --dream-type-nav-line: 1.25;
+  --dream-type-nav-tracking: 0.08em;
+  --dream-type-body-size: 0.9375rem;
+  --dream-type-body-line: 1.55;
+  --dream-type-body-tracking: 0;
+  --dream-type-ui-size: 0.8125rem;
+  --dream-type-ui-line: 1.4;
+  --dream-type-ui-tracking: 0.005em;
+  --dream-type-number-size: 1.25rem;
+  --dream-type-number-line: 1.2;
+  --dream-type-number-tracking: -0.01em;
+  --dream-type-caption-size: 0.6875rem;
+  --dream-type-caption-line: 1.35;
+  --dream-type-caption-tracking: 0.08em;
+
+  /* 4px base rhythm. */
+  --dream-space-0: 0;
+  --dream-space-1: 0.25rem;
+  --dream-space-2: 0.5rem;
+  --dream-space-3: 0.75rem;
+  --dream-space-4: 1rem;
+  --dream-space-5: 1.25rem;
+  --dream-space-6: 1.5rem;
+  --dream-space-8: 2rem;
+  --dream-space-10: 2.5rem;
+  --dream-space-12: 3rem;
+  --dream-space-16: 4rem;
+  --dream-space-20: 5rem;
+  --dream-space-24: 6rem;
+
+  --dream-radius-none: 0;
+  --dream-radius-xs: 0.25rem;
+  --dream-radius-sm: 0.5rem;
+  --dream-radius-md: 0.75rem;
+  --dream-radius-lg: 1rem;
+  --dream-radius-xl: 1.5rem;
+  --dream-radius-pill: 999px;
+
+  --dream-shadow-none: none;
+  --dream-shadow-sm: 0 1px 2px rgb(27 29 41 / 0.06);
+  --dream-shadow-md: 0 8px 24px rgb(27 29 41 / 0.1), 0 2px 6px rgb(27 29 41 / 0.06);
+  --dream-shadow-lg: 0 20px 48px rgb(27 29 41 / 0.14), 0 4px 12px rgb(27 29 41 / 0.07);
+  --dream-shadow-focus: 0 0 0 3px var(--dream-focus-ring);
+
+  --dream-duration-instant: 0ms;
+  --dream-duration-fast: 120ms;
+  --dream-duration-standard: 180ms;
+  --dream-duration-slow: 280ms;
+  --dream-duration-emphasis: 420ms;
+  --dream-ease-standard: cubic-bezier(0.2, 0, 0, 1);
+  --dream-ease-emphasis: cubic-bezier(0.16, 1, 0.3, 1);
+  --dream-transition-color: color var(--dream-duration-standard) var(--dream-ease-standard), background-color var(--dream-duration-standard) var(--dream-ease-standard), border-color var(--dream-duration-standard) var(--dream-ease-standard);
+  --dream-transition-surface: transform var(--dream-duration-standard) var(--dream-ease-emphasis), box-shadow var(--dream-duration-standard) var(--dream-ease-standard);
+
+  --dream-layer-base: 0;
+  --dream-layer-raised: 10;
+  --dream-layer-sticky: 20;
+  --dream-layer-popover: 30;
+  --dream-layer-modal: 40;
+  --dream-layer-toast: 50;
+}
+
+/* Follow the operating system until the host explicitly chooses a mode. */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --dream-color-canvas: #10131d;
+    --dream-color-surface: #191d2a;
+    --dream-color-surface-raised: #202433;
+    --dream-color-surface-inset: #151923;
+    --dream-color-surface-selected: #2b2848;
+    --dream-color-surface-conversation: #22203b;
+    --dream-color-text-primary: #f6f3ee;
+    --dream-color-text-secondary: #a9a9b6;
+    --dream-color-text-tertiary: #858693;
+    --dream-color-text-tertiary-accessible: #858693;
+    --dream-color-text-disabled: #626472;
+    --dream-color-text-on-accent: #10131d;
+    --dream-color-border-subtle: #252936;
+    --dream-color-border: #303444;
+    --dream-color-border-strong: #484d60;
+    --dream-color-border-control: #74798e;
+    --dream-color-iris: #9288ff;
+    --dream-color-iris-soft: #2b2848;
+    --dream-color-teal: #70aaa5;
+    --dream-color-amber: #e5ad52;
+    --dream-color-red: #f07882;
+    --dream-color-green: #67b88f;
+    --dream-state-agent-fg: #c2bcff;
+    --dream-state-agent-accent: var(--dream-color-iris);
+    --dream-state-agent-bg: #2b2848;
+    --dream-state-agent-border: #565080;
+    --dream-state-engine-fg: #a5d6d1;
+    --dream-state-engine-accent: var(--dream-color-teal);
+    --dream-state-engine-bg: #203a3a;
+    --dream-state-engine-border: #376260;
+    --dream-state-review-fg: #e5ad52;
+    --dream-state-review-accent: var(--dream-color-amber);
+    --dream-state-review-bg: #3a2b1b;
+    --dream-state-review-border: #795a2b;
+    --dream-state-blocked-fg: #f07882;
+    --dream-state-blocked-accent: var(--dream-color-red);
+    --dream-state-blocked-bg: #3a2228;
+    --dream-state-blocked-border: #76414a;
+    --dream-state-pass-fg: #67b88f;
+    --dream-state-pass-accent: var(--dream-color-green);
+    --dream-state-pass-bg: #1e3528;
+    --dream-state-pass-border: #3b684f;
+    --dream-interaction-hover-surface: #202433;
+    --dream-interaction-hover-border: var(--dream-color-border-strong);
+    --dream-interaction-active-surface: #27243f;
+    --dream-interaction-selected-surface: var(--dream-color-surface-selected);
+    --dream-interaction-selected-border: var(--dream-color-iris);
+    --dream-interaction-disabled-surface: #1d202b;
+    --dream-interaction-disabled-content: var(--dream-color-text-disabled);
+    --dream-focus-ring: var(--dream-color-iris);
+    --dream-focus-ring-offset: var(--dream-color-canvas);
+    --dream-shadow-sm: 0 1px 2px rgb(0 0 0 / 0.18);
+    --dream-shadow-md: 0 8px 24px rgb(0 0 0 / 0.28), 0 2px 6px rgb(0 0 0 / 0.2);
+    --dream-shadow-lg: 0 20px 48px rgb(0 0 0 / 0.34), 0 4px 12px rgb(0 0 0 / 0.22);
+  }
+}
+
+[data-theme="dark"] {
+  color-scheme: dark;
+  --dream-color-canvas: #10131d;
+  --dream-color-surface: #191d2a;
+  --dream-color-surface-raised: #202433;
+  --dream-color-surface-inset: #151923;
+  --dream-color-surface-selected: #2b2848;
+  --dream-color-surface-conversation: #22203b;
+  --dream-color-text-primary: #f6f3ee;
+  --dream-color-text-secondary: #a9a9b6;
+  --dream-color-text-tertiary: #858693;
+  --dream-color-text-tertiary-accessible: #858693;
+  --dream-color-text-disabled: #626472;
+  --dream-color-text-on-accent: #10131d;
+  --dream-color-border-subtle: #252936;
+  --dream-color-border: #303444;
+  --dream-color-border-strong: #484d60;
+  --dream-color-border-control: #74798e;
+  --dream-color-iris: #9288ff;
+  --dream-color-iris-soft: #2b2848;
+  --dream-color-teal: #70aaa5;
+  --dream-color-amber: #e5ad52;
+  --dream-color-red: #f07882;
+  --dream-color-green: #67b88f;
+  --dream-state-agent-fg: #c2bcff;
+  --dream-state-agent-accent: var(--dream-color-iris);
+  --dream-state-agent-bg: #2b2848;
+  --dream-state-agent-border: #565080;
+  --dream-state-engine-fg: #a5d6d1;
+  --dream-state-engine-accent: var(--dream-color-teal);
+  --dream-state-engine-bg: #203a3a;
+  --dream-state-engine-border: #376260;
+  --dream-state-review-fg: #e5ad52;
+  --dream-state-review-accent: var(--dream-color-amber);
+  --dream-state-review-bg: #3a2b1b;
+  --dream-state-review-border: #795a2b;
+  --dream-state-blocked-fg: #f07882;
+  --dream-state-blocked-accent: var(--dream-color-red);
+  --dream-state-blocked-bg: #3a2228;
+  --dream-state-blocked-border: #76414a;
+  --dream-state-pass-fg: #67b88f;
+  --dream-state-pass-accent: var(--dream-color-green);
+  --dream-state-pass-bg: #1e3528;
+  --dream-state-pass-border: #3b684f;
+  --dream-interaction-hover-surface: #202433;
+  --dream-interaction-hover-border: var(--dream-color-border-strong);
+  --dream-interaction-active-surface: #27243f;
+  --dream-interaction-selected-surface: var(--dream-color-surface-selected);
+  --dream-interaction-selected-border: var(--dream-color-iris);
+  --dream-interaction-disabled-surface: #1d202b;
+  --dream-interaction-disabled-content: var(--dream-color-text-disabled);
+  --dream-focus-ring: var(--dream-color-iris);
+  --dream-focus-ring-offset: var(--dream-color-canvas);
+  --dream-shadow-sm: 0 1px 2px rgb(0 0 0 / 0.18);
+  --dream-shadow-md: 0 8px 24px rgb(0 0 0 / 0.28), 0 2px 6px rgb(0 0 0 / 0.2);
+  --dream-shadow-lg: 0 20px 48px rgb(0 0 0 / 0.34), 0 4px 12px rgb(0 0 0 / 0.22);
+}
+
+/* A user preference must be honored even when motion is requested by a component. */
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --dream-duration-fast: 1ms;
+    --dream-duration-standard: 1ms;
+    --dream-duration-slow: 1ms;
+    --dream-duration-emphasis: 1ms;
+    --dream-transition-color: none;
+    --dream-transition-surface: none;
+  }
+}
