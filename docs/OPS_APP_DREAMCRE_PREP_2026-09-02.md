@@ -94,13 +94,31 @@ This records the baseline branded image at the digest below. It does not describ
 - Confirmed the authenticated Companies and Deals routes render with DREAM branding and no browser-console errors. Workflow navigation renders both existing CRM workflows as Active.
 - Re-ran the DREAM application gates after documenting the deployment: 403 tests passed and 20 skipped; frontend TypeScript checking and the production build passed. The existing large-chunk advisory remains non-blocking.
 
+## Nocturne Iris release deployed — 2026-09-04
+
+- Evan approved PR #1, and the exact reviewed head `df21f4a40bd9bc74886f4551b4717c037ebb3fdc` was merged as `bbac61afc35209cca97d8c5539399d5b5fbf72be`.
+- The post-merge immutable-image workflow passed: `https://github.com/evanshields/dream-crm/actions/runs/33907374985`.
+- Verified the image source-revision label equals the merge commit, then deployed only the server and worker at `ghcr.io/evanshields/dream-crm@sha256:f53d316a6938a6b85baefe3e79836a7858280c6e078053b6f97bab52f375507e`.
+- Ran a fresh custom-format database backup at `/var/backups/twenty-crm/twenty-20260904T184315Z.dump` (1,001,474 bytes), validated it with `pg_restore --list`, and recorded SHA-256 `6724b5666929d334fd044e06c09fadbf9e85f2d81368ece4987e11cce09c441f`.
+- Copied the dump off-box to `C:/Users/evana/DREAM-backups/twenty-crm/20260904T184315Z/twenty-20260904T184315Z.dump` and verified the same checksum.
+- Saved root-only configuration rollback copies under `/root/twenty-crm-predeploy/20260904T184501Z`, including the immediately pre-deployment Compose file.
+- Recreated the server first, waited for `/healthz` to become healthy, and only then recreated the worker. Both remain at zero restarts.
+- Confirmed the original PostgreSQL container `aa07de8a5378` and Redis container `09181b601ead` remained unchanged and healthy.
+- Confirmed public `/healthz`, `/.well-known/api-catalog`, and `/.well-known/mcp/server-card.json` return HTTP 200; unauthenticated MCP initialization remains fail-closed at HTTP 401.
+- Confirmed `dreamcre.co` still returns HTTP 302 to the same path and query string on `app.dreamcre.co`.
+- Verified the new static policy in production: HTML is `no-store`; fingerprinted assets are one-year immutable; unhashed assets must revalidate.
+- Added the isolated nginx gzip policy at `/etc/nginx/conf.d/dream-crm-gzip.conf`, passed `nginx -t`, reloaded nginx, and verified JavaScript returns `Content-Encoding: gzip` and `Vary: Accept-Encoding` without weakening its cache policy.
+- Verified the live favicon is byte-identical to the reviewed asset at SHA-256 `7cd30e051723530e349ecc4d2abcfcd8fab0aa674b3fa120f0e9b5afb3d6cb7d`.
+- Authenticated browser checks passed in both light and dark modes across Companies, People, Deals, Tasks, Notes, Dashboards, Workflows, and Settings with zero console errors. The two CRM workflows remain present and Active; no CRM data or workflow was changed.
+- Re-ran the DREAM application gates after the release record was updated: 403 tests passed and 20 skipped; frontend TypeScript checking and the production build passed. The existing large-chunk advisory remains non-blocking.
+
 ### Image rollback
 
 If the branded image must be rolled back, do not recreate PostgreSQL or Redis:
 
 ```bash
 cd /opt/twenty-crm
-cp /root/twenty-crm-predeploy/20260903T043000Z-docker-compose.pinned.yml docker-compose.pinned.yml
+cp /root/twenty-crm-predeploy/20260904T184501Z/docker-compose.immediate-predeploy.yml docker-compose.pinned.yml
 docker compose --env-file .env -f docker-compose.pinned.yml up -d --no-deps --force-recreate server
 curl --fail http://127.0.0.1:3010/healthz
 docker compose --env-file .env -f docker-compose.pinned.yml up -d --no-deps --force-recreate worker
@@ -124,9 +142,9 @@ The replacement task-attached heartbeat, `continue-dream-crm-overnight`, is pers
 
 - The live app is served through nginx 1.28, which proxies the Twenty Nest/Express container.
 - The generated entry document contains 393 JavaScript module preloads and 41 stylesheet links; the main entry JavaScript is approximately 2.46MB before compression.
-- Live HTML is gzip-compressed, but the measured main JavaScript response is not. Both HTML and hashed assets currently return `Cache-Control: public, max-age=0`.
-- The CRM branch now includes a focused, tested static policy: `index.html` is `no-store`; only Vite-fingerprinted files under `/assets/` receive a one-year immutable policy; unhashed public files must revalidate.
-- Remaining VPS action: enable nginx gzip for JavaScript, CSS, JSON, SVG, and WebAssembly after configuration validation. Do not assume Brotli exists; verify the module before considering it.
+- Before the 2026-09-04 release, HTML was gzip-compressed but the measured main JavaScript response was not, and both HTML and hashed assets returned `Cache-Control: public, max-age=0`.
+- The deployed CRM now applies the focused, tested static policy: `index.html` is `no-store`; only Vite-fingerprinted files under `/assets/` receive a one-year immutable policy; unhashed public files must revalidate.
+- Nginx gzip is enabled and verified for JavaScript, CSS, JSON, SVG, XML, and WebAssembly through the isolated `dream-crm-gzip.conf` drop-in. Brotli was not introduced.
 - Do not introduce manual Vite chunk splitting as a quick fix. The preload fan-out and eager shell graph require a separate measured bundle exercise.
 
 ## Risks still open
