@@ -31,8 +31,8 @@ from __future__ import annotations
 import math
 import os
 import sys
-from dataclasses import dataclass, field
-from decimal import Decimal
+from dataclasses import dataclass, field, replace
+from decimal import Decimal, InvalidOperation
 from typing import Dict, List, Optional
 
 # --- locate the vendored engine (single source of Decimal math) --------------
@@ -160,8 +160,24 @@ def run_acq_underwrite(inp: ACQDealInputs) -> Dict[str, object]:
     )
     ds = SeniorDebtCalculator().build(terms, years=int(inp.years))
 
-    # If the model supplied explicit per-year debt service, the projector uses the DebtServiceYear
-    # stream we pass; servicing_spread only affected `ds` above. (We always pass the built `ds`.)
+    # Preserve the engine's year/phase/balance conventions, replacing only the annual
+    # payment supplied by the model. An incomplete schedule must not silently fall
+    # back to derived payments or truncate the projector's hold period.
+    if inp.debt_service is not None:
+        if not isinstance(inp.debt_service, list):
+            raise ValueError("debt_service must be a list of annual amounts")
+        if len(inp.debt_service) != len(ds):
+            raise ValueError("debt_service must contain one annual amount for each modeled year")
+        explicit_ds = []
+        for value in inp.debt_service:
+            try:
+                amount = to_dec(value)
+            except (InvalidOperation, ValueError, TypeError) as exc:
+                raise ValueError("debt_service amounts must be finite and nonnegative") from exc
+            if not amount.is_finite() or amount < 0:
+                raise ValueError("debt_service amounts must be finite and nonnegative")
+            explicit_ds.append(amount)
+        ds = [replace(year, debt_service=amount) for year, amount in zip(ds, explicit_ds)]
     res: ACQReturnResult = ACQCashFlowProjector().project(
         noi_series=to_dec_list(inp.noi_series),
         debt_service=ds,

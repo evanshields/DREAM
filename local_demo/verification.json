@@ -1,0 +1,74 @@
+{
+  "scope": "Composed de824ba + corrected cancellationv2 + corrected bridgev2 + explicit debt adapter; actual async runner with in-memory stores and fixed analyst fixtures",
+  "checks": [
+    {
+      "name": "Foreign Host and Origin rejected",
+      "result": "passed"
+    },
+    {
+      "name": "Clear fixture instructions and fixture-only identity",
+      "result": "passed"
+    },
+    {
+      "name": "Static app, local banner, remote scripts removed and CSP blocks external transport",
+      "result": "passed"
+    },
+    {
+      "name": "Separate compiled bridge fixture available",
+      "result": "passed"
+    },
+    {
+      "name": "Inherited remote VITE_API_BASE absent from static bundle",
+      "result": "passed"
+    },
+    {
+      "name": "Providers/CRM/uploads/export/CP1 writes blocked",
+      "result": "passed"
+    },
+    {
+      "name": "Actual async ACQ runner, idempotent replay and CP1 stop",
+      "result": "passed"
+    },
+    {
+      "name": "Deal cold reload and audit retained in fixture process",
+      "result": "passed"
+    },
+    {
+      "name": "Fixed EFB runner reaches CP1 without ACQ metrics",
+      "result": "passed"
+    },
+    {
+      "name": "Missing input pauses before analysis",
+      "result": "passed"
+    },
+    {
+      "name": "Human answers resume to CP1",
+      "result": "passed"
+    },
+    {
+      "name": "Cancellation acknowledgement followed by actual worker cancellation",
+      "result": "passed"
+    },
+    {
+      "name": "Explicit annual debt service reaches real deterministic recalc",
+      "result": "passed"
+    },
+    {
+      "name": "Partial annual payment schedule fails closed",
+      "result": "passed"
+    }
+  ],
+  "not_run": [
+    "Browser interaction/races",
+    "Live identity/link/Hermes",
+    "Real extraction/providers",
+    "Mono/C2 integrated workbook/document",
+    "Native Linux dispatcher lifecycle",
+    "Financial exact oracle",
+    "Production deployment"
+  ],
+  "known_failures": [
+    "Paused cancellation acknowledged but backend never transitions until worker exists; UI disables paused cancellation",
+    "Historical Esplanade 0.2251 exact target differs from unchanged engine 0.22212539391032182"
+  ]
+}

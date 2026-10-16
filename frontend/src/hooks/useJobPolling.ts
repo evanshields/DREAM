@@ -15,11 +15,10 @@
 //   * Refs hold the latest onUpdate/onError so those callbacks changing does NOT restart polling.
 import { useEffect, useRef } from 'react';
 import { getJob, type JobView } from '../lib/api';
+import { shouldPollJob } from '../lib/jobProgress';
 
-// Statuses that mean the run is still in flight — keep polling. Everything else is terminal
-// for the poller (awaiting_input / awaiting_cp1 / completed / failed / cancelled), so we stop
-// after delivering that view and let the caller route it.
-export const RUNNING_STATUSES = new Set(['submitted', 'routing', 'analyzing', 'synthesizing']);
+// Paused and terminal states stop polling; callers retain the actual server status.
+export { RUNNING_STATUSES } from '../lib/jobProgress';
 
 const FIRST_DELAY_MS = 300;
 const FAST_INTERVAL_MS = 2500;
@@ -31,6 +30,7 @@ export function useJobPolling(
   jobId: string | null,
   onUpdate: (view: JobView) => void,
   onError?: (message: string) => void,
+  retryKey = 0,
 ): void {
   // Keep the latest callbacks in refs so re-renders that pass new function identities don't
   // retrigger the polling effect (which would reset the cadence + failure counter).
@@ -70,7 +70,7 @@ export function useJobPolling(
         if (stopped) return;
         failures = 0; // any success resets the tolerance window.
         onUpdateRef.current(view); // deliver EVERY view, including the final one.
-        if (!RUNNING_STATUSES.has(view.status)) {
+        if (!shouldPollJob(view)) {
           stop(); // terminal for the poller — the caller routes it from here.
           return;
         }
@@ -85,7 +85,7 @@ export function useJobPolling(
         failures += 1;
         if (failures >= MAX_CONSECUTIVE_FAILURES) {
           const msg = err instanceof Error ? err.message : String(err);
-          onErrorRef.current?.(`Lost contact with the underwrite run: ${msg}`);
+          onErrorRef.current?.(`Lost contact with the underwrite run: ${msg}. The run may still be active. Refresh status to reconnect.`);
           stop();
           return;
         }
@@ -97,5 +97,5 @@ export function useJobPolling(
     schedule(FIRST_DELAY_MS); // first tick is near-immediate.
 
     return stop; // cleanup on unmount / jobId change.
-  }, [jobId]);
+  }, [jobId, retryKey]);
 }
