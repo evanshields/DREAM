@@ -1,5 +1,5 @@
-import { useState, useRef, useCallback } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useState, useRef, useCallback, useEffect } from 'react';
+import { Link, useNavigate } from 'react-router-dom';
 import {
   Rocket,
   Loader2,
@@ -26,7 +26,8 @@ import {
   type IntakeResponse,
 } from '../lib/api';
 import { Card, Button, Input, Badge } from '../components/ui';
-import { useJobPolling, RUNNING_STATUSES } from '../hooks/useJobPolling';
+import { useJobPolling } from '../hooks/useJobPolling';
+import { isCancellationPending, isKnownJobStatus, mergeJobView, requestJobCancellation, runDestination, RUNNING_STATUSES } from '../lib/jobProgress';
 
 type Stage = 'intake' | 'running' | 'questions' | 'failed';
 
@@ -108,7 +109,16 @@ export function Underwrite() {
   const [job, setJob] = useState<JobView | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  const abortRef = useRef<AbortController | null>(null);
+  const [cancelling, setCancelling] = useState(false);
+  const [pollRetry, setPollRetry] = useState(0);
+  const [notice, setNotice] = useState<string | null>(null);
+  const currentJob = useRef<JobView | null>(null);
+  const mounted = useRef(true);
+  const cancelController = useRef<AbortController | null>(null);
+  useEffect(() => {
+    mounted.current = true;
+    return () => { mounted.current = false; cancelController.current?.abort(); };
+  }, []);
 
   // document intake — extracted text rides as deal_docs.uploaded_doc on submit
   const [uploadedDoc, setUploadedDoc] = useState<UploadedDoc | null>(null);
@@ -211,28 +221,34 @@ export function Underwrite() {
 
   // route a returned job view to the right stage / navigation.
   const applyJob = useCallback(
-    (view: JobView) => {
+    (incoming: JobView) => {
+      if (!mounted.current) return;
+      const view = mergeJobView(currentJob.current, incoming);
+      currentJob.current = view;
       setJob(view);
-      if (view.status === 'awaiting_cp1' || view.status === 'completed') {
+      setError(null);
+      const destination = runDestination(view);
+      if (destination === 'review') {
         // CP-1 review lives on the deal detail screen — carry the full job view so it can render
         // gates + open questions + headline immediately (no single-deal GET endpoint by contract).
         navigate(`/deal/${encodeURIComponent(view.deal_id)}`, { replace: true, state: { job: view } });
         return;
       }
-      if (view.status === 'failed') {
+      if (destination === 'failed') {
         setStage('failed');
         return;
       }
-      if (view.status === 'awaiting_input') {
+      if (destination === 'questions') {
         setStage('questions');
         return;
       }
-      if (RUNNING_STATUSES.has(view.status)) {
+      if (destination === 'running') {
         setStage('running');
         return;
       }
       // cancelled or anything else → back to intake with a note.
       setStage('intake');
+      if (view.status === 'cancelled') setNotice('The server confirmed that the run was cancelled.');
     },
     [navigate],
   );
@@ -242,14 +258,18 @@ export function Underwrite() {
   // stage; it delivers every view to applyJob (which routes each status) and stops itself once the
   // job leaves a running status (awaiting_input / awaiting_cp1 / failed / cancelled).
   useJobPolling(
-    stage === 'running' && job ? job.job_id : null,
+    stage === 'running' && job && !cancelling ? job.job_id : null,
     applyJob,
     (msg) => setError(msg),
+    pollRetry,
   );
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
+    setNotice(null);
+    currentJob.current = null;
+    setJob(null);
     setBusy(true);
     setStage('running');
 
@@ -272,7 +292,6 @@ export function Underwrite() {
 
     const name = dealName.trim() || 'Untitled deal';
     const ctrl = new AbortController();
-    abortRef.current = ctrl;
 
     // One key per submit attempt — a retried/duplicated POST reuses the same job/deal
     // instead of spawning a duplicate underwrite (backend JobRecord.idempotency_key).
@@ -311,19 +330,25 @@ export function Underwrite() {
   };
 
   const handleCancel = async () => {
-    // Abort the in-flight submit/poll fetch, then flag the run for cancellation. job_id is now
-    // available immediately after submit (async mode), so this reaches the server even mid-run —
-    // cancel is cooperative: honored at the next phase checkpoint, not an instant kill.
-    abortRef.current?.abort();
-    if (job?.job_id) {
-      try {
-        await cancelJob(job.job_id);
-      } catch {
-        /* best-effort */
-      }
+    // Preserve the acknowledged run until the server reports the cancellation outcome.
+    // Polling pauses during this request and resumes with a fresh fetch afterwards.
+    if (!job || !RUNNING_STATUSES.has(job.status) || cancelling || isCancellationPending(job)) return;
+    setCancelling(true);
+    setError(null);
+    const controller = new AbortController();
+    cancelController.current = controller;
+    let timedOut = false;
+    const timer = window.setTimeout(() => { timedOut = true; controller.abort(); }, 15_000);
+    try {
+      await requestJobCancellation(job.job_id, cancelJob, applyJob, controller.signal);
+    } catch (err) {
+      if (!mounted.current) return;
+      if (err instanceof ApiError && err.status === 401) return;
+      setError(`Cancellation could not be confirmed: ${timedOut ? 'The request timed out' : err instanceof Error ? err.message : String(err)}. The run may still be active.`);
+    } finally {
+      window.clearTimeout(timer);
+      if (mounted.current) setCancelling(false);
     }
-    setStage('intake');
-    setBusy(false);
   };
 
   return (
@@ -343,6 +368,8 @@ export function Underwrite() {
           </div>
         </Card>
       )}
+
+      {notice && <Card className="p-4 border-teal/30 bg-teal-panel"><p className="text-sm text-slate" role="status">{notice}</p></Card>}
 
       {stage === 'intake' && (
         <>
@@ -378,10 +405,10 @@ export function Underwrite() {
         </>
       )}
 
-      {stage === 'running' && <RunningPanel job={job} onCancel={handleCancel} />}
+      {stage === 'running' && <RunningPanel job={job} cancelling={cancelling} onCancel={handleCancel} onRefresh={() => { setError(null); setPollRetry(n => n + 1); }} />}
 
       {stage === 'questions' && job && (
-        <QuestionsPanel job={job} onResolved={applyJob} onError={setError} onCancel={handleCancel} />
+        <QuestionsPanel job={job} cancelling={cancelling} onResolved={applyJob} onError={setError} onCancel={handleCancel} onRefresh={() => { setError(null); setStage('running'); setPollRetry(n => n + 1); }} />
       )}
 
       {stage === 'failed' && job && (
@@ -659,7 +686,7 @@ function IntakeForm(p: IntakeProps) {
           />
         </div>
 
-        <div className="flex items-center justify-between pt-2">
+        <div className="flex flex-wrap gap-3 items-center justify-between pt-2">
           <p className="text-xs text-slate/50">
             Leave a critical input blank and the analysts will ask for it.
           </p>
@@ -832,13 +859,16 @@ function EFBCriticalInputs({
 // ---------------------------------------------------------------------------
 // Running (synchronous long call) panel
 // ---------------------------------------------------------------------------
-function RunningPanel({ job, onCancel }: { job?: JobView | null; onCancel: () => void }) {
+function RunningPanel({ job, cancelling, onCancel, onRefresh }: { job?: JobView | null; cancelling: boolean; onCancel: () => void; onRefresh: () => void }) {
+  const cancellationPending = !!job && isCancellationPending(job);
   return (
     <Card className="p-10 flex flex-col items-center text-center">
       <div className="w-16 h-16 rounded-full bg-teal-panel flex items-center justify-center mb-5">
         <Loader2 className="w-8 h-8 text-teal animate-spin" />
       </div>
       <h3 className="font-head font-bold text-xl text-slate-near mb-2">Underwriting…</h3>
+      {cancellationPending && <p className="text-sm text-slate/70 mb-3" role="status" aria-live="polite">Cancellation requested. Waiting for the server to confirm the outcome. The run may still be active.</p>}
+      {job && !isKnownJobStatus(job) && <p className="text-sm text-danger mb-3" role="alert">The server returned an unrecognized run status. The outcome is unconfirmed. Refresh status or inspect the run in Pipeline.</p>}
       {job && (
         <Badge tone="teal" className="mb-3">
           {phaseLabel(job.phase)}
@@ -850,9 +880,10 @@ function RunningPanel({ job, onCancel }: { job?: JobView | null; onCancel: () =>
         minutes with a full deal package.
       </p>
       <p className="text-xs text-slate/40 mb-6">No LLM is used for any number once at CP-1.</p>
-      <Button variant="secondary" icon={Ban} onClick={onCancel}>
-        Cancel
+      <Button variant="secondary" icon={Ban} onClick={onCancel} disabled={!job || !RUNNING_STATUSES.has(job.status) || cancelling || cancellationPending}>
+        {!job ? 'Waiting for run acknowledgement' : cancellationPending ? 'Cancellation pending' : cancelling ? 'Requesting cancellation…' : 'Cancel'}
       </Button>
+      {job && <Button variant="ghost" onClick={onRefresh} disabled={cancelling}>Refresh status</Button>}
     </Card>
   );
 }
@@ -862,14 +893,18 @@ function RunningPanel({ job, onCancel }: { job?: JobView | null; onCancel: () =>
 // ---------------------------------------------------------------------------
 function QuestionsPanel({
   job,
+  cancelling,
   onResolved,
   onError,
   onCancel,
+  onRefresh,
 }: {
   job: JobView;
+  cancelling: boolean;
   onResolved: (v: JobView) => void;
   onError: (msg: string) => void;
   onCancel: () => void;
+  onRefresh: () => void;
 }) {
   const blocking = job.blocking_questions ?? [];
   const [answers, setAnswers] = useState<Record<string, string>>({});
@@ -888,6 +923,7 @@ function QuestionsPanel({
 
   const handleSubmitAll = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (cancelling || job.cancel_requested || submitting) return;
     setSubmitting(true);
     onError('');
     let last: JobView = job;
@@ -901,6 +937,7 @@ function QuestionsPanel({
     } catch (err) {
       if (err instanceof ApiError && err.status === 401) return;
       onError(err instanceof Error ? err.message : String(err));
+    } finally {
       setSubmitting(false);
     }
   };
@@ -919,6 +956,14 @@ function QuestionsPanel({
       </p>
 
       <form onSubmit={handleSubmitAll} className="space-y-5">
+        <p className="text-xs text-slate/60" role="status">
+          This run is paused; cancellation is unavailable until the server supports stopping paused runs.
+          {job.cancel_requested && ' A cancellation request is already recorded but has not been honored. Resume is blocked; inspect the run in Pipeline.'}
+        </p>
+        <div className="flex flex-wrap gap-3 items-center">
+          <Button type="button" variant="ghost" onClick={onRefresh} disabled={submitting || cancelling}>Refresh status</Button>
+          <Link to="/pipeline" className="text-sm text-teal underline">Back to Pipeline</Link>
+        </div>
         {blocking.map((q) => (
           <div key={q.id}>
             <label htmlFor={q.id} className="label">
@@ -958,13 +1003,13 @@ function QuestionsPanel({
         ))}
 
         <div className="flex items-center justify-between pt-2">
-          <Button type="button" variant="ghost" icon={Ban} onClick={onCancel}>
-            Cancel
+          <Button type="button" variant="ghost" icon={Ban} onClick={onCancel} disabled title="This paused run has no worker to honor a cancel request.">
+            Cancellation unavailable while paused
           </Button>
           <Button
             type="submit"
             icon={submitting ? undefined : ArrowRight}
-            disabled={!allAnswered || submitting}
+            disabled={!allAnswered || submitting || cancelling || job.cancel_requested}
           >
             {submitting ? (
               <>

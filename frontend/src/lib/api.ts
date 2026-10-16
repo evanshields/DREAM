@@ -288,8 +288,8 @@ export function answerJob(
   });
 }
 
-export function cancelJob(jobId: string): Promise<JobView> {
-  return request<JobView>(`/jobs/${encodeURIComponent(jobId)}/cancel`, { method: 'POST' });
+export function cancelJob(jobId: string, signal?: AbortSignal): Promise<JobView> {
+  return request<JobView>(`/jobs/${encodeURIComponent(jobId)}/cancel`, { method: 'POST', signal });
 }
 
 // ===========================================================================
