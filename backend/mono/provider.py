@@ -174,6 +174,8 @@ class MonoProvider:
                 result = {'result_id': native['identity']['calculation_id'], 'outputs': native['outputs'],
                           'output_metadata': native['output_metadata'], 'checks': dict(native['checks'], release_passed=True),
                           'artifact_sha256': native['identity']['workbook_sha256'], 'identity': native['identity'],
+                          'artifact_limitations': native.get('artifact_limitations', []),
+                          'raw_named_outputs': native.get('raw_named_outputs', native['outputs']),
                           '_native_receipt': str(terminal_path), '_artifact': native['artifact']}
         current = self.store.job(deal_id, job_id)
         if current['state'] not in ('queued', 'running'):
