@@ -16,14 +16,17 @@ const outputLabels: Record<string, string> = {
 
 function Output({ id, value, metadata }: { id: string; value: unknown; metadata: Record<string, unknown> }) {
   const applicability = asRecord(metadata.applicability);
+  const availability = asRecord(metadata.availability);
   const notApplicable = applicability.status === 'not_applicable';
+  const totalLoss = !notApplicable && availability.status === 'total_loss';
   return <div data-output-id={id} className="p-4 rounded-lg border border-slate/10 bg-white min-w-0">
     <p className="text-xs font-label uppercase tracking-wide text-slate/60 break-words">{typeof metadata.label === 'string' ? metadata.label : outputLabels[id] ?? id}</p>
-    <p className="text-xl tnum text-teal font-semibold mt-2 whitespace-pre-wrap break-words">{notApplicable ? 'Not applicable' : monoValue(value, metadata.unit)}</p>
+    <p className="text-xl tnum text-teal font-semibold mt-2 whitespace-pre-wrap break-words">{notApplicable ? 'Not applicable' : totalLoss ? monoText(availability.display_text) : monoValue(value, metadata.unit)}</p>
     <p className="text-xs mt-1 text-slate/60">Unit: {monoText(metadata.unit)}</p>
     {notApplicable && <div className="mt-2 text-xs text-slate/70 space-y-1"><p>{monoText(applicability.reason)}</p><p>Rule: {monoText(applicability.rule_id)}</p></div>}
-    {value === null && !notApplicable && <p className="text-xs mt-2 text-warn">No numeric value returned.</p>}
-    <details className="mt-3"><summary className="text-xs cursor-pointer text-teal">Output evidence</summary><div className="mt-2"><Evidence value={{...metadata, raw_value: value}} label={`Metadata for ${id}`} /></div></details>
+    {totalLoss && <p className="text-xs mt-2 text-warn">{monoText(availability.reason)}</p>}
+    {value === null && !notApplicable && !totalLoss && <p className="text-xs mt-2 text-warn">No numeric value returned.</p>}
+    <details className="mt-3"><summary className="text-xs cursor-pointer text-teal">Output evidence</summary><div className="mt-2"><Evidence value={{...metadata, displayed_value: value}} label={`Metadata for ${id}`} /></div></details>
   </div>;
 }
 
