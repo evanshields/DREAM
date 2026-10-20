@@ -12,9 +12,11 @@ Immutable staged revisions and trusted ledger snapshots are published through on
 
 A private queued dispatcher launches the fixed native runtime. It serializes Excel access, requests cancellation through the native job store and waits for cleanup. It does not terminate unrelated Excel instances. Native workbooks are saved with new names through isolated invisible Excel.
 
+The outer bridge requests cancellation after 22 minutes. A human cancellation or shutdown request starts the same 30-second cleanup grace immediately. If the bridge remains alive beyond that grace, the visible job fails and a durable dispatcher quarantine blocks new calculations. The dispatcher retains its lease while the bridge remains alive. It never terminates that parent while Excel cleanup is uncertain. Historical records remain readable after restart, but the quarantine is not cleared automatically. Before clearing it, an operator must verify the exact recorded bridge, native worker and owned Excel process have ended using their ownership receipts. A PID disappearing by itself is insufficient proof.
+
 ## Verification
 
-The final candidate passed 317 backend tests with one skipped live-provider test, TypeScript validation and the production build. The production build retains an advisory large-bundle warning. Calculator regression passed 2,392 tests with four documented skips. The portable calculator suite covers the new source vocabulary and authenticated ruling validation in its existing automated workflow.
+The current local remediation passed 342 backend tests with one skipped live-provider test. The preceding committed candidate also passed the remote backend checks, TypeScript validation and production build. The production build retains an advisory large-bundle warning. Calculator regression passed 2,392 tests with four documented skips. The portable calculator suite covers the new source vocabulary and authenticated ruling validation in its existing automated workflow.
 
 The [portable verification index](verification.json) binds the tested source identities, counts and private receipt names. Browser proof exercised a real authenticated calculation, cancellation, conflicting edits and exact display of 20 returned metric values. That proof identifies a historical calculator hash before the final audit-wording correction. The renewed native API proof records its own calculator identity separately. Astra independently recalculated four preserved cases and checked source hashes. These are Windows proofs, separate from portable automated tests.
 
