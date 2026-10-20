@@ -7,7 +7,7 @@
 // auth / me / deals / jobs are added here for the full app.
 
 export const API_BASE: string =
-  ((import.meta as { env?: { VITE_API_BASE?: string } })?.env?.VITE_API_BASE)?.replace(/\/$/, '') ||
+  import.meta.env.VITE_API_BASE?.replace(/\/$/, '') ||
   '/api';
 
 const TOKEN_KEY = 'dream_token';
@@ -44,7 +44,7 @@ export class ApiError extends Error {
   }
 }
 
-async function request<T>(
+export async function request<T>(
   path: string,
   opts: { method?: string; body?: unknown; signal?: AbortSignal; auth?: boolean } = {},
 ): Promise<T> {
@@ -84,6 +84,8 @@ async function request<T>(
   const text = await res.text();
   return (text ? JSON.parse(text) : undefined) as T;
 }
+
+export { request as apiRequest };
 
 // ===========================================================================
 // Auth + identity
