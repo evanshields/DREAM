@@ -11,6 +11,7 @@ import time
 import uuid
 
 from .revisions import now, read, write_new
+from store.mono_deal_store import MonoConflict
 
 
 class MonoProvider:
@@ -54,7 +55,12 @@ class MonoProvider:
             directory = self.config.data_root / 'bridge' / job_id
             directory.mkdir(exist_ok=True)
             (directory / 'cancel-requested').touch(exist_ok=True)
-            self.store.update_job(deal_id, job_id, {'cancel_requested': True, 'updated_at': now()})
+            try:
+                self.store.update_job(deal_id, job_id, {'cancel_requested': True, 'updated_at': now()})
+            except MonoConflict:
+                # A completed immutable job wins a late cancellation request.
+                if self.store.job(deal_id, job_id)['state'] in ('queued', 'running'):
+                    raise
         return self.store.job(deal_id, job_id)
 
     def close(self):
@@ -131,6 +137,8 @@ class MonoProvider:
         if current['state'] not in ('queued', 'running'):
             # A restarted process already marked this run interrupted. Preserve that outcome.
             return
+        if current.get('cancel_requested') or (directory / 'cancel-requested').exists():
+            state, result = 'cancelled', None
         self.store.update_job(deal_id, job_id, {'state': state, 'result': result, 'updated_at': now(),
             'finished_at': now(), 'elapsed_seconds': time.monotonic() - started,
             'diagnostics': native.get('diagnostics', []), 'warnings': native.get('warnings', [])})

@@ -220,7 +220,8 @@ class MonoDealStore:
             job = self._job(db, deal_id, job_id)
             if (current["revision"] != expected_revision or current.get("identity") != expected_identity
                     or job["revision"] != expected_revision or job.get("identity") != expected_identity
-                    or job["state"] not in _SUCCESS or not isinstance(job.get("result"), dict)):
+                    or job["state"] not in _SUCCESS or job.get('cancel_requested')
+                    or not isinstance(job.get("result"), dict)):
                 return False
             result = job["result"]
             if not result.get("result_id"):

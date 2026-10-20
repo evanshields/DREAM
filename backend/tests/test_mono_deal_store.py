@@ -198,6 +198,15 @@ def test_promote_requires_complete_receipt(store):
     assert not store.promote_result("fixture", "j1", 1, revision()["identity"])
 
 
+def test_cancel_request_cannot_be_promoted_if_native_completion_wins_terminal_write(store):
+    store.add_job('fixture', job())
+    store.update_job('fixture', 'j1', {'cancel_requested': True})
+    store.update_job('fixture', 'j1', {'state': 'complete', 'result': {'result_id': 'native-finished', 'outputs': {}}})
+    assert not store.promote_result('fixture', 'j1', 1, revision()['identity'])
+    assert store.current_result('fixture') is None
+    assert store.job('fixture', 'j1')['result']['result_id'] == 'native-finished'
+
+
 def test_gate_idempotency_history_and_scope(store):
     event = {"gate": "comps", "decision": "confirm", "revision": 1}
     assert store.record_gate("fixture", 1, event, "gate", "digest") == event

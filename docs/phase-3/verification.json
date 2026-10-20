@@ -1,0 +1,46 @@
+{
+  "scope": "Historical Phase3 engineering proof index before review corrections. Not final release acceptance.",
+  "tested_app_commit": "48cb625013f661ee8619e4ae8da4fdc440097b33",
+  "tested_calculator_commit": "340e67759e59cb9f9af1548989892d15703c19e1",
+  "tested_calculator_code_sha256": "84b5e0720de8a73f1df37cdd1f8dc94c8b1c34c54d755e57d3185861cda8b749",
+  "backend_tests": {
+    "passed": 317,
+    "skipped": 1
+  },
+  "calculator_tests": {
+    "passed": 2392,
+    "skipped": 4
+  },
+  "portable_junit_cases": 269,
+  "typescript": "pass",
+  "build": "pass",
+  "lead_native_receipt": "native-api-proof-002.json",
+  "browser_receipt": "browser-proof-001.json",
+  "independent_native_receipt": "astra-assessment-001/independent-native-recalc-01.json",
+  "independent_review": {
+    "model": "claude-opus-5-5",
+    "verdict": "changes required",
+    "execution": "read-only source review"
+  },
+  "astra_native": {
+    "cases": 4,
+    "check_rows_per_case": 48,
+    "worksheet_errors_per_case": 0,
+    "source_files_unchanged": 5
+  },
+  "selected_esplanade_baseline": {
+    "price": 37000000,
+    "version": "2026-09-16",
+    "sha256": "7b45b4996245a92bc647a245ba61c904e69264faf253320c1824f43784150d66",
+    "historical_checks_ref_errors": 12,
+    "exact_parity_proven": false
+  },
+  "corrections_pending": [
+    "unavailable acquisition IRR interpretation decision",
+    "ten-output Bond applicability proof renewal",
+    "final integrated proofs"
+  ],
+  "remote_calculator_run": 39424874204,
+  "overall_remote_conclusion": "failure, inherited publishing defects and one added local link to correct",
+  "native_proofs_require": "Authorized private Windows Excel runtime and source registrations. They are not portable CI evidence."
+}

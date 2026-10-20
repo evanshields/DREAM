@@ -16,12 +16,19 @@ A private queued dispatcher launches the fixed native runtime. It serializes Exc
 
 The final candidate passed 317 backend tests with one skipped live-provider test, TypeScript validation and the production build. The production build retains an advisory large-bundle warning. Calculator regression passed 2,392 tests with four documented skips. The portable calculator suite covers the new source vocabulary and authenticated ruling validation in its existing automated workflow.
 
-Detailed receipts are in the [local proof folder](C:/Users/evana/dream-work/models/_phase3). [Browser proof](C:/Users/evana/dream-work/models/_phase3/browser-proof-001.json) exercised a real authenticated calculation, cancellation, conflicting edits and exact display of 20 returned metric values. That proof identifies a historical calculator hash before the final audit-wording correction. The renewed native API proof records the current calculator identity separately. Do not combine their identities.
+The [portable verification index](verification.json) binds the tested source identities, counts and private receipt names. Browser proof exercised a real authenticated calculation, cancellation, conflicting edits and exact display of 20 returned metric values. That proof identifies a historical calculator hash before the final audit-wording correction. The renewed native API proof records its own calculator identity separately. Astra independently recalculated four preserved cases and checked source hashes. These are Windows proofs, separate from portable automated tests.
 
-No live judgment model, production service, real investment approval or publication was exercised. Synthetic engineering decisions are labeled fixtures. The selected Esplanade acceptance scenario is the latest $38.7 million underwriting. Available preserved human workbooks and the current Drive input specification contain $37 million. Exact parity with the selected scenario remains unproved. The [Esplanade amendment](C:/Users/evana/dream-work/mono/deals/_reviews/2026-10-18/headless-vision/PHASE-3-ESPLANADE-AMENDMENT.md) records that source gap.
+Claude Opus 5.5 completed read-only review and requires corrections. New authenticated Evan rulings need protection, percentage entry needs explicit scale, missing mapped fields need safe insertion and unavailable acquisition IRRs must not appear as valid zero returns. No live judgment model, production service, real investment approval or publication was exercised. Synthetic engineering decisions are labeled fixtures. Evan selected the September $37 million Esplanade workbook as the answer key. Exact parity is open and its historical Checks contain 12 broken references.
 
 ## Reproduce portable checks
 
 From the app worktree, run the full backend pytest suite with the existing app virtual environment, then run TypeScript no-emit and the frontend production build. Native tests need the separately configured Windows Excel runtime and private source registrations. The proof scripts are retained in the local proof folder and deliberately excluded from the runtime corpus.
 
-Independent Claude review and findings disposition are required before claiming engineering completion. Merge, deployment and real-deal gates remain separate approvals.
+Findings disposition and final corrected proofs are required before claiming engineering completion. Merge, deployment and real-deal gates remain separate approvals.
+
+
+## Automatic checks
+
+The [app workflow](../../.github/workflows/ci.yml) runs portable backend tests, TypeScript and the frontend build on pull requests. It uses the existing pinned application dependencies and pytest 9.0.2. Native Excel and private cross-repository integration proofs remain separate Windows evidence.
+
+The three GitHub-owned Actions are pinned to verified commit identities. They follow GitHub's [Python workflow guidance](https://docs.github.com/en/actions/tutorials/build-and-test-code/python) and [Node workflow guidance](https://docs.github.com/en/actions/tutorials/build-and-test-code/nodejs). The workflow has read-only repository permission, persists no checkout credential and uses no production secret.

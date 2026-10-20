@@ -19,7 +19,7 @@ function Output({ id, value, metadata }: { id: string; value: unknown; metadata:
   const notApplicable = applicability.status === 'not_applicable';
   return <div data-output-id={id} className="p-4 rounded-lg border border-slate/10 bg-white min-w-0">
     <p className="text-xs font-label uppercase tracking-wide text-slate/60 break-words">{typeof metadata.label === 'string' ? metadata.label : outputLabels[id] ?? id}</p>
-    <p className="text-xl tnum text-teal font-semibold mt-2 whitespace-pre-wrap break-words">{notApplicable && value === null ? 'Not applicable' : monoValue(value, metadata.unit)}</p>
+    <p className="text-xl tnum text-teal font-semibold mt-2 whitespace-pre-wrap break-words">{notApplicable ? 'Not applicable' : monoValue(value, metadata.unit)}</p>
     <p className="text-xs mt-1 text-slate/60">Unit: {monoText(metadata.unit)}</p>
     {notApplicable && <div className="mt-2 text-xs text-slate/70 space-y-1"><p>{monoText(applicability.reason)}</p><p>Rule: {monoText(applicability.rule_id)}</p></div>}
     {value === null && !notApplicable && <p className="text-xs mt-2 text-warn">No numeric value returned.</p>}

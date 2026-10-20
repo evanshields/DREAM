@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import copy
+from decimal import Decimal, DecimalException
 from datetime import datetime, timezone
 import json
 import math
@@ -29,6 +30,45 @@ def read(path):
     return read_json(path)
 
 
+def rate_input(entered):
+    if not isinstance(entered, str):
+        raise ValueError('Enter an explicit percentage such as 1% or an explicit ratio such as ratio:0.01')
+    text = entered.strip()
+    if text.endswith('%'):
+        raw, divisor = text[:-1], Decimal(100)
+    elif text.startswith('ratio:'):
+        raw, divisor = text[6:], Decimal(1)
+    else:
+        raise ValueError('Enter an explicit percentage such as 1% or an explicit ratio such as ratio:0.01')
+    try:
+        value = Decimal(raw.strip()) / divisor
+    except (DecimalException, ValueError) as exc:
+        raise ValueError('A finite explicit percentage or ratio is required') from exc
+    if not value.is_finite() or not math.isfinite(float(value)):
+        raise ValueError('A finite explicit percentage or ratio is required')
+    return float(value)
+
+
+def edit_prefill(value, unit):
+    if value is None:
+        return ''
+    if unit in ('%', 'rate') and isinstance(value, (int, float)) and not isinstance(value, bool):
+        return format(Decimal(str(value)) * Decimal(100), 'f') + '%'
+    return str(value)
+
+
+def assumption_for_edit(doc, entry):
+    field = next((a for a in doc['assumptions'] if a['id'] == entry['id']), None)
+    if field is None:
+        field = {'id': entry['id'], 'label': entry.get('label') or entry['id'], 'value': None,
+                 'unit': entry.get('unit'), 'source': {'type': 'default', 'detail': 'Mapped input absent from parent deal'},
+                 'changed_by': '', 'changed_at': '', 'note': 'This mapped input was absent from the parent deal. No default was assumed.'}
+        if entry.get('mono_cell'):
+            field['mono_cell'] = entry['mono_cell']
+        doc['assumptions'].append(field)
+    return field
+
+
 def normalize(entry, entered, unit):
     from tools.deal_file.readiness import _text_id
     from tools.mono_calc.adapters import safe_scalar
@@ -50,6 +90,8 @@ def normalize(entry, entered, unit):
         if not isinstance(entered, str) or not safe_scalar(entered):
             raise ValueError('A safe text value is required')
         return entered
+    if unit in ('%', 'rate'):
+        return rate_input(entered)
     if isinstance(entered, str):
         text = entered.strip()
         if not text:
@@ -161,13 +203,25 @@ class RevisionBuilder:
         source_root = Path(current['root'])
         doc = read(source_root / 'model-inputs/deal-file.json')
         bundle = read(source_root / 'model-inputs/source-bundle.json')
-        a = next(a for a in doc['assumptions'] if a['id'] == field_id)
-        if (a['source']['type'] == 'evan_override'
-            and actor['issuer'] + '|' + actor['subject'] not in self.config.evan_principals):
-            raise PermissionError('Existing Evan rulings require Evan-specific supersession authority')
+        a = assumption_for_edit(doc, mapping[field_id])
         ledger = read(current['trusted_rulings']['path']) if current.get('trusted_rulings') else {'format': 'dream-trusted-rulings-v2', 'records': []}
         records = ledger['records']
         prior = [r for r in records if (r['deal_id'], r['assumption_id']) == (doc['slug'], field_id)]
+        protected = a['source']['type'] == 'evan_override'
+        if a['source']['type'] == 'authenticated_human_override':
+            from tools.mono_calc.contracts import safe_file
+            from tools.mono_calc.sources import locate
+            from tools.mono_calc.rulings import resolve_ruling
+            claim = bundle['claims'].get(field_id)
+            source = next((s for s in bundle['sources'] if claim and s['id'] == claim.get('source_id')), None)
+            if not source or source['format'] != 'json':
+                raise ValueError('Existing authenticated decision evidence is unavailable')
+            artifact = read(safe_file(source_root, source['path']))
+            verified = resolve_ruling(ledger, doc, a, locate(artifact, claim['locator'], source['format']))
+            original_actor = verified['provenance']['event']['actor']
+            protected = original_actor['issuer'] + '|' + original_actor['subject'] in self.config.evan_principals
+        if protected and actor['issuer'] + '|' + actor['subject'] not in self.config.evan_principals:
+            raise PermissionError('Existing Evan rulings require Evan-specific supersession authority')
         event = {'format': 'dream-authenticated-decision-v1', 'decision_id': 'decision-' + uuid.uuid4().hex,
                  'deal_id': doc['slug'], 'assumption_id': field_id, 'old': a['value'], 'new': value, 'unit': a.get('unit'),
                  'reason': reason, 'actor': copy.deepcopy(actor), 'parent_revision': current['revision'],
@@ -181,6 +235,7 @@ class RevisionBuilder:
         a.update(value=value, source={'type': 'authenticated_human_override', 'detail': reason}, changed_by=actor['subject'],
                  changed_at=event['at'], bucket='B', supplied=True, applicability='applies')
         a.pop('missing_reason', None)
+        doc['updated'] = event['at']
         doc['history'].append({'id': field_id, 'old': event['old'], 'new': value, 'by': actor['subject'], 'at': event['at'], 'reason': reason})
         if validate(doc):
             raise ValueError('Edited deal does not satisfy the deal-file schema')
