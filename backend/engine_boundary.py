@@ -347,3 +347,8 @@ def run_underwrite(routing: str, inputs: Dict[str, object]) -> Dict[str, object]
                       if k in EFBDealInputs.__dataclass_fields__}
         return run_efb_underwrite(EFBDealInputs(**efb_fields))
     raise UnknownRoutingError(f"routing must be ACQ or EFB, got {routing!r}")
+
+
+def submit_mono_calculation(provider, deal_id, immutable_revision):
+    """Mono headlines come only from the pinned deterministic native provider."""
+    return provider.submit(deal_id, immutable_revision)
