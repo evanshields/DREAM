@@ -18,6 +18,7 @@ export interface MonoAssumption {
   group: string;
   label: string;
   value: MonoScalar;
+  edit_value?: string;
   unit: string;
   bucket: string;
   source: MonoRecord | null;

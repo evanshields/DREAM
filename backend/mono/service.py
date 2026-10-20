@@ -9,7 +9,7 @@ from fastapi import HTTPException
 from store.mono_deal_store import MonoDealStore, MonoConflict, MonoNotFound
 from .config import canonical_hash, digest
 from .provider import MonoProvider
-from .revisions import RevisionBuilder, now, read
+from .revisions import RevisionBuilder, now, read, edit_prefill
 
 
 def public(value):
@@ -108,7 +108,8 @@ class MonoService:
             source.update(locator=bundle.get('claims', {}).get(id_, {}).get('locator'),
                           evidence=prepared.get('evidence', {}).get(id_),
                           initially_recorded_value=initial.get(id_, {}).get('value'))
-            assumptions.append({**a, 'label': a.get('label') or entry.get('label') or id_, 'group': entry.get('group') or 'Other inputs',
+            assumptions.append({**a, 'edit_value': edit_prefill(a.get('value'), a.get('unit') or entry.get('unit')),
+                'label': a.get('label') or entry.get('label') or id_, 'group': entry.get('group') or 'Other inputs',
                 'unit': a.get('unit') or entry.get('unit') or '', 'verified_applicability': verified,
                 'source': source,
                 'missing_reasons': reasons or ([a['missing_reason']] if a.get('missing_reason') else []),
@@ -172,7 +173,10 @@ class MonoService:
         if not self.provider:
             raise HTTPException(503, 'Native calculator is not running')
         from engine_boundary import submit_mono_calculation
-        return submit_mono_calculation(self.provider, deal_id, record)
+        try:
+            return submit_mono_calculation(self.provider, deal_id, record)
+        except ValueError as exc:
+            raise HTTPException(409, {'code': 'stale_input', 'message': str(exc), 'current_revision': record['revision']})
 
     def job(self, deal_id, job_id, actor):
         record = self._record(deal_id, actor)

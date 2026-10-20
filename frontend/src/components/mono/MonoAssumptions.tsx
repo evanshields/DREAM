@@ -18,7 +18,7 @@ function AssumptionRow({ field, view, onSaved, onReread }: { field: MonoAssumpti
   const [requestFingerprint, setRequestFingerprint] = useState<string | null>(null);
 
   const start = () => {
-    setDraft(field.value === null || field.value === undefined ? '' : String(field.value));
+    setDraft(field.edit_value ?? (field.value === null || field.value === undefined ? '' : String(field.value)));
     setKind(field.value === null ? 'null' : typeof field.value === 'number' ? 'number' : typeof field.value === 'boolean' ? 'boolean' : 'text');
     setReason(''); setError(null); setConflict(false); setReviewedRevision(view.revision); setEditing(true);
     setRequestKey(null); setRequestFingerprint(null);
@@ -89,6 +89,7 @@ function AssumptionRow({ field, view, onSaved, onReread }: { field: MonoAssumpti
         <label className="text-sm">Entered value{kind === 'boolean' ? <select className="input mt-1" value={draft} onChange={(event) => setDraft(event.target.value)}><option value="true">true</option><option value="false">false</option></select> : <Input className="mt-1" aria-label={`New value for ${field.label}`} disabled={kind === 'null'} value={kind === 'null' ? 'null' : draft} onChange={(event) => setDraft(event.target.value)} />}</label>
       </div>
       <p className="text-xs text-slate/60">An empty text value, null and zero have different meanings. The server validates your entry in the recorded unit.</p>
+      {(field.unit === '%' || field.unit === 'rate') && <p className="text-xs text-slate/70">Enter a percentage with its sign, such as 1%, or an explicit ratio such as ratio:0.01. Bare numbers are rejected.</p>}
       <label className="block text-sm">Reason<textarea className="input mt-1" rows={2} value={reason} onChange={(event) => setReason(event.target.value)} /></label>
       {error && <p role="alert" className="text-sm text-danger">{error}</p>}
       {(conflict || changedUnderDraft) && <div className="space-y-2 border border-warn/30 rounded-lg p-3 text-sm"><p>Your entry is preserved. Current revision: {view.revision}. Current value: {monoText(field.value)}.</p><div className="flex flex-wrap gap-2"><Button variant="secondary" disabled={busy} onClick={() => { void reread(); }}>Reread latest revision</Button><Button variant="secondary" disabled={busy || !changedUnderDraft} onClick={() => { setReviewedRevision(view.revision); setConflict(false); setError(null); setRequestKey(null); setRequestFingerprint(null); }}>I reviewed revision {view.revision}</Button></div></div>}
