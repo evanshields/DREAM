@@ -40,13 +40,18 @@ class MonoProvider:
         self._thread = threading.Thread(target=self._work, name='dream-mono-app', daemon=True)
         self._thread.start()
 
-    def submit(self, deal_id, record):
+    def submit(self, deal_id, record, *, idempotency_key=None, request_digest=None):
         self.builder.verify(record)
         job = {'job_id': uuid.uuid4().hex, 'deal_id': deal_id, 'revision': record['revision'],
                'state': 'queued', 'created_at': now(), 'updated_at': now(), 'identity': copy.deepcopy(record['identity']),
                'elapsed_seconds': 0, 'diagnostics': [], 'warnings': [], 'result': None, 'is_current': False}
-        self.store.add_job(deal_id, job)
-        self._queue.put((deal_id, job['job_id'], copy.deepcopy(record)))
+        if idempotency_key is not None:
+            job, created = self.store.claim_calculation(deal_id, job, idempotency_key, request_digest)
+        else:
+            self.store.add_job(deal_id, job)
+            created = True
+        if created:
+            self._queue.put((deal_id, job['job_id'], copy.deepcopy(record)))
         return job
 
     def cancel(self, deal_id, job_id):

@@ -243,3 +243,32 @@ def test_missing_deal_is_not_empty_history(store):
     for method in (store.current, store.revisions, store.decisions, store.jobs, store.gates, store.gate_history, store.current_result):
         with pytest.raises(MonoNotFound):
             method("absent")
+
+
+def test_calculation_request_replays_latest_job_and_rejects_changed_actor_payload(store):
+    original, created = store.claim_calculation('fixture', job(), 'calculate-key', 'actor-and-payload')
+    assert created
+    store.update_job('fixture', original['job_id'], {'state': 'complete', 'result': {'result_id': 'finished'}})
+    replay, created = store.claim_calculation('fixture', job('duplicate'), 'calculate-key', 'actor-and-payload')
+    assert not created and replay['state'] == 'complete' and replay['job_id'] == original['job_id']
+    assert len(store.jobs('fixture')) == 1
+    with pytest.raises(MonoConflict):
+        store.claim_calculation('fixture', job('other'), 'calculate-key', 'changed-actor-or-payload')
+    store.commit_revision('fixture', 1, revision(2), decision(), 'edit', 'edit-digest')
+    replay, created = store.claim_calculation('fixture', job('another'), 'calculate-key', 'actor-and-payload')
+    assert not created and replay['job_id'] == original['job_id']
+    with pytest.raises(MonoConflict):
+        store.claim_calculation('fixture', job('stale'), 'new-key', 'new-request')
+
+
+def test_concurrent_calculation_replays_enqueue_only_one_job(store):
+    barrier = Barrier(2)
+    def submit(name):
+        peer = MonoDealStore(store.path)
+        barrier.wait()
+        return peer.claim_calculation('fixture', job(name), 'same-request', 'same-actor-and-payload')
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        results = list(pool.map(submit, ['first', 'second']))
+    assert sum(created for _, created in results) == 1
+    assert results[0][0]['job_id'] == results[1][0]['job_id']
+    assert len(store.jobs('fixture')) == 1

@@ -32,7 +32,7 @@ import math
 import os
 import sys
 from dataclasses import dataclass, field
-from decimal import Decimal
+from decimal import Decimal, DecimalException
 from typing import Dict, List, Optional
 
 # --- locate the vendored engine (single source of Decimal math) --------------
@@ -349,6 +349,31 @@ def run_underwrite(routing: str, inputs: Dict[str, object]) -> Dict[str, object]
     raise UnknownRoutingError(f"routing must be ACQ or EFB, got {routing!r}")
 
 
-def submit_mono_calculation(provider, deal_id, immutable_revision):
+def submit_mono_calculation(provider, deal_id, immutable_revision, **request_identity):
     """Mono headlines come only from the pinned deterministic native provider."""
-    return provider.submit(deal_id, immutable_revision)
+    return provider.submit(deal_id, immutable_revision, **request_identity)
+
+
+def normalize_mono_rate(entered):
+    """Explicit user rate scale crosses the existing numeric boundary once."""
+    if not isinstance(entered, str):
+        raise ValueError('Enter an explicit percentage such as 1% or an explicit ratio such as ratio:0.01')
+    text = entered.strip()
+    if text.endswith('%'):
+        raw, divisor = text[:-1], Decimal(100)
+    elif text.startswith('ratio:'):
+        raw, divisor = text[6:], Decimal(1)
+    else:
+        raise ValueError('Enter an explicit percentage such as 1% or an explicit ratio such as ratio:0.01')
+    try:
+        value = Decimal(raw.strip()) / divisor
+    except (DecimalException, ValueError) as exc:
+        raise ValueError('A finite explicit percentage or ratio is required') from exc
+    if not value.is_finite() or not math.isfinite(float(value)):
+        raise ValueError('A finite explicit percentage or ratio is required')
+    return f(value)
+
+
+def mono_rate_edit_text(value):
+    """Server-owned display conversion preserves the canonical rate on replay."""
+    return format(to_dec(value) * Decimal(100), 'f') + '%'

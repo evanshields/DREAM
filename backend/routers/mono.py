@@ -21,6 +21,10 @@ class EditRequest(RevisionRequest):
     idempotency_key: StrictStr = Field(min_length=1)
 
 
+class CalculateRequest(RevisionRequest):
+    idempotency_key: StrictStr = Field(min_length=1)
+
+
 class GateRequest(RevisionRequest):
     gate: Literal["comps", "go_no_go"]
     decision: Literal["confirm", "go", "no_go"]
@@ -46,7 +50,7 @@ def create_router(service, actor_dependency):
         return service.edit(deal_id, body.model_dump(), actor)
 
     @router.post("/{deal_id}/mono/calculations")
-    def calculate(deal_id: str, body: RevisionRequest, actor=Depends(actor_dependency)):
+    def calculate(deal_id: str, body: CalculateRequest, actor=Depends(actor_dependency)):
         return service.calculate(deal_id, body.model_dump(), actor)
 
     @router.get("/{deal_id}/mono/jobs/{job_id}")

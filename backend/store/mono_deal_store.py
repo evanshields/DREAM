@@ -185,6 +185,23 @@ class MonoDealStore:
             db.execute("INSERT INTO mono_jobs VALUES (?, ?, ?, ?)", (record["job_id"], deal_id, record["revision"], _json(record)))
             return record
 
+    def claim_calculation(self, deal_id, job_record, key, request_digest):
+        """Publish one job per exact actor/request key across app processes."""
+        record = json.loads(_json(job_record))
+        if record.get('deal_id', deal_id) != deal_id or not record.get('job_id') or record.get('state') != 'queued':
+            raise MonoConflict('A scoped queued calculation is required')
+        record['deal_id'] = deal_id
+        with self._connection(write=True) as db:
+            replay = self._replay(db, deal_id, key, 'calculate', request_digest)
+            if replay is not None:
+                return self._job(db, deal_id, replay['job_id']), False
+            current = self._current(db, deal_id)
+            if current['revision'] != record['revision'] or current.get('identity') != record.get('identity'):
+                raise MonoConflict('Calculation inputs changed before queue publication', current['revision'])
+            db.execute('INSERT INTO mono_jobs VALUES (?, ?, ?, ?)', (record['job_id'], deal_id, record['revision'], _json(record)))
+            self._remember(db, deal_id, key, 'calculate', request_digest, {'job_id': record['job_id']})
+            return record, True
+
     @staticmethod
     def _job(db, deal_id, job_id):
         record = _load(db.execute("SELECT record FROM mono_jobs WHERE deal_id=? AND job_id=?", (deal_id, job_id)).fetchone())

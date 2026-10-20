@@ -23,6 +23,8 @@ function Screen({ dealId }: { dealId: string }) {
   const requestVersion = useRef(0);
   const mounted = useRef(true);
   const loadController = useRef<AbortController | null>(null);
+  const calculationRequest = useRef<{ fingerprint: string; key: string } | null>(null);
+  const calculationInFlight = useRef(false);
 
   const accept = useCallback((next: MonoView) => {
     if (!mounted.current || next.deal_id !== dealId) return;
@@ -67,10 +69,17 @@ function Screen({ dealId }: { dealId: string }) {
   };
 
   const calculate = async () => {
-    if (!view) return;
+    if (!view || calculationInFlight.current) return;
+    calculationInFlight.current = true;
+    const revision = revisionOf(view);
+    const fingerprint = JSON.stringify(revision);
+    if (calculationRequest.current?.fingerprint !== fingerprint) {
+      calculationRequest.current = { fingerprint, key: crypto.randomUUID() };
+    }
     setCalculating(true); setActionError(null);
     try {
-      const job = await calculateMono(dealId, revisionOf(view));
+      const job = await calculateMono(dealId, { ...revision, idempotency_key: calculationRequest.current!.key });
+      calculationRequest.current = null;
       if (!mounted.current || job.deal_id !== dealId) return;
       setSelectedJob(job);
       // The job receipt is not a current result. Only the next validated deal
@@ -79,7 +88,7 @@ function Screen({ dealId }: { dealId: string }) {
     } catch (failure) {
       if (!mounted.current) return;
       setActionError(monoConflict(failure)?.message ?? monoError(failure));
-    } finally { if (mounted.current) setCalculating(false); }
+    } finally { calculationInFlight.current = false; if (mounted.current) setCalculating(false); }
   };
 
   if (!view) return <Card className="p-8" aria-busy={loading}>
