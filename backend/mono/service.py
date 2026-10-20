@@ -169,12 +169,22 @@ class MonoService:
 
     def calculate(self, deal_id, body, actor):
         record = self._record(deal_id, actor)
+        request_digest = canonical_hash({'request': body, 'actor': actor})
+        try:
+            replay = self.store.idempotent_result(deal_id, body['idempotency_key'], 'calculate', request_digest)
+        except MonoConflict as exc:
+            self._conflict(exc)
+        if replay is not None:
+            return self.job(deal_id, replay['job_id'], actor)
         self._expected(record, body)
         if not self.provider:
             raise HTTPException(503, 'Native calculator is not running')
         from engine_boundary import submit_mono_calculation
         try:
-            return submit_mono_calculation(self.provider, deal_id, record)
+            return submit_mono_calculation(self.provider, deal_id, record,
+                idempotency_key=body['idempotency_key'], request_digest=request_digest)
+        except MonoConflict as exc:
+            self._conflict(exc)
         except ValueError as exc:
             raise HTTPException(409, {'code': 'stale_input', 'message': str(exc), 'current_revision': record['revision']})
 

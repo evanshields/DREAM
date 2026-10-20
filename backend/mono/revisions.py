@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import copy
-from decimal import Decimal, DecimalException
 from datetime import datetime, timezone
 import json
 import math
@@ -31,29 +30,16 @@ def read(path):
 
 
 def rate_input(entered):
-    if not isinstance(entered, str):
-        raise ValueError('Enter an explicit percentage such as 1% or an explicit ratio such as ratio:0.01')
-    text = entered.strip()
-    if text.endswith('%'):
-        raw, divisor = text[:-1], Decimal(100)
-    elif text.startswith('ratio:'):
-        raw, divisor = text[6:], Decimal(1)
-    else:
-        raise ValueError('Enter an explicit percentage such as 1% or an explicit ratio such as ratio:0.01')
-    try:
-        value = Decimal(raw.strip()) / divisor
-    except (DecimalException, ValueError) as exc:
-        raise ValueError('A finite explicit percentage or ratio is required') from exc
-    if not value.is_finite() or not math.isfinite(float(value)):
-        raise ValueError('A finite explicit percentage or ratio is required')
-    return float(value)
+    from engine_boundary import normalize_mono_rate
+    return normalize_mono_rate(entered)
 
 
 def edit_prefill(value, unit):
     if value is None:
         return ''
     if unit in ('%', 'rate') and isinstance(value, (int, float)) and not isinstance(value, bool):
-        return format(Decimal(str(value)) * Decimal(100), 'f') + '%'
+        from engine_boundary import mono_rate_edit_text
+        return mono_rate_edit_text(value)
     return str(value)
 
 

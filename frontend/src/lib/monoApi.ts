@@ -87,6 +87,10 @@ export interface MonoEditRequest extends MonoRevisionRequest {
   idempotency_key: string;
 }
 
+export interface MonoCalculateRequest extends MonoRevisionRequest {
+  idempotency_key: string;
+}
+
 export interface MonoGateRequest extends MonoRevisionRequest {
   gate: 'comps' | 'go_no_go';
   decision: 'confirm' | 'go' | 'no_go';
@@ -101,7 +105,7 @@ export const getMonoDeal = (dealId: string, signal?: AbortSignal) =>
   apiRequest<MonoView>(root(dealId), { signal });
 export const editMonoAssumption = (dealId: string, body: MonoEditRequest, signal?: AbortSignal) =>
   apiRequest<MonoView>(`${root(dealId)}/edits`, { method: 'POST', body, signal });
-export const calculateMono = (dealId: string, body: MonoRevisionRequest, signal?: AbortSignal) =>
+export const calculateMono = (dealId: string, body: MonoCalculateRequest, signal?: AbortSignal) =>
   apiRequest<MonoJob>(`${root(dealId)}/calculations`, { method: 'POST', body, signal });
 export const getMonoJob = (dealId: string, jobId: string, signal?: AbortSignal) =>
   apiRequest<MonoJob>(`${root(dealId)}/jobs/${encodeURIComponent(jobId)}`, { signal });

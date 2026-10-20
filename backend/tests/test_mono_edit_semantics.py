@@ -1,6 +1,4 @@
 """Ambiguous rates and absent fields must not become silent financial changes."""
-from decimal import Decimal
-
 import pytest
 
 from mono.revisions import rate_input, edit_prefill, assumption_for_edit
@@ -22,7 +20,7 @@ def test_rate_prefill_roundtrips_and_does_not_show_stored_ratio_as_percent():
     for value in [.01, 0, -.05, 2, .0525, .0333333333333]:
         text = edit_prefill(value, '%')
         assert text.endswith('%')
-        assert Decimal(str(rate_input(text))) == Decimal(str(value))
+        assert rate_input(text) == value
     assert edit_prefill(None, '%') == ''
     assert edit_prefill(0, '$') == '0'
 

@@ -29,6 +29,7 @@ def setup():
 
 
 REVISION = {"expected_revision": 1, "expected_deal_sha256": "fixture-digest"}
+CALCULATE = {**REVISION, 'idempotency_key': 'calculation-request'}
 EDIT = {**REVISION, "field_id": "fixture", "entered_value": "0", "unit": "text", "reason": "Engineering fixture", "idempotency_key": "edit"}
 GATE = {**REVISION, "gate": "comps", "decision": "confirm", "reason": "Engineering fixture", "idempotency_key": "gate", "comps_sha256": "comps"}
 
@@ -36,7 +37,7 @@ GATE = {**REVISION, "gate": "comps", "decision": "confirm", "reason": "Engineeri
 @pytest.mark.parametrize("method,suffix,body,service_method", [
     ("get", "", None, "view"),
     ("post", "/edits", EDIT, "edit"),
-    ("post", "/calculations", REVISION, "calculate"),
+    ("post", "/calculations", CALCULATE, "calculate"),
     ("get", "/jobs/job", None, "job"),
     ("post", "/jobs/job/cancel", None, "cancel"),
     ("post", "/gates", GATE, "gate"),
