@@ -30,4 +30,4 @@ export interface Deal {
   image?: string;
 }
 
-export type ViewState = 'dashboard' | 'pipeline' | 'analysis' | 'intake';
+export type ViewState = 'dashboard' | 'pipeline' | 'analysis' | 'intake' | 'landing';
