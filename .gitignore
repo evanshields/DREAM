@@ -35,3 +35,7 @@ backend/.env
 
 # TS build info
 *.tsbuildinfo
+
+# sqlite journals
+dream_deals.db-shm
+dream_deals.db-wal

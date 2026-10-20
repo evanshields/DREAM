@@ -28,7 +28,9 @@ Full pytest suite green → `tsc --noEmit` + `npm run build` green → commit wi
 
 ## Parallel-agent preference
 
-When work can be divided into independent, well-bounded tasks, use Sol, Terra, Luna, and—when demonstrably sufficient—GPT-5.5 sub-agents in parallel to save time and primary-agent context. Match the model to the work: Sol for higher-risk architecture and final review, Terra for implementation, Luna for focused audits and fast verification, and GPT-5.5 for bounded work where it offers a practical speed or cost advantage. The primary agent remains responsible for reconciling results, enforcing this file's guardrails, and completing end-to-end validation. Do not split tightly coupled edits merely to create parallel activity.
+Follow the [approved shared Codex protocol](C:/Users/evana/.codex/AGENTS.md) for task planning, temporary teams, independent review and resource limits. Every task plan includes proposed agent assignments, expected outcomes, capability, effort, dependencies, acceptance checks and planned runs. Match models to the work and use parallel workers only for independent assignments where useful.
+
+The default task-wide ceiling is two extra model runs, counting implementation workers, second opinions, retries, replacements and any explicitly allocated nested calls. A larger ceiling needs approval in the plan. Do not treat multiple independent tasks as permission for an uncapped swarm. Lower project-specific limits remain in force. Planning a team does not authorize launching it. The lead agent inspects results and completes end-to-end verification.
 
 ## Repo boundaries
 
