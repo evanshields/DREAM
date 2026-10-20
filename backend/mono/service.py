@@ -32,6 +32,14 @@ class MonoService:
             except MonoNotFound:
                 self.store.register(deal_id, self.builder.initial(deal_id, registration))
         self.provider = MonoProvider(config, self.store, self.builder) if start_provider else None
+        from .publication_service import PublicationService
+        try:
+            self.publications = PublicationService(self, start_provider=start_provider)
+        except Exception:
+            if self.provider:
+                self.provider.close()
+                self.provider._thread.join(timeout=5)
+            raise
 
     def _record(self, deal_id, actor):
         if not self.config.permits(deal_id, actor):

@@ -67,6 +67,8 @@ async def lifespan(app: FastAPI):
     yield
     if _mono_service is not None and _mono_service.provider is not None:
         _mono_service.provider.close()
+    if _mono_service is not None:
+        _mono_service.publications.close()
     try:
         from jobs.queue import shutdown
         shutdown(wait=False)

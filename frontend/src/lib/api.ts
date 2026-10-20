@@ -46,7 +46,7 @@ export class ApiError extends Error {
 
 export async function request<T>(
   path: string,
-  opts: { method?: string; body?: unknown; signal?: AbortSignal; auth?: boolean } = {},
+  opts: { method?: string; body?: unknown; signal?: AbortSignal; auth?: boolean; responseType?: 'json' | 'blob' } = {},
 ): Promise<T> {
   const { method = 'GET', body, signal, auth = true } = opts;
   const token = getAuthToken();
@@ -79,6 +79,8 @@ export async function request<T>(
     }
     throw new ApiError(res.status, detail);
   }
+
+  if (opts.responseType === 'blob') return await res.blob() as T;
 
   // 204 / empty
   const text = await res.text();

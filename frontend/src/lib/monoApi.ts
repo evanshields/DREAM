@@ -114,6 +114,43 @@ export const cancelMonoJob = (dealId: string, jobId: string, signal?: AbortSigna
 export const recordMonoGate = (dealId: string, body: MonoGateRequest, signal?: AbortSignal) =>
   apiRequest<MonoView>(`${root(dealId)}/gates`, { method: 'POST', body, signal });
 
+export interface MonoPublicationJob {
+  job_id: string;
+  deal_id: string;
+  revision: number;
+  state: string;
+  created_at: string;
+  updated_at: string;
+  elapsed_seconds: number;
+  diagnostics: unknown[];
+  steps: string[];
+  is_current: boolean;
+  cancel_requested?: boolean;
+}
+
+export interface MonoPublications {
+  deal_id: string;
+  revision: number;
+  can_publish: boolean;
+  blocking_reasons: string[];
+  warnings: string[];
+  current: MonoPublicationJob | null;
+  jobs: MonoPublicationJob[];
+  external_distribution_authorized: boolean;
+}
+
+const publications = (dealId: string) => `${root(dealId)}/publications`;
+export const getMonoPublications = (dealId: string, signal?: AbortSignal) =>
+  apiRequest<MonoPublications>(publications(dealId), { signal });
+export const publishMono = (dealId: string, body: MonoCalculateRequest) =>
+  apiRequest<MonoPublicationJob>(publications(dealId), { method: 'POST', body });
+export const cancelMonoPublication = (dealId: string, jobId: string) =>
+  apiRequest<MonoPublicationJob>(`${publications(dealId)}/${encodeURIComponent(jobId)}/cancel`, { method: 'POST', body: {} });
+export type MonoDeliverable = 'package' | 'memo' | 'onepager' | 'deck' | 'workbook';
+export type MonoDownloadFormat = 'archive' | 'pdf' | 'editable' | 'workbook';
+export const downloadMonoPublication = (dealId: string, jobId: string, kind: MonoDeliverable, format: MonoDownloadFormat) =>
+  apiRequest<Blob>(`${publications(dealId)}/${encodeURIComponent(jobId)}/downloads/${kind}/${format}`, { responseType: 'blob' });
+
 export const revisionOf = (view: MonoView): MonoRevisionRequest => ({
   expected_revision: view.revision,
   expected_deal_sha256: view.identity.deal_sha256,

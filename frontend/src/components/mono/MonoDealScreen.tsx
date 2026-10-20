@@ -7,6 +7,7 @@ import { MonoAssumptions } from './MonoAssumptions';
 import { Details, ProblemList } from './MonoEvidence';
 import { MonoHumanReview, MonoNarrative } from './MonoHumanReview';
 import { MonoIdentityDetails, MonoResultView, MonoRunHistory } from './MonoResults';
+import { MonoPublications } from './MonoPublications';
 
 function activeJob(jobs: MonoJob[]): MonoJob | null {
   return jobs.filter((job) => !monoJobTerminal(job.state)).sort((a, b) => b.created_at.localeCompare(a.created_at))[0] ?? null;
@@ -126,6 +127,8 @@ function Screen({ dealId }: { dealId: string }) {
       ['Unique unverified fields', view.readiness.unverified_field_count],
       ['Diagnostic messages', view.readiness.diagnostic_count],
     ].map(([label, value]) => <div key={label} className="p-3 rounded-lg bg-offwhite"><p className="text-xs text-slate/60">{label}</p><p className="text-2xl tnum text-teal mt-1">{value}</p></div>)}</div><Details title={`Readiness diagnostics (${view.readiness.problems.length})`} open={!view.readiness.ready}><ProblemList values={view.readiness.problems} empty="No readiness diagnostics recorded." /></Details></Card>
+
+    <MonoPublications view={view} />
 
     <nav aria-label="Mono deal sections" className="flex gap-1 border-b border-slate/15 overflow-x-auto">{([
       ['assumptions', 'Assumptions'], ['review', 'Human review'], ['history', 'Calculation history'],

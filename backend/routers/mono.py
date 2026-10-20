@@ -65,4 +65,26 @@ def create_router(service, actor_dependency):
     def gate(deal_id: str, body: GateRequest, actor=Depends(actor_dependency)):
         return service.gate(deal_id, body.model_dump(exclude_none=True), actor)
 
+    @router.get("/{deal_id}/mono/publications")
+    def publications(deal_id: str, actor=Depends(actor_dependency)):
+        return service.publications.state(deal_id, actor)
+
+    @router.post("/{deal_id}/mono/publications")
+    def publish(deal_id: str, body: CalculateRequest, actor=Depends(actor_dependency)):
+        return service.publications.submit(deal_id, body.model_dump(), actor)
+
+    @router.get("/{deal_id}/mono/publications/{job_id}")
+    def publication_job(deal_id: str, job_id: str, actor=Depends(actor_dependency)):
+        return service.publications.job(deal_id, job_id, actor)
+
+    @router.post("/{deal_id}/mono/publications/{job_id}/cancel")
+    def cancel_publication(deal_id: str, job_id: str, body: EmptyRequest | None = None, actor=Depends(actor_dependency)):
+        return service.publications.cancel(deal_id, job_id, actor)
+
+    @router.get("/{deal_id}/mono/publications/{job_id}/downloads/{deliverable}/{variant}")
+    def publication_download(deal_id: str, job_id: str,
+            deliverable: Literal['package', 'memo', 'onepager', 'deck', 'workbook'],
+            variant: Literal['archive', 'pdf', 'editable', 'workbook'], actor=Depends(actor_dependency)):
+        return service.publications.download(deal_id, job_id, deliverable, variant, actor)
+
     return router
