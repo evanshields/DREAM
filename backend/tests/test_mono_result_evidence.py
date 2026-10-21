@@ -203,13 +203,15 @@ def saved_receipt(receipt, tmp_path, monkeypatch):
         pin_checks.append('live package checked')
         # This suite exercises orchestration. Shared reconstruction is tested in
         # the calculator's portable suite and the joint native Windows proofs.
-        return SimpleNamespace(validate_result_returns=lambda native, route: True)
+        return SimpleNamespace(validate_result_returns=lambda native, route: True,
+                               validate_investment_result=lambda native, route: True)
     config = SimpleNamespace(data_root=tmp_path, template=tmp_path / 'not-opened-template.xlsx',
         calculator_root=tmp_path, calculator_python=Path(sys.executable), map_path=tmp_path / 'not-read-map.json',
         capabilities=None, expected_code_sha256='code_sha256',
         load_calculator=load_calculator)
     monkeypatch.setitem(sys.modules, 'tools.mono_template.package', SimpleNamespace(inspect=lambda path: package))
     terminal = tmp_path / 'terminal.json'
+    native['investment_evidence'] = {}
     terminal.write_text(json.dumps(native), encoding='utf-8')
     return native, record, config, terminal, pin_checks
 
@@ -244,10 +246,44 @@ def test_verified_result_delegates_original_evidence_and_trusted_route_once(save
     def validator(actual,route):
         calls.append((actual,route))
         return True
-    config.load_calculator=lambda:SimpleNamespace(validate_result_returns=validator)
+    config.load_calculator=lambda:SimpleNamespace(validate_result_returns=validator,
+        validate_investment_result=lambda native, route: True)
     result=verified_result(native,record,config,terminal)
     assert calls==[(native,'ACQ')]
     assert result['checks']['return_audits_reconstructed'] is True
+
+
+@pytest.mark.parametrize('failure', ['missing', 'false', 'raises'])
+def test_verified_result_requires_seven_output_shared_audit(saved_receipt, failure):
+    native, record, config, terminal, pins = saved_receipt
+    def validator(actual, route):
+        if failure == 'raises':
+            raise ValueError('Synthetic failed seven-output reconstruction')
+        return False
+    methods = {'validate_result_returns': lambda actual, route: True}
+    if failure != 'missing':
+        methods['validate_investment_result'] = validator
+    config.load_calculator = lambda: SimpleNamespace(**methods)
+    with pytest.raises(ValueError):
+        verified_result(native, record, config, terminal)
+
+
+def test_verified_result_preserves_and_delegates_seven_output_evidence(saved_receipt):
+    native, record, config, terminal, pins = saved_receipt
+    native['investment_evidence'] = {'synthetic': {'marker': 'orchestration fixture'}}
+    terminal.write_text(json.dumps(native), encoding='utf-8')
+    calls = []
+    def validator(actual, route):
+        calls.append((actual, route))
+        return True
+    config.load_calculator = lambda: SimpleNamespace(
+        validate_result_returns=lambda actual, route: True,
+        validate_investment_result=validator)
+    result = verified_result(native, record, config, terminal)
+    assert calls == [(native, 'ACQ')]
+    assert result['checks']['investment_audits_reconstructed'] is True
+    native['investment_evidence']['synthetic']['marker'] = 'changed'
+    assert result['investment_evidence']['synthetic']['marker'] == 'orchestration fixture'
 
 
 @pytest.mark.parametrize('attack', ['outside_root', 'wrong_workbook_hash', 'wrong_receipt_content'])

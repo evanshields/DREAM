@@ -152,10 +152,12 @@ def verified_result(native, record, config, terminal_path, *, receipt_bytes=None
         receipt_bytes = Path(terminal_path).read_bytes()
     _require(json.loads(receipt_bytes) == native, 'receipt bytes differ from the validated content')
     checks = validate_evidence(native, record, inspect(config.template))
-    from engine_boundary import verify_mono_return_audits
+    from engine_boundary import verify_mono_return_audits, verify_mono_investment_audits
     route = next(a['value'] for a in record['doc_snapshot']['assumptions'] if a['id'] == 'deal_type')
     verify_mono_return_audits(calculator, native, route)
     checks['return_audits_reconstructed'] = True
+    verify_mono_investment_audits(calculator, native, route)
+    checks['investment_audits_reconstructed'] = True
     artifact = Path(native['artifact']).resolve(strict=True)
     _require(artifact.is_relative_to((config.data_root / 'calculations').resolve(strict=True)),
              'workbook is outside the private calculation root')
@@ -166,6 +168,7 @@ def verified_result(native, record, config, terminal_path, *, receipt_bytes=None
             'artifact_limitations': copy.deepcopy(native.get('artifact_limitations', [])),
             'raw_named_outputs': copy.deepcopy(native['raw_named_outputs']),
             'return_evidence': copy.deepcopy(native['return_evidence']),
+            'investment_evidence': copy.deepcopy(native['investment_evidence']),
             '_cleanup': copy.deepcopy(native['cleanup']),
             '_native_receipt': str(terminal_path),
             '_native_receipt_sha256': hashlib.sha256(receipt_bytes).hexdigest(),

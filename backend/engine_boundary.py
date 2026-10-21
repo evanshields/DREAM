@@ -361,6 +361,13 @@ def verify_mono_return_audits(calculator, native, route):
         raise ValueError('Pinned calculator did not verify complete native return audits')
 
 
+def verify_mono_investment_audits(calculator, native, route):
+    """Delegate the other seven investment definitions to the same pinned engine."""
+    validator = getattr(calculator, 'validate_investment_result', None)
+    if not callable(validator) or validator(native, route) is not True:
+        raise ValueError('Pinned calculator did not verify complete native investment audits')
+
+
 def normalize_mono_rate(entered):
     """Explicit user rate scale crosses the existing numeric boundary once."""
     if not isinstance(entered, str):
