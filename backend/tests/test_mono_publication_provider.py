@@ -97,7 +97,8 @@ def test_queued_cancellation_does_not_launch_or_open_native_resources(ready,tmp_
 
 
 @pytest.mark.parametrize('change',['none','revision','withdraw_review','cancel','last_instant_cancel',
-                                  'uncertain_cleanup','different_reopened_receipt','changed_native_receipt'])
+                                  'uncertain_cleanup','missing_cleanup','null_cleanup','unreadable_terminal',
+                                  'list_terminal','different_reopened_receipt','changed_native_receipt'])
 def test_completed_synthetic_worker_promotes_only_current_uncancelled_package(ready,tmp_path,monkeypatch,change):
     """Exercise the real queue, file verifier and store with a fake document worker."""
     import json
@@ -141,6 +142,17 @@ def test_completed_synthetic_worker_promotes_only_current_uncancelled_package(re
         copied['workbook_verification']['path']=str(directory/'package/verification.json')
         save(directory/'package/package.json',copied)
         save(directory/'terminal.json',{**copied,'cleanup_verified':change!='uncertain_cleanup'})
+        if change in ('missing_cleanup', 'null_cleanup'):
+            terminal = json.loads((directory/'terminal.json').read_text())
+            if change == 'missing_cleanup':
+                terminal.pop('cleanup_verified')
+            else:
+                terminal['cleanup_verified'] = None
+            save(directory/'terminal.json', terminal)
+        elif change == 'unreadable_terminal':
+            (directory/'terminal.json').write_text('{broken', encoding='utf-8')
+        elif change == 'list_terminal':
+            save(directory/'terminal.json', [])
         if change=='revision':
             store.deals.commit_revision('fixture',1,revision(2),{'synthetic':True},'edit','edit')
         elif change=='withdraw_review':
@@ -162,7 +174,8 @@ def test_completed_synthetic_worker_promotes_only_current_uncancelled_package(re
             assert time.monotonic()<deadline
             time.sleep(.01)
         actual = store.job('fixture',job['job_id'])
-        expected = 'failed' if change in ('uncertain_cleanup','different_reopened_receipt','changed_native_receipt') else 'cancelled' if 'cancel' in change else 'complete'
+        unverified = change in ('uncertain_cleanup','missing_cleanup','null_cleanup','unreadable_terminal','list_terminal')
+        expected = 'failed' if unverified or change in ('different_reopened_receipt','changed_native_receipt') else 'cancelled' if 'cancel' in change else 'complete'
         assert actual['state']==expected, actual['diagnostics']
         current = store.current('fixture')
         assert (current is not None)==(change=='none')
@@ -170,7 +183,7 @@ def test_completed_synthetic_worker_promotes_only_current_uncancelled_package(re
             assert current['job_id']==job['job_id']
         if 'cancel' in change:
             assert actual['package'] is None
-        if change=='uncertain_cleanup':
+        if unverified:
             assert (tmp_path/'dispatcher-quarantine.json').is_file() and actual['package'] is None
     finally:
         provider.close()

@@ -50,7 +50,7 @@ def fixture(root):
     save(root/'verification.json', {'policy':'mono-publication-extraction-v1',
         'identity':identity, 'all_sheet_errors':{'synthetic-sheet':0}})
     proof = entry('verification.json', 'private_audit', None)
-    record = {'state':'complete', 'preview':False, 'validation':{'passed':True}, 'identity':identity,
+    record = {'state':'complete', 'preview':False, 'cleanup_verified':True, 'validation':{'passed':True}, 'identity':identity,
         'projection_sha256':canonical_hash(projection), 'deliverables':deliverables, 'files':files,
         'audience':'internal_underwriting_package', 'external_distribution_authorized':False, 'artifact_root':'sources',
         'workbook_verification':{'path':str(root/'verification.json'), 'sha256':proof['sha256']}}

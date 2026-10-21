@@ -42,6 +42,7 @@ def verify_package(root, *, identity, projection_sha256):
     try:
         record = json.loads(output_file(root, 'package.json').read_text(encoding='utf-8'))
         if (record.get('state') != 'complete' or record.get('preview') is not False
+                or record.get('cleanup_verified') is not True
                 or record.get('validation', {}).get('passed') is not True
                 or record.get('identity') != identity
                 or record.get('projection_sha256') != projection_sha256

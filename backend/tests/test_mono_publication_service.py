@@ -59,6 +59,9 @@ def setup(ready, tmp_path, monkeypatch):
             if getattr(self, 'package_receipt', None):
                 job['_publication_identity']=self.package_receipt['identity']
                 job['identity']['projection_sha256']=self.package_receipt['projection_sha256']
+                job['_native_receipt'] = str(tmp_path/'native-receipt.json')
+                from mono.config import digest
+                job['_native_receipt_sha256'] = digest(job['_native_receipt'])
             actual, created = service.store.claim(deal_id, job, key, request_digest)
             count.append(created)
             return actual
@@ -116,6 +119,20 @@ def complete(setup):
     root = mono.config.data_root/'publications'/job_id/'package'
     root.parent.mkdir(parents=True)
     receipt = package_fixture(root)
+    from mono.config import digest
+    from test_mono_publication_files import save, repack
+    import json
+    native = mono.config.data_root/'native-receipt.json'
+    native.write_text('{"synthetic_native_receipt":true}', encoding='utf-8')
+    proof_path = root/'verification.json'
+    proof = json.loads(proof_path.read_text())
+    proof['receipt_sha256'] = digest(native)
+    save(proof_path, proof)
+    for entry in receipt['files']:
+        if entry['path'] == 'verification.json':
+            entry['sha256'] = digest(proof_path)
+    receipt['workbook_verification']['sha256'] = digest(proof_path)
+    repack(root, receipt)
     service.provider.package_receipt = receipt
     public = service.submit('fixture', BODY, ACTOR)
     assert public['job_id']==job_id
@@ -140,6 +157,39 @@ def test_complete_files_download_only_through_current_scoped_package(setup):
     with pytest.raises(HTTPException) as historical:
         service.download('fixture',job_id,'memo','pdf',ACTOR)
     assert historical.value.status_code==409
+
+
+@pytest.mark.parametrize('change', ['native_receipt', 'reopened_binding', 'missing_cleanup', 'null_cleanup'])
+def test_later_fixed_package_use_rechecks_native_binding_and_positive_cleanup(setup, change):
+    from mono.config import digest
+    from test_mono_publication_files import save, repack
+    import json
+    service, mono, _, _ = setup
+    job_id, root = complete(setup)
+    assert service.state('fixture', ACTOR)['current'] is not None
+    receipt = json.loads((root/'package.json').read_text())
+    if change == 'native_receipt':
+        (mono.config.data_root/'native-receipt.json').write_text('{"substituted":true}', encoding='utf-8')
+    elif change == 'reopened_binding':
+        proof_path = root/'verification.json'
+        proof = json.loads(proof_path.read_text())
+        proof['receipt_sha256'] = '0'*64
+        save(proof_path, proof)
+        for entry in receipt['files']:
+            if entry['path'] == 'verification.json':
+                entry['sha256'] = digest(proof_path)
+        receipt['workbook_verification']['sha256'] = digest(proof_path)
+        repack(root, receipt)
+    else:
+        if change == 'missing_cleanup':
+            receipt.pop('cleanup_verified')
+        else:
+            receipt['cleanup_verified'] = None
+        save(root/'package.json', receipt)
+    assert service.state('fixture', ACTOR)['current'] is None
+    with pytest.raises(HTTPException) as denied:
+        service.download('fixture', job_id, 'memo', 'pdf', ACTOR)
+    assert denied.value.status_code == 409
 
 
 def test_changed_output_and_withdrawn_review_invalidate_current_download(setup):

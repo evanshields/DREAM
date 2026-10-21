@@ -12,8 +12,7 @@ import uuid
 
 from store.mono_deal_store import MonoConflict
 from .config import canonical_hash, digest
-from .provider import MonoProvider, wait_for_bridge
-from .publication_files import verify_package
+from .provider import MonoProvider, wait_for_bridge, unsafe_root, unresolved_launches
 from .revisions import now, write_new
 
 
@@ -60,12 +59,14 @@ def registered_plan(config, registration, release):
 
 class PublicationProvider:
     _quarantine = MonoProvider._quarantine
+    _observe_bridge = MonoProvider._observe_bridge
 
     def __init__(self, config, store, builder):
         self.config, self.store, self.builder = config, store, builder
         self._queue = queue.Queue()
         self._active_job = None
         self._closed = threading.Event()
+        self._unsafe = unsafe_root(config.data_root)
         self._quarantine_path = config.data_root/'dispatcher-quarantine.json'
         self._lease = (config.data_root/'publication-dispatcher.lock').open('a+b')
         self._lease.seek(0, 2)
@@ -84,14 +85,15 @@ class PublicationProvider:
             self._lease.close()
             raise RuntimeError('Another process owns this private publisher') from error
         interrupted = self.store.recover_interrupted()
-        if interrupted:
+        unmatched = unresolved_launches(config.data_root)
+        if interrupted or unmatched:
             self._quarantine('Publisher restart found interrupted jobs. Owned Office cleanup must be verified.',
-                             kind='publication', jobs=interrupted)
+                             kind='publication', jobs=interrupted, unmatched_launches=unmatched)
         self._thread = threading.Thread(target=self._work, name='dream-publication', daemon=True)
         self._thread.start()
 
     def submit(self, deal_id, revision, registration, release, projection, *, key, request_digest):
-        if self._closed.is_set() or not self._thread.is_alive() or self._quarantine_path.exists():
+        if self._closed.is_set() or not self._thread.is_alive() or self._unsafe.is_set() or self._quarantine_path.exists():
             raise MonoConflict('Publishing is unavailable until owned-process cleanup is verified')
         self.builder.verify(revision)
         planned='source_plan' in registration
@@ -170,9 +172,9 @@ class PublicationProvider:
         directory = self.config.data_root/'publications'/job_id
         directory.mkdir(parents=True, exist_ok=True)
         if job.get('cancel_requested') or (directory/'cancel-requested').exists():
-            self.store.update(deal_id, job_id, {'state':'cancelled', 'updated_at':now()})
+            self.store.update(deal_id, job_id, {'state':'cancelled', 'updated_at':now(), 'finished_at':now()})
             return
-        if self._quarantine_path.exists():
+        if unsafe_root(self.config.data_root).is_set() or self._quarantine_path.exists():
             raise MonoConflict('Office cleanup is unverified')
         self.builder.verify(job['_revision_record'])
         release = job['identity']['release']
@@ -211,15 +213,6 @@ class PublicationProvider:
             process = subprocess.Popen([str(self.config.calculator_python), '-m', 'tools.mono_publish', str(directory)],
                 cwd=self.config.calculator_root, stdout=stdout, stderr=stderr,
                 creationflags=subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0)
-            try:
-                write_new(directory/'launch.json', {'job_id':job_id, 'bridge_pid':process.pid, 'recorded_at':now()})
-            except BaseException:
-                self._quarantine('Publisher launched but its launch receipt could not be saved.',
-                                 kind='publication', job_id=job_id, bridge_pid=process.pid)
-                (directory/'cancel-requested').touch(exist_ok=True)
-                wait_for_bridge(process, directory, lambda: True, lambda reason: None)
-                raise
-
             def quarantine(reason):
                 self._quarantine(reason, kind='publication', job_id=job_id, bridge_pid=process.pid)
                 current = self.store.job(deal_id, job_id)
@@ -243,16 +236,20 @@ class PublicationProvider:
                     if current['state'] in ('queued','running'):
                         self.store.update(deal_id,job_id,{'steps':[*job['steps'],*steps],'updated_at':now()})
                 return self._closed.is_set()
-            quarantined = wait_for_bridge(process, directory, closing, quarantine)
-            write_new(directory/'bridge-exit.json', {'job_id':job_id, 'bridge_pid':process.pid,
-                'recorded_at':now(), 'returncode':process.poll(), 'quarantined':quarantined})
+            quarantined = self._observe_bridge(process, directory, job_id, closing, quarantine, wait_for_bridge)
             if quarantined:
                 return
         if not (directory/'terminal.json').exists():
             quarantine('The document worker exited without a terminal receipt. Owned-process cleanup must be verified')
             return
-        terminal = read(directory/'terminal.json')
-        if terminal.get('cleanup_verified') is False:
+        try:
+            terminal = read(directory/'terminal.json')
+            if not isinstance(terminal, dict):
+                raise ValueError('Publication terminal receipt must be an object')
+        except (OSError, ValueError, TypeError):
+            quarantine('The document terminal receipt is unreadable. Owned-process cleanup must be verified')
+            return
+        if terminal.get('cleanup_verified') is not True:
             quarantine('The document exporter did not verify owned-process cleanup. New native work is blocked')
             return
         state = terminal['state']
@@ -262,15 +259,8 @@ class PublicationProvider:
                 raise ValueError('Original native calculation receipt changed during publication')
             self.builder.verify(job['_revision_record'])
             registered_plan(self.config, job['_registration'], release)
-            if planned:
-                from .publication_verification import verify_planned_package
-                verified=verify_planned_package(self.config,job,directory/'package')
-            else:
-                verified = verify_package(directory/'package', identity=job['_publication_identity'],
-                    projection_sha256=job['identity']['projection_sha256'])
-                proof = read(verified['workbook_verification']['path'])
-                if proof.get('receipt_sha256') != job['_native_receipt_sha256']:
-                    raise ValueError('Reopened workbook proof uses another native receipt')
+            from .publication_verification import verify_completed_package
+            verified = verify_completed_package(self.config, job, directory/'package')
             package = {'identity':job['identity'], 'validation':{'passed':True},
                 'projection_sha256':verified['projection_sha256'],
                 'deliverables':verified['deliverables'], '_receipt':verified, '_root':str(directory/'package')}

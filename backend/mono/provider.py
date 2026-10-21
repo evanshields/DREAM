@@ -15,26 +15,76 @@ from .revisions import now, write_new
 from store.mono_deal_store import MonoConflict
 
 
+_unsafe_roots = {}
+_unsafe_roots_lock = threading.Lock()
+
+
+def unsafe_root(root):
+    """Share a fail-closed memory latch even when disk writes are unavailable."""
+    key = str(Path(root).resolve())
+    with _unsafe_roots_lock:
+        return _unsafe_roots.setdefault(key, threading.Event())
+
+
+def unresolved_launches(root):
+    """Database terminal states do not resolve an unmatched native launch."""
+    unresolved = []
+    for parent in ('bridge', 'publications'):
+        for prelaunch in (Path(root) / parent).glob('*/prelaunch.json'):
+            try:
+                exited = json.loads(prelaunch.with_name('bridge-exit.json').read_bytes())
+                if not isinstance(exited, dict) or exited.get('quarantined') is not False:
+                    unresolved.append(str(prelaunch.parent))
+            except (OSError, ValueError, TypeError):
+                unresolved.append(str(prelaunch.parent))
+    return unresolved
+
+
+def drain_owned_bridge(process, *, sleep=time.sleep):
+    """An observation error cannot grant permission to release a live child."""
+    while True:
+        try:
+            if process.poll() is not None:
+                return
+        except BaseException:
+            pass
+        try:
+            sleep(0.2)
+        except BaseException:
+            # Keep ownership through an interrupted observation, including shutdown.
+            pass
+
+
 def wait_for_bridge(process, directory, closing, quarantine, *, timeout=1320,
                     cancel_grace=30, clock=time.monotonic, sleep=time.sleep):
     """Bound the visible job, retaining ownership while uncertain cleanup runs."""
     deadline = clock() + timeout
     cancel_started = None
     quarantined = False
-    while process.poll() is None:
-        current = clock()
-        if closing() or current >= deadline:
+    try:
+        while process.poll() is None:
+            current = clock()
+            if closing() or current >= deadline:
+                (directory / 'cancel-requested').touch(exist_ok=True)
+            if (directory / 'cancel-requested').exists():
+                if cancel_started is None:
+                    cancel_started = current
+                if current - cancel_started >= cancel_grace and not quarantined:
+                    quarantine('Calculator did not finish cancellation within its cleanup grace. '
+                               'This dispatcher is quarantined until owned-process cleanup is verified.')
+                    quarantined = True
+            sleep(0.2)
+    except BaseException:
+        try:
+            quarantine('Native ownership observation failed. Owned-process cleanup must be verified.')
+        except BaseException:
+            pass
+        try:
             (directory / 'cancel-requested').touch(exist_ok=True)
-        if (directory / 'cancel-requested').exists():
-            if cancel_started is None:
-                cancel_started = current
-            if current - cancel_started >= cancel_grace and not quarantined:
-                quarantine('Calculator did not finish cancellation within its cleanup grace. '
-                           'This dispatcher is quarantined until owned-process cleanup is verified.')
-                quarantined = True
-        # Retain the dispatcher lease until the actual parent process exits.
-        # An elapsed observation is never permission to terminate owned Excel.
-        sleep(0.2)
+        except BaseException:
+            pass
+        drain_owned_bridge(process, sleep=sleep)
+        raise
     return quarantined
 
 
@@ -44,6 +94,7 @@ class MonoProvider:
         self._queue = queue.Queue()
         self._active_job = None
         self._closed = threading.Event()
+        self._unsafe = unsafe_root(config.data_root)
         self._quarantine_path = config.data_root / 'dispatcher-quarantine.json'
         self._lease = (config.data_root / 'dispatcher.lock').open('a+b')
         self._lease.seek(0, 2)
@@ -63,16 +114,18 @@ class MonoProvider:
             raise RuntimeError('Another process owns this private Mono dispatcher') from exc
         # Previous process outcomes remain historical. Never blindly relaunch native jobs.
         interrupted = self.store.recover_interrupted()
-        if interrupted:
+        unmatched = unresolved_launches(config.data_root)
+        if interrupted or unmatched:
             self._quarantine('App restart found interrupted calculations. '
-                             'Owned native cleanup must be verified before new work.', jobs=interrupted)
+                             'Owned native cleanup must be verified before new work.', jobs=interrupted,
+                             unmatched_launches=unmatched)
         self._thread = threading.Thread(target=self._work, name='dream-mono-app', daemon=True)
         self._thread.start()
 
     def submit(self, deal_id, record, *, idempotency_key=None, request_digest=None):
         if self._closed.is_set() or not self._thread.is_alive():
             raise MonoConflict('Calculator dispatcher is unavailable. New calculations are blocked')
-        if self._quarantine_path.exists():
+        if self._unsafe.is_set() or self._quarantine_path.exists():
             raise MonoConflict('Calculator cleanup is unverified. New calculations are blocked')
         self.builder.verify(record)
         job = {'job_id': uuid.uuid4().hex, 'deal_id': deal_id, 'revision': record['revision'],
@@ -122,12 +175,47 @@ class MonoProvider:
             self._lease.close()
 
     def _quarantine(self, reason, **details):
+        # Set memory first. Failure to persist must not permit another dispatch.
+        unsafe_root(self.config.data_root).set()
         try:
             write_new(self._quarantine_path, dict(details, recorded_at=now(), reason=reason,
                                                  cleanup_verified=False))
         except FileExistsError:
             # Keep the first unresolved ownership record, including across restart.
             pass
+
+    def _observe_bridge(self, process, directory, job_id, closing, quarantine, wait):
+        """Own launch, observation failures and exit persistence as one operation."""
+        quarantined = True
+        try:
+            write_new(directory / 'launch.json', {'job_id': job_id, 'bridge_pid': process.pid,
+                                                  'recorded_at': now()})
+            quarantined = wait(process, directory, closing, quarantine)
+            return quarantined
+        except BaseException:
+            unsafe_root(self.config.data_root).set()
+            try:
+                self._quarantine('Native bridge observation failed. Cleanup remains unverified.',
+                                 job_id=job_id, bridge_pid=process.pid)
+            except BaseException:
+                pass
+            try:
+                (directory / 'cancel-requested').touch(exist_ok=True)
+            except BaseException:
+                pass
+            drain_owned_bridge(process)
+            raise
+        finally:
+            try:
+                write_new(directory / 'bridge-exit.json', {'job_id': job_id, 'bridge_pid': process.pid,
+                    'returncode': process.poll(), 'recorded_at': now(), 'quarantined': quarantined})
+            except BaseException:
+                unsafe_root(self.config.data_root).set()
+                try:
+                    self._quarantine('Native bridge exit receipt could not be saved.', job_id=job_id)
+                except BaseException:
+                    pass
+                raise
 
     def _dispatch(self):
         while not self._closed.is_set():
@@ -148,13 +236,13 @@ class MonoProvider:
             self._active_job = None
 
     def _run(self, deal_id, job_id, record):
-        if self._quarantine_path.exists():
+        if unsafe_root(self.config.data_root).is_set() or self._quarantine_path.exists():
             raise RuntimeError('Calculator cleanup is unverified. No new native job was started')
         self.builder.verify(record)
         directory = self.config.data_root / 'bridge' / job_id
         directory.mkdir(exist_ok=True)
         if (directory / 'cancel-requested').exists():
-            self.store.update_job(deal_id, job_id, {'state': 'cancelled', 'updated_at': now()})
+            self.store.update_job(deal_id, job_id, {'state': 'cancelled', 'updated_at': now(), 'finished_at': now()})
             return
         config = self.config
         registry = {'deals': {deal_id: record['root']}, 'output_root': str(config.data_root / 'calculations'),
@@ -176,16 +264,6 @@ class MonoProvider:
             process = subprocess.Popen([str(config.calculator_python), str(Path(__file__).with_name('native_bridge.py')), str(directory)],
                 cwd=config.calculator_root, stdout=stdout, stderr=stderr,
                 creationflags=subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0)
-            try:
-                write_new(directory / 'launch.json', {'job_id': job_id, 'bridge_pid': process.pid,
-                                                     'recorded_at': now()})
-            except BaseException:
-                self._quarantine('Native bridge launched but its launch receipt could not be saved.',
-                                 job_id=job_id, bridge_pid=process.pid)
-                # Preserve ownership until the actual child exits. Never kill Excel.
-                (directory / 'cancel-requested').touch(exist_ok=True)
-                wait_for_bridge(process, directory, lambda: True, lambda reason: None)
-                raise
             def quarantine(reason):
                 # Durable latch survives app restarts. Do not clear it merely
                 # because a PID later exits or a terminal receipt appears.
@@ -196,9 +274,8 @@ class MonoProvider:
                         'updated_at': now(), 'finished_at': now(),
                         'elapsed_seconds': time.monotonic() - started,
                         'diagnostics': [reason]})
-            quarantined = wait_for_bridge(process, directory, self._closed.is_set, quarantine)
-            write_new(directory / 'bridge-exit.json', {'job_id': job_id, 'bridge_pid': process.pid,
-                'returncode': process.poll(), 'recorded_at': now(), 'quarantined': quarantined})
+            quarantined = self._observe_bridge(process, directory, job_id, self._closed.is_set,
+                                              quarantine, wait_for_bridge)
             if quarantined:
                 return
         terminal_path = directory / 'terminal.json'
@@ -206,8 +283,15 @@ class MonoProvider:
             self._quarantine('Native bridge ended without a terminal receipt. Native cleanup is unverified.',
                              job_id=job_id, bridge_pid=process.pid)
             raise RuntimeError('Native bridge ended without an immutable terminal receipt. Inspect its local diagnostic log')
-        receipt_bytes = terminal_path.read_bytes()
-        native = json.loads(receipt_bytes)
+        try:
+            receipt_bytes = terminal_path.read_bytes()
+            native = json.loads(receipt_bytes)
+            if not isinstance(native, dict):
+                raise ValueError('Calculator terminal receipt must be an object')
+        except (OSError, ValueError, TypeError):
+            self._quarantine('Calculator terminal receipt is unreadable. Native cleanup is unverified.',
+                             job_id=job_id, bridge_pid=process.pid)
+            raise
         current = self.store.job(deal_id, job_id)
         if current['state'] not in ('queued', 'running'):
             return

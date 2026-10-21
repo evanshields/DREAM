@@ -1,9 +1,36 @@
 """Independently derive completed documents from their frozen request plan."""
 from pathlib import Path
 from tempfile import TemporaryDirectory
+import hashlib
+import json
 
 from .config import canonical_hash,digest
 from .publication_files import verify_package,output_file
+
+
+def verify_native_binding(job, receipt):
+    """Repeat native receipt and positive cleanup checks on every package use."""
+    expected = job['_native_receipt_sha256']
+    if not isinstance(expected, str) or len(expected) != 64 or digest(job['_native_receipt']) != expected:
+        raise ValueError('Original native calculation receipt changed')
+    if receipt.get('cleanup_verified') is not True:
+        raise ValueError('Publication cleanup has not been verified')
+    verification = receipt['workbook_verification']
+    proof_bytes = Path(verification['path']).read_bytes()
+    if hashlib.sha256(proof_bytes).hexdigest() != verification['sha256']:
+        raise ValueError('Reopened workbook proof changed')
+    proof = json.loads(proof_bytes)
+    if not isinstance(proof, dict) or proof.get('receipt_sha256') != expected:
+        raise ValueError('Reopened workbook proof uses another native calculation receipt')
+
+
+def verify_completed_package(config, job, root):
+    if 'source_plan_sha256' in job['identity']:
+        return verify_planned_package(config, job, root)
+    receipt = verify_package(root, identity=job['_publication_identity'],
+                             projection_sha256=job['identity']['projection_sha256'])
+    verify_native_binding(job, receipt)
+    return receipt
 
 
 def verify_planned_package(config,job,root):
@@ -25,8 +52,7 @@ def verify_planned_package(config,job,root):
     if any(projection['identity'].get(key)!=value for key,value in expected.items()):
         raise ValueError('Compiled document belongs to another calculation')
     receipt=verify_package(root,identity=projection['identity'],projection_sha256=canonical_hash(projection))
-    if receipt.get('cleanup_verified') is not True:
-        raise ValueError('Publication cleanup has not been verified')
+    verify_native_binding(job, receipt)
     source_root=root/'sources'
     source=projection['artifacts'][plan['extraction_artifact_id']]
     extracted=artifact_path(source_root,source['path'])

@@ -10,7 +10,8 @@ from store.mono_deal_store import MonoConflict, MonoNotFound
 from store.mono_publish_store import MonoPublicationStore
 from .config import canonical_hash
 from .publication import PublicationProvider, registered_plan
-from .publication_files import verify_package, download_entry, output_file
+from .provider import unsafe_root
+from .publication_files import download_entry, output_file
 
 
 def public_job(job, *, current=False):
@@ -46,12 +47,8 @@ class PublicationService:
         expected_root = (self.config.data_root/'publications'/job['job_id']/'package').resolve(strict=True)
         if Path(job['package']['_root']).resolve(strict=True) != expected_root:
             raise ValueError('Publication package scope changed')
-        if 'source_plan_sha256' in job['identity']:
-            from .publication_verification import verify_planned_package
-            verified=verify_planned_package(self.config,job,expected_root)
-        else:
-            verified = verify_package(expected_root, identity=job['_publication_identity'],
-                projection_sha256=job['identity']['projection_sha256'])
+        from .publication_verification import verify_completed_package
+        verified = verify_completed_package(self.config, job, expected_root)
         return expected_root, verified
 
     def state(self, deal_id, actor):
@@ -77,7 +74,7 @@ class PublicationService:
                     warnings.append('The earlier package could not be verified. Build a new package from the reviewed result')
             if self.provider is None:
                 reasons.append('The private document publisher is not running')
-            elif self.provider._quarantine_path.exists():
+            elif unsafe_root(self.config.data_root).is_set() or self.provider._quarantine_path.exists():
                 reasons.append('Office cleanup must be verified before publishing')
         except (ValueError, OSError, KeyError, MonoConflict) as error:
             current = None
