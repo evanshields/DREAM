@@ -168,6 +168,47 @@ def test_restart_finds_unmatched_launch_even_if_database_already_failed(tmp_path
         provider._thread.join(timeout=5)
 
 
+def test_disk_failure_keeps_live_child_and_lease_owned_and_rejects_second_launch(tmp_path, monkeypatch):
+    store, record, config, builder = dispatcher_fixture(tmp_path)
+    stop, launched = Event(), Event()
+    starts = []
+    original_write = provider_module.write_new
+
+    def write(path, value):
+        if path.name in ('launch.json', 'dispatcher-quarantine.json'):
+            raise OSError('Simulated unavailable receipt storage')
+        return original_write(path, value)
+
+    def launch(*args, **kwargs):
+        starts.append(True)
+        launched.set()
+        return SimpleNamespace(pid=987654, poll=lambda: 0 if stop.is_set() else None)
+
+    monkeypatch.setattr(provider_module, 'write_new', write)
+    monkeypatch.setattr(provider_module.subprocess, 'Popen', launch)
+    provider = provider_module.MonoProvider(config, store, builder)
+    try:
+        job = provider.submit('fixture', record)
+        assert launched.wait(5)
+        deadline = time.monotonic() + 5
+        while not provider._unsafe.is_set():
+            assert time.monotonic() < deadline
+            time.sleep(.01)
+        assert not stop.is_set()
+        assert provider._thread.is_alive() and not provider._lease.closed
+        assert not (tmp_path/'dispatcher-quarantine.json').exists()
+        with pytest.raises(MonoConflict, match='cleanup'):
+            provider.submit('fixture', record)
+        assert len(starts) == 1
+        assert store.current_result('fixture') is None
+    finally:
+        provider.close()
+        stop.set()
+        provider._thread.join(timeout=5)
+    assert not provider._thread.is_alive() and provider._lease.closed
+    assert store.job('fixture', job['job_id'])['state'] == 'failed'
+
+
 def test_hung_bridge_fails_job_and_persists_restart_latch_without_killing_parent(tmp_path, monkeypatch):
     (tmp_path / 'bridge').mkdir()
     stop = Event()
