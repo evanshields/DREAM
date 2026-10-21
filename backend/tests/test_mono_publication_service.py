@@ -96,6 +96,20 @@ def test_authentication_and_missing_reviews_prevent_any_dispatch(setup):
     assert blocked.value.status_code==409 and calls==[]
 
 
+def test_source_plan_from_another_deal_cannot_appear_publishable_or_dispatch(setup, monkeypatch):
+    service, mono, calls, _ = setup
+    mono.config.registrations['fixture']['publication'] = {'source_plan':'synthetic-v2-plan'}
+    monkeypatch.setattr('mono.publication_service.registered_plan',
+                        lambda *args: {'deal_id':'different-deal','variants':{'ACQ':{}}})
+    state = service.state('fixture', ACTOR)
+    assert state['can_publish'] is False
+    assert any('different deal' in reason for reason in state['blocking_reasons'])
+    with pytest.raises(HTTPException) as blocked:
+        service.submit('fixture', BODY, ACTOR)
+    assert blocked.value.status_code == 409
+    assert calls == []
+
+
 def complete(setup):
     service, mono, _, _ = setup
     job_id = 'publication-0'

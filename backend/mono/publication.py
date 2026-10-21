@@ -35,7 +35,10 @@ def registered_plan(config, registration, release):
         source=read(registration['source_plan'])
         if plan_identity(source)!=registration['source_plan_sha256']:
             raise ValueError('Registered publication source plan changed')
-        return validate_source_plan(source,registration['artifact_root'])
+        source = validate_source_plan(source,registration['artifact_root'])
+        if any(variant['template_sha256'] != config.template_sha256 for variant in source['variants'].values()):
+            raise ValueError('Registered source plan uses another Mono template')
+        return source
     source = read(registration['projection'])
     if canonical_hash(source) != registration['projection_sha256']:
         raise ValueError('Registered publication plan changed')
@@ -177,7 +180,7 @@ class PublicationProvider:
             raise MonoConflict('Publication reviews changed before rendering')
         projection = registered_plan(self.config, job['_registration'], release)
         planned='source_plan_sha256' in job['identity']
-        if not planned and projection['identity']['deal_id'] != deal_id:
+        if projection.get('deal_id', projection.get('identity', {}).get('deal_id')) != deal_id:
             raise MonoConflict('Publication belongs to a different deal')
         if digest(job['_native_receipt']) != job['_native_receipt_sha256']:
             raise ValueError('Original native calculation receipt changed before publication')

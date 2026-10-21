@@ -66,7 +66,7 @@ class PublicationService:
                 raise ValueError('Publishing requires complete evidence and a current verified calculation')
             release = self.store.snapshot(deal_id)
             plan = registered_plan(self.config, registration, release)
-            if 'source_plan' not in registration and plan['identity']['deal_id'] != deal_id:
+            if plan.get('deal_id', plan.get('identity', {}).get('deal_id')) != deal_id:
                 raise ValueError('Publication sources belong to a different deal')
             current = self.store.current(deal_id)
             if current:
@@ -103,7 +103,7 @@ class PublicationService:
             release = self.store.snapshot(deal_id)
             registration = self._registration(deal_id)
             projection = registered_plan(self.config, registration, release)
-            if 'source_plan' not in registration and projection['identity']['deal_id'] != deal_id:
+            if projection.get('deal_id', projection.get('identity', {}).get('deal_id')) != deal_id:
                 raise ValueError('Publication sources belong to a different deal')
             job = self.provider.submit(deal_id, record, registration, release, projection,
                 key=body['idempotency_key'], request_digest=request_digest)
