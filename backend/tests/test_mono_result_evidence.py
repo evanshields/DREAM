@@ -239,6 +239,23 @@ def test_receipt_hash_describes_exact_validated_bytes_even_if_path_changes(saved
     assert result['_native_receipt_sha256'] != hashlib.sha256(terminal.read_bytes()).hexdigest()
 
 
+def test_current_result_is_invalidated_when_only_receipt_audit_changes(saved_receipt, monkeypatch):
+    from mono import service as service_module
+    native, record, config, terminal, pins = saved_receipt
+    result = verified_result(native, record, config, terminal)
+    job = {'revision': record['revision'], 'identity': record['identity'], 'result': result}
+    service = service_module.MonoService.__new__(service_module.MonoService)
+    service.store = SimpleNamespace(current_result=lambda deal: job)
+    service.builder = SimpleNamespace(verify=lambda record: None)
+    record['deal_id'] = 'fixture'
+    monkeypatch.setattr(service_module, 'read', lambda path: json.loads(Path(path).read_bytes()))
+    assert service._current_job(record) is job
+    modified = copy.deepcopy(native)
+    modified['return_evidence']['out_irr_lp']['cash_flow_audit']['positive_count'] = 0
+    terminal.write_text(json.dumps(modified), encoding='utf-8')
+    assert service._current_job(record) is None
+
+
 @pytest.mark.parametrize('reject', [False, True])
 def test_provider_stores_complete_verified_evidence_or_fails_without_promotion(saved_receipt, monkeypatch, reject):
     from mono import provider as provider_module

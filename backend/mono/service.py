@@ -86,6 +86,8 @@ class MonoService:
             result = job['result']
             if digest(result['_artifact']) != result['artifact_sha256']:
                 return None
+            if digest(result['_native_receipt']) != result.get('_native_receipt_sha256'):
+                return None
             receipt = read(result['_native_receipt'])
             if receipt['identity'] != result['identity'] or receipt['outputs'] != result['outputs']:
                 return None
