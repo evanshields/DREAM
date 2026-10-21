@@ -1,5 +1,6 @@
 """A publisher retains ownership through uncertain cleanup and durable cancellation."""
 import copy
+from pathlib import Path
 from threading import Event
 import time
 from types import SimpleNamespace
@@ -13,9 +14,12 @@ from test_mono_publish_store import ready
 
 
 def inputs(ready, tmp_path):
+    from mono.config import digest
     deals, publications = ready
     result = copy.deepcopy(deals.current_result('fixture')['result'])
     result.update(_artifact=str(tmp_path/'not-opened.xlsx'), _native_receipt=str(tmp_path/'not-read.json'))
+    Path(result['_native_receipt']).write_text('{"synthetic_native_receipt":true}', encoding='utf-8')
+    result['_native_receipt_sha256'] = digest(result['_native_receipt'])
     deals.add_job('fixture', {'job_id':'calc-private', 'revision':1,
         'identity':deals.current('fixture')['identity'], 'state':'queued'})
     deals.update_job('fixture','calc-private', {'state':'complete','result':result})
@@ -92,7 +96,8 @@ def test_queued_cancellation_does_not_launch_or_open_native_resources(ready,tmp_
     assert store.job('fixture',job['job_id'])['state']=='cancelled'
 
 
-@pytest.mark.parametrize('change',['none','revision','withdraw_review','cancel','last_instant_cancel','uncertain_cleanup'])
+@pytest.mark.parametrize('change',['none','revision','withdraw_review','cancel','last_instant_cancel',
+                                  'uncertain_cleanup','different_reopened_receipt','changed_native_receipt'])
 def test_completed_synthetic_worker_promotes_only_current_uncancelled_package(ready,tmp_path,monkeypatch,change):
     """Exercise the real queue, file verifier and store with a fake document worker."""
     import json
@@ -108,7 +113,8 @@ def test_completed_synthetic_worker_promotes_only_current_uncancelled_package(re
     projection = {'identity':receipt['identity'],'synthetic_boundary_only':True}
     save(source/'projection.json',projection)
     save(source/'verification.json',{'policy':'mono-publication-extraction-v1',
-        'identity':receipt['identity'],'all_sheet_errors':{'synthetic':0}})
+        'identity':receipt['identity'],'all_sheet_errors':{'synthetic':0},
+        'receipt_sha256':'0'*64 if change=='different_reopened_receipt' else digest(tmp_path/'not-read.json')})
     for entry in receipt['files']:
         if entry['path'] in ('projection.json','verification.json'):
             entry['sha256']=digest(source/entry['path'])
@@ -141,6 +147,8 @@ def test_completed_synthetic_worker_promotes_only_current_uncancelled_package(re
             gate(store.deals,'go_no_go','no_go','withdrawn')
         elif change=='cancel':
             provider.cancel('fixture',directory.name)
+        elif change=='changed_native_receipt':
+            (tmp_path/'not-read.json').write_text('{"changed":true}', encoding='utf-8')
         return SimpleNamespace(pid=987654,poll=lambda:0)
 
     from pathlib import Path
@@ -154,7 +162,7 @@ def test_completed_synthetic_worker_promotes_only_current_uncancelled_package(re
             assert time.monotonic()<deadline
             time.sleep(.01)
         actual = store.job('fixture',job['job_id'])
-        expected = 'failed' if change=='uncertain_cleanup' else 'cancelled' if 'cancel' in change else 'complete'
+        expected = 'failed' if change in ('uncertain_cleanup','different_reopened_receipt','changed_native_receipt') else 'cancelled' if 'cancel' in change else 'complete'
         assert actual['state']==expected, actual['diagnostics']
         current = store.current('fixture')
         assert (current is not None)==(change=='none')
@@ -168,3 +176,57 @@ def test_completed_synthetic_worker_promotes_only_current_uncancelled_package(re
         provider.close()
         provider._thread.join(timeout=5)
     assert not provider._thread.is_alive()
+
+
+def test_publisher_restart_blocks_new_work_after_interrupted_ownership(ready, tmp_path):
+    from test_mono_publish_store import publication
+    store, config, builder, registration, plan = inputs(ready, tmp_path)
+    prior = publication(store)
+    store.claim('fixture', prior, 'prior', 'prior-request')
+    provider = publication_module.PublicationProvider(config, store, builder)
+    try:
+        assert store.job('fixture', prior['job_id'])['state'] == 'interrupted'
+        assert (tmp_path/'dispatcher-quarantine.json').is_file()
+        with pytest.raises(MonoConflict, match='cleanup'):
+            provider.submit('fixture',store.deals.current('fixture'),registration,store.snapshot('fixture'),
+                            plan,key='new',request_digest='new')
+    finally:
+        provider.close()
+        provider._thread.join(timeout=5)
+
+
+def test_publisher_fatal_dispatcher_failure_is_visible_and_rejects_new_jobs(ready,tmp_path,monkeypatch):
+    store, config, builder, registration, plan = inputs(ready,tmp_path)
+
+    def crash(*args):
+        raise KeyboardInterrupt('Synthetic dispatcher failure')
+
+    monkeypatch.setattr(publication_module.PublicationProvider, '_run', crash)
+    provider = publication_module.PublicationProvider(config,store,builder)
+    try:
+        job = provider.submit('fixture',store.deals.current('fixture'),registration,store.snapshot('fixture'),
+                              plan,key='fatal',request_digest='fatal')
+        provider._thread.join(timeout=5)
+        assert not provider._thread.is_alive()
+        assert store.job('fixture',job['job_id'])['state'] == 'failed'
+        assert (tmp_path/'dispatcher-quarantine.json').is_file()
+        with pytest.raises(MonoConflict,match='cleanup'):
+            provider.submit('fixture',store.deals.current('fixture'),registration,store.snapshot('fixture'),
+                            plan,key='new',request_digest='new')
+    finally:
+        provider.close()
+        provider._thread.join(timeout=5)
+
+
+def test_publication_rejects_receipt_changed_since_app_validation_before_queueing(ready,tmp_path):
+    store, config, builder, registration, plan = inputs(ready,tmp_path)
+    (tmp_path/'not-read.json').write_text('{"changed_after_validation":true}', encoding='utf-8')
+    provider = publication_module.PublicationProvider(config,store,builder)
+    try:
+        with pytest.raises(ValueError,match='evidence verified by the app'):
+            provider.submit('fixture',store.deals.current('fixture'),registration,store.snapshot('fixture'),
+                            plan,key='wrong',request_digest='wrong')
+        assert store.jobs('fixture') == []
+    finally:
+        provider.close()
+        provider._thread.join(timeout=5)

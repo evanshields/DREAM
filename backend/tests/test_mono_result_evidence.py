@@ -1,10 +1,16 @@
 """Adversarial checks for calculation evidence at the app boundary."""
 import copy
+import hashlib
+import json
+import sys
+import time
+from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
 from mono.verification import (
-    BOND_RULE, INVESTMENT_OUTPUTS, IRR_OUTPUTS, RETURN_RULE, validate_evidence,
+    BOND_RULE, INVESTMENT_OUTPUTS, IRR_OUTPUTS, RETURN_RULE, validate_evidence, verified_result,
 )
 
 
@@ -172,3 +178,110 @@ def test_loss_checks_after_all_evidence_copies_agree(receipt, attack):
     sync_return(native)
     with pytest.raises(ValueError, match='invalid acquisition return cannot be released as a loss'):
         validate_evidence(native, record, package)
+
+
+@pytest.fixture
+def saved_receipt(receipt, tmp_path, monkeypatch):
+    native, record, package = receipt
+    calculations = tmp_path / 'calculations'
+    calculations.mkdir()
+    (tmp_path / 'bridge').mkdir()
+    artifact = calculations / 'disposable-evidence.xlsx'
+    artifact.write_bytes(b'Portable artifact identity fixture, not an Excel calculation')
+    native['artifact'] = str(artifact)
+    native['identity']['workbook_sha256'] = hashlib.sha256(artifact.read_bytes()).hexdigest()
+    record.update(revision=1, root=str(tmp_path))
+    pin_checks = []
+    config = SimpleNamespace(data_root=tmp_path, template=tmp_path / 'not-opened-template.xlsx',
+        calculator_root=tmp_path, calculator_python=Path(sys.executable), map_path=tmp_path / 'not-read-map.json',
+        capabilities=None, expected_code_sha256='code_sha256',
+        load_calculator=lambda: pin_checks.append('live package checked'))
+    monkeypatch.setitem(sys.modules, 'tools.mono_template.package', SimpleNamespace(inspect=lambda path: package))
+    terminal = tmp_path / 'terminal.json'
+    terminal.write_text(json.dumps(native), encoding='utf-8')
+    return native, record, config, terminal, pin_checks
+
+
+def test_verified_result_preserves_raw_and_interpreted_audit_and_reads_live_pins(saved_receipt):
+    native, record, config, terminal, pins = saved_receipt
+    result = verified_result(native, record, config, terminal)
+    assert pins == ['live package checked']
+    assert result['raw_named_outputs'] == native['raw_named_outputs']
+    assert result['return_evidence'] == native['return_evidence']
+    assert result['_native_receipt_sha256'] == hashlib.sha256(terminal.read_bytes()).hexdigest()
+    native['return_evidence']['out_irr_lp']['value'] = 5
+    assert result['return_evidence']['out_irr_lp']['value'] == 0
+
+
+@pytest.mark.parametrize('attack', ['outside_root', 'wrong_workbook_hash', 'wrong_receipt_content'])
+def test_verified_result_rejects_unbound_artifact_or_receipt(saved_receipt, tmp_path, attack):
+    native, record, config, terminal, pins = saved_receipt
+    if attack == 'outside_root':
+        outside = tmp_path / 'outside.xlsx'
+        outside.write_bytes(Path(native['artifact']).read_bytes())
+        native['artifact'] = str(outside)
+    elif attack == 'wrong_workbook_hash': native['identity']['workbook_sha256'] = 'wrong'
+    if attack != 'wrong_receipt_content': terminal.write_text(json.dumps(native), encoding='utf-8')
+    else: terminal.write_text('{}', encoding='utf-8')
+    expected = {'outside_root': 'outside the private calculation root',
+                'wrong_workbook_hash': 'saved workbook identity differs',
+                'wrong_receipt_content': 'receipt bytes differ'}[attack]
+    with pytest.raises(ValueError, match=expected):
+        verified_result(native, record, config, terminal)
+
+
+def test_receipt_hash_describes_exact_validated_bytes_even_if_path_changes(saved_receipt):
+    native, record, config, terminal, pins = saved_receipt
+    captured = terminal.read_bytes()
+    terminal.write_text('{}', encoding='utf-8')
+    result = verified_result(native, record, config, terminal, receipt_bytes=captured)
+    assert result['_native_receipt_sha256'] == hashlib.sha256(captured).hexdigest()
+    assert result['_native_receipt_sha256'] != hashlib.sha256(terminal.read_bytes()).hexdigest()
+
+
+@pytest.mark.parametrize('reject', [False, True])
+def test_provider_stores_complete_verified_evidence_or_fails_without_promotion(saved_receipt, monkeypatch, reject):
+    from mono import provider as provider_module
+    from store.mono_deal_store import MonoDealStore
+
+    native, record, config, terminal, pins = saved_receipt
+    store = MonoDealStore(config.data_root / 'provider.sqlite')
+    store.register('fixture', record)
+    if reject: native['checks']['errors']['Sheet'] = 1
+
+    class CompletedBridge:
+        pid = 987654
+
+        def __init__(self, args, **kwargs):
+            (Path(args[-1]) / 'terminal.json').write_text(json.dumps(native), encoding='utf-8')
+
+        def poll(self):
+            return 0
+
+    monkeypatch.setattr(provider_module.subprocess, 'Popen', CompletedBridge)
+    provider = provider_module.MonoProvider(config, store, SimpleNamespace(verify=lambda record: None))
+    try:
+        job = provider.submit('fixture', record)
+        deadline = time.monotonic() + 5
+        while store.job('fixture', job['job_id'])['state'] in ('queued', 'running'):
+            assert time.monotonic() < deadline
+            time.sleep(.01)
+        saved = store.job('fixture', job['job_id'])
+        directory = config.data_root / 'bridge' / job['job_id']
+        for receipt_name in ('prelaunch.json', 'launch.json', 'bridge-exit.json', 'terminal.json'):
+            assert (directory / receipt_name).is_file()
+        if reject:
+            assert saved['state'] == 'failed'
+            assert saved['result'] is None
+            assert saved['finished_at']
+            assert store.current_result('fixture') is None
+        else:
+            assert saved['state'] == 'complete'
+            result = saved['result']
+            assert result['raw_named_outputs'] == native['raw_named_outputs']
+            assert result['return_evidence'] == native['return_evidence']
+            assert result['_native_receipt_sha256'] == hashlib.sha256((directory / 'terminal.json').read_bytes()).hexdigest()
+            assert store.current_result('fixture')['job_id'] == job['job_id']
+    finally:
+        provider.close()
+        provider._thread.join(timeout=5)

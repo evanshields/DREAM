@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import copy
+import json
 import os
 from pathlib import Path
 import queue
@@ -10,7 +11,7 @@ import threading
 import time
 import uuid
 
-from .revisions import now, read, write_new
+from .revisions import now, write_new
 from store.mono_deal_store import MonoConflict
 
 
@@ -41,6 +42,7 @@ class MonoProvider:
     def __init__(self, config, store, builder):
         self.config, self.store, self.builder = config, store, builder
         self._queue = queue.Queue()
+        self._active_job = None
         self._closed = threading.Event()
         self._quarantine_path = config.data_root / 'dispatcher-quarantine.json'
         self._lease = (config.data_root / 'dispatcher.lock').open('a+b')
@@ -60,11 +62,16 @@ class MonoProvider:
             self._lease.close()
             raise RuntimeError('Another process owns this private Mono dispatcher') from exc
         # Previous process outcomes remain historical. Never blindly relaunch native jobs.
-        self.store.recover_interrupted()
+        interrupted = self.store.recover_interrupted()
+        if interrupted:
+            self._quarantine('App restart found interrupted calculations. '
+                             'Owned native cleanup must be verified before new work.', jobs=interrupted)
         self._thread = threading.Thread(target=self._work, name='dream-mono-app', daemon=True)
         self._thread.start()
 
     def submit(self, deal_id, record, *, idempotency_key=None, request_digest=None):
+        if self._closed.is_set() or not self._thread.is_alive():
+            raise MonoConflict('Calculator dispatcher is unavailable. New calculations are blocked')
         if self._quarantine_path.exists():
             raise MonoConflict('Calculator cleanup is unverified. New calculations are blocked')
         self.builder.verify(record)
@@ -101,8 +108,26 @@ class MonoProvider:
     def _work(self):
         try:
             self._dispatch()
+        except BaseException as exc:
+            self._quarantine('Calculator dispatcher stopped unexpectedly: ' + type(exc).__name__)
+            if self._active_job is not None:
+                deal_id, job_id = self._active_job
+                current = self.store.job(deal_id, job_id)
+                if current['state'] in ('queued', 'running'):
+                    self.store.update_job(deal_id, job_id, {'state': 'failed', 'result': None,
+                        'updated_at': now(), 'finished_at': now(),
+                        'diagnostics': ['Calculator dispatcher stopped unexpectedly: ' + type(exc).__name__]})
+            self.store.recover_interrupted()
         finally:
             self._lease.close()
+
+    def _quarantine(self, reason, **details):
+        try:
+            write_new(self._quarantine_path, dict(details, recorded_at=now(), reason=reason,
+                                                 cleanup_verified=False))
+        except FileExistsError:
+            # Keep the first unresolved ownership record, including across restart.
+            pass
 
     def _dispatch(self):
         while not self._closed.is_set():
@@ -110,13 +135,17 @@ class MonoProvider:
             if item is None:
                 return
             deal_id, job_id, record = item
+            self._active_job = (deal_id, job_id)
             try:
                 self._run(deal_id, job_id, record)
             except Exception as exc:
                 current = self.store.job(deal_id, job_id)
                 if current['state'] in ('queued', 'running'):
-                    self.store.update_job(deal_id, job_id, {'state': 'failed', 'result': None,
-                        'diagnostics': [type(exc).__name__ + ': ' + str(exc)], 'updated_at': now()})
+                    state = 'cancelled' if current.get('cancel_requested') else 'failed'
+                    self.store.update_job(deal_id, job_id, {'state': state, 'result': None,
+                        'diagnostics': [type(exc).__name__ + ': ' + str(exc)],
+                        'finished_at': now(), 'updated_at': now()})
+            self._active_job = None
 
     def _run(self, deal_id, job_id, record):
         if self._quarantine_path.exists():
@@ -141,28 +170,52 @@ class MonoProvider:
                         'expected_bundle_sha256': record['identity']['bundle_sha256']}})
         self.store.update_job(deal_id, job_id, {'state': 'running', 'started_at': now(), 'updated_at': now()})
         started = time.monotonic()
+        write_new(directory / 'prelaunch.json', {'job_id': job_id, 'identity': record['identity'],
+            'recorded_at': now(), 'expected_code_sha256': config.expected_code_sha256})
         with (directory / 'worker-stdout.log').open('x') as stdout, (directory / 'worker-stderr.log').open('x') as stderr:
             process = subprocess.Popen([str(config.calculator_python), str(Path(__file__).with_name('native_bridge.py')), str(directory)],
                 cwd=config.calculator_root, stdout=stdout, stderr=stderr,
                 creationflags=subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0)
+            try:
+                write_new(directory / 'launch.json', {'job_id': job_id, 'bridge_pid': process.pid,
+                                                     'recorded_at': now()})
+            except BaseException:
+                self._quarantine('Native bridge launched but its launch receipt could not be saved.',
+                                 job_id=job_id, bridge_pid=process.pid)
+                # Preserve ownership until the actual child exits. Never kill Excel.
+                (directory / 'cancel-requested').touch(exist_ok=True)
+                wait_for_bridge(process, directory, lambda: True, lambda reason: None)
+                raise
             def quarantine(reason):
                 # Durable latch survives app restarts. Do not clear it merely
                 # because a PID later exits or a terminal receipt appears.
-                write_new(self._quarantine_path, {'job_id': job_id, 'bridge_pid': process.pid,
-                    'recorded_at': now(), 'reason': reason,
-                    'cleanup_verified': False})
+                self._quarantine(reason, job_id=job_id, bridge_pid=process.pid)
                 current = self.store.job(deal_id, job_id)
                 if current['state'] in ('queued', 'running'):
                     self.store.update_job(deal_id, job_id, {'state': 'failed', 'result': None,
                         'updated_at': now(), 'finished_at': now(),
                         'elapsed_seconds': time.monotonic() - started,
                         'diagnostics': [reason]})
-            if wait_for_bridge(process, directory, self._closed.is_set, quarantine):
+            quarantined = wait_for_bridge(process, directory, self._closed.is_set, quarantine)
+            write_new(directory / 'bridge-exit.json', {'job_id': job_id, 'bridge_pid': process.pid,
+                'returncode': process.poll(), 'recorded_at': now(), 'quarantined': quarantined})
+            if quarantined:
                 return
         terminal_path = directory / 'terminal.json'
         if not terminal_path.exists():
+            self._quarantine('Native bridge ended without a terminal receipt. Native cleanup is unverified.',
+                             job_id=job_id, bridge_pid=process.pid)
             raise RuntimeError('Native bridge ended without an immutable terminal receipt. Inspect its local diagnostic log')
-        native = read(terminal_path)
+        receipt_bytes = terminal_path.read_bytes()
+        native = json.loads(receipt_bytes)
+        current = self.store.job(deal_id, job_id)
+        if current['state'] not in ('queued', 'running'):
+            return
+        if current.get('cancel_requested') or (directory / 'cancel-requested').exists():
+            self.store.update_job(deal_id, job_id, {'state': 'cancelled', 'result': None,
+                'updated_at': now(), 'finished_at': now(), 'elapsed_seconds': time.monotonic() - started,
+                'diagnostics': native.get('diagnostics', []), 'warnings': native.get('warnings', [])})
+            return
         state = native['state']
         result = None
         if state == 'complete':
@@ -172,7 +225,17 @@ class MonoProvider:
                 state = 'stale'
             if state == 'complete':
                 from .verification import verified_result
-                result = verified_result(native, record, config, terminal_path)
+                try:
+                    result = verified_result(native, record, config, terminal_path, receipt_bytes=receipt_bytes)
+                except ValueError:
+                    # A changed package is stale, while invalid evidence on the same
+                    # package remains a failed validation with its useful diagnostic.
+                    try:
+                        self.builder.verify(record)
+                    except ValueError:
+                        state = 'stale'
+                    if state != 'stale':
+                        raise
         current = self.store.job(deal_id, job_id)
         if current['state'] not in ('queued', 'running'):
             # A restarted process already marked this run interrupted. Preserve that outcome.

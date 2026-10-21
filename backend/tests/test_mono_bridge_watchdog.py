@@ -127,3 +127,74 @@ def test_hung_bridge_fails_job_and_persists_restart_latch_without_killing_parent
     finally:
         reopened.close()
         reopened._thread.join(timeout=5)
+
+
+def dispatcher_fixture(tmp_path):
+    (tmp_path / 'bridge').mkdir()
+    store = MonoDealStore(tmp_path / 'mono.sqlite')
+    record = {'revision': 1, 'identity': {'deal_sha256': 'fixture', 'bundle_sha256': 'bundle'},
+              'root': str(tmp_path)}
+    store.register('fixture', record)
+    config = SimpleNamespace(data_root=tmp_path, calculator_root=tmp_path,
+        calculator_python=tmp_path / 'not-executed', template=tmp_path / 'not-opened.xlsx',
+        map_path=tmp_path / 'not-read.json', capabilities=None, expected_code_sha256='fixture')
+    return store, record, config, SimpleNamespace(verify=lambda record: None)
+
+
+def test_restart_with_interrupted_job_quarantines_before_another_launch(tmp_path):
+    store, record, config, builder = dispatcher_fixture(tmp_path)
+    store.add_job('fixture', {'job_id': 'previous-launch', 'revision': 1,
+        'state': 'running', 'identity': record['identity'], 'result': None})
+    provider = provider_module.MonoProvider(config, store, builder)
+    try:
+        assert store.job('fixture', 'previous-launch')['state'] == 'interrupted'
+        assert (tmp_path / 'dispatcher-quarantine.json').is_file()
+        with pytest.raises(MonoConflict, match='cleanup'):
+            provider.submit('fixture', record)
+    finally:
+        provider.close()
+        provider._thread.join(timeout=5)
+
+
+def test_unexpected_dispatcher_death_is_visible_and_cannot_accept_more_jobs(tmp_path, monkeypatch):
+    store, record, config, builder = dispatcher_fixture(tmp_path)
+
+    def crash(*args):
+        raise KeyboardInterrupt('Portable simulated dispatcher death')
+
+    monkeypatch.setattr(provider_module.MonoProvider, '_run', crash)
+    provider = provider_module.MonoProvider(config, store, builder)
+    try:
+        job = provider.submit('fixture', record)
+        provider._thread.join(timeout=5)
+        assert not provider._thread.is_alive()
+        saved = store.job('fixture', job['job_id'])
+        assert saved['state'] == 'failed'
+        assert saved['result'] is None
+        assert saved['finished_at']
+        assert (tmp_path / 'dispatcher-quarantine.json').is_file()
+        with pytest.raises(MonoConflict, match='unavailable'):
+            provider.submit('fixture', record)
+    finally:
+        provider.close()
+        provider._thread.join(timeout=5)
+
+
+def test_bridge_exit_without_terminal_receipt_blocks_future_native_work(tmp_path, monkeypatch):
+    store, record, config, builder = dispatcher_fixture(tmp_path)
+    monkeypatch.setattr(provider_module.subprocess, 'Popen',
+                        lambda *args, **kwargs: SimpleNamespace(pid=987654, poll=lambda: 0))
+    provider = provider_module.MonoProvider(config, store, builder)
+    try:
+        job = provider.submit('fixture', record)
+        deadline = time.monotonic() + 5
+        while store.job('fixture', job['job_id'])['state'] in ('queued', 'running'):
+            assert time.monotonic() < deadline
+            time.sleep(.01)
+        assert store.job('fixture', job['job_id'])['state'] == 'failed'
+        assert (tmp_path / 'dispatcher-quarantine.json').is_file()
+        with pytest.raises(MonoConflict, match='cleanup'):
+            provider.submit('fixture', record)
+    finally:
+        provider.close()
+        provider._thread.join(timeout=5)

@@ -2,6 +2,8 @@
 from __future__ import annotations
 
 import copy
+import hashlib
+import json
 import math
 from pathlib import Path
 
@@ -37,6 +39,7 @@ def validate_evidence(native, record, package):
     This validates evidence and does not calculate financial outputs. Files and
     configuration pins are checked separately by verified_result.
     """
+    _require(isinstance(native, dict), 'receipt is malformed')
     _require(native.get('state') == 'complete' and native.get('diagnostics') == [],
              'receipt is not a successful completed calculation')
     identity = native.get('identity', {})
@@ -138,10 +141,14 @@ def validate_evidence(native, record, package):
     return dict(copy.deepcopy(checks), release_passed=True)
 
 
-def verified_result(native, record, config, terminal_path):
+def verified_result(native, record, config, terminal_path, *, receipt_bytes=None):
     from tools.mono_template.package import inspect
 
-    config.verify_pins(config.expected_code_sha256)
+    # Load and hash the actual installed package rather than comparing a pin to itself.
+    config.load_calculator()
+    if receipt_bytes is None:
+        receipt_bytes = Path(terminal_path).read_bytes()
+    _require(json.loads(receipt_bytes) == native, 'receipt bytes differ from the validated content')
     checks = validate_evidence(native, record, inspect(config.template))
     artifact = Path(native['artifact']).resolve(strict=True)
     _require(artifact.is_relative_to((config.data_root / 'calculations').resolve(strict=True)),
@@ -153,5 +160,6 @@ def verified_result(native, record, config, terminal_path):
             'artifact_limitations': copy.deepcopy(native.get('artifact_limitations', [])),
             'raw_named_outputs': copy.deepcopy(native['raw_named_outputs']),
             'return_evidence': copy.deepcopy(native['return_evidence']),
-            '_native_receipt': str(terminal_path), '_native_receipt_sha256': digest(terminal_path),
+            '_native_receipt': str(terminal_path),
+            '_native_receipt_sha256': hashlib.sha256(receipt_bytes).hexdigest(),
             '_artifact': str(artifact)}
