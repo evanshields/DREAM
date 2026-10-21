@@ -24,7 +24,9 @@ def receipt():
     raw['out_checks_pass'] = 'PASS'
     evidence = {name: {'status': 'available', 'value': 0, 'raw_value': 0,
                       'interpretation_rule': RETURN_RULE, 'unwrapped_xirr': 0,
-                      'unwrapped_xirr_is_error': False} for name in IRR_OUTPUTS}
+                      'unwrapped_xirr_is_error': False,
+                      'cash_flow_audit': {'negative_count': 1, 'positive_count': 1}}
+                for name in IRR_OUTPUTS}
     metadata = {name: {'origin': 'Sheet!' + name, 'applicability': {'status': 'applies'}}
                 for name in names if not name.startswith('out_checks_')}
     for name, item in evidence.items():
@@ -121,3 +123,52 @@ def test_contradictory_or_incomplete_receipt_is_rejected(receipt, attack):
     elif attack == 'return_check_status': n['checks']['investment_returns']['out_irr_lp'] = 'invalid'
     with pytest.raises(ValueError, match='Native evidence rejected'):
         validate_evidence(n, r, package)
+
+
+def sync_return(native, name='out_irr_lp'):
+    item = native['return_evidence'][name]
+    native['output_metadata'][name]['availability'] = copy.deepcopy(item)
+    native['checks']['investment_returns'][name] = item['status']
+
+
+@pytest.mark.parametrize('attack', [
+    'different_xirr', 'xirr_error', 'infinite_xirr', 'audit_missing', 'audit_null',
+    'no_investment', 'no_receipts', 'boolean_investment', 'boolean_receipts',
+])
+def test_available_return_checks_underlying_economics_after_agreement(receipt, attack):
+    native, record, package = receipt
+    item = native['return_evidence']['out_irr_lp']
+    if attack == 'different_xirr': item['unwrapped_xirr'] = .25
+    elif attack == 'xirr_error': item['unwrapped_xirr_is_error'] = True
+    elif attack == 'infinite_xirr': item['unwrapped_xirr'] = float('inf')
+    elif attack == 'audit_missing': item.pop('cash_flow_audit')
+    elif attack == 'audit_null': item['cash_flow_audit'] = None
+    elif attack == 'no_investment': item['cash_flow_audit']['negative_count'] = 0
+    elif attack == 'no_receipts': item['cash_flow_audit']['positive_count'] = 0
+    elif attack == 'boolean_investment': item['cash_flow_audit']['negative_count'] = True
+    elif attack == 'boolean_receipts': item['cash_flow_audit']['positive_count'] = True
+    sync_return(native)
+    with pytest.raises(ValueError, match='available acquisition return lacks a valid underlying calculation'):
+        validate_evidence(native, record, package)
+
+
+@pytest.mark.parametrize('attack', ['positive_receipts', 'numeric_value', 'blank_reason',
+                                  'invalid_status', 'boolean_investment', 'boolean_receipts', 'null_audit'])
+def test_loss_checks_after_all_evidence_copies_agree(receipt, attack):
+    native, record, package = receipt
+    item = native['return_evidence']['out_irr_lp']
+    item.update(status='total_loss', value=None, unwrapped_xirr_is_error=True,
+                total_return_ratio=-1, display_text='Total loss: \u2212100%',
+                reason='Annualized return cannot be calculated without positive receipts.',
+                cash_flow_audit={'negative_count': 1, 'positive_count': 0})
+    native['outputs']['out_irr_lp'] = None
+    if attack == 'positive_receipts': item['cash_flow_audit']['positive_count'] = 1
+    elif attack == 'numeric_value': item['value'] = native['outputs']['out_irr_lp'] = 0
+    elif attack == 'blank_reason': item['reason'] = ' '
+    elif attack == 'invalid_status': item['status'] = 'invalid'
+    elif attack == 'boolean_investment': item['cash_flow_audit']['negative_count'] = True
+    elif attack == 'boolean_receipts': item['cash_flow_audit']['positive_count'] = False
+    elif attack == 'null_audit': item['cash_flow_audit'] = None
+    sync_return(native)
+    with pytest.raises(ValueError, match='invalid acquisition return cannot be released as a loss'):
+        validate_evidence(native, record, package)

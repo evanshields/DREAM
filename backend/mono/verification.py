@@ -27,6 +27,10 @@ def _finite(value):
     return isinstance(value, (int, float)) and not isinstance(value, bool) and math.isfinite(value)
 
 
+def _count(value, *, positive=False):
+    return type(value) is int and value >= (1 if positive else 0)
+
+
 def validate_evidence(native, record, package):
     """Check receipt content against the pinned template and submitted revision.
 
@@ -36,6 +40,7 @@ def validate_evidence(native, record, package):
     _require(native.get('state') == 'complete' and native.get('diagnostics') == [],
              'receipt is not a successful completed calculation')
     identity = native.get('identity', {})
+    _require(isinstance(identity, dict), 'receipt identity is malformed')
     expected = record['identity']
     for source_key, target_key in (
         ('deal_sha256', 'deal_revision'), ('bundle_sha256', 'bundle_sha256'),
@@ -61,6 +66,7 @@ def validate_evidence(native, record, package):
     _require(values.get('out_checks_pass') == 'PASS' and _finite(values.get('out_checks_error'))
              and values['out_checks_error'] == 0, 'aggregate checks failed')
     checks = native.get('checks', {})
+    _require(isinstance(checks, dict), 'checks are malformed')
     errors = checks.get('errors')
     _require(isinstance(errors, dict) and set(errors) == set(package['sheets'])
              and all(_finite(v) and v == 0 for v in errors.values()),
@@ -68,6 +74,7 @@ def validate_evidence(native, record, package):
     rows = checks.get('rows')
     _require(isinstance(rows, list) and len(rows) == 48, 'check rows are incomplete')
     for row, entry in zip(range(2, 50), rows):
+        _require(isinstance(entry, dict), 'check row is malformed')
         label = package['sheets']['Checks']['constants']['A' + str(row)]['value']
         status = entry.get('status')
         _require(entry.get('row') == row and entry.get('label') == label,
@@ -85,13 +92,16 @@ def validate_evidence(native, record, package):
     evidence = native.get('return_evidence')
     _require(isinstance(evidence, dict) and set(evidence) == (set() if bond else IRR_OUTPUTS),
              'investment return audit coverage is incomplete')
+    _require(all(isinstance(v, dict) for v in evidence.values()), 'return evidence is malformed')
     _require(checks.get('investment_returns') == {k: v.get('status') for k, v in evidence.items()},
              'return check statuses disagree with their evidence')
     origins = {n['attributes']['name']: n['text'] for n in package['names'] if n['attributes']['name'] in financial}
     for name in financial:
         meta = metadata[name]
+        _require(isinstance(meta, dict), 'output metadata is malformed')
         _require(meta.get('origin') == origins[name], 'named output origin differs')
         rule = meta.get('applicability', {})
+        _require(isinstance(rule, dict), 'output applicability is malformed')
         if bond and name in INVESTMENT_OUTPUTS:
             _require(rule.get('status') == 'not_applicable' and rule.get('rule_id') == BOND_RULE
                      and isinstance(rule.get('reason'), str) and bool(rule['reason'].strip())
@@ -106,8 +116,13 @@ def validate_evidence(native, record, package):
                  and item.get('value') == values[name] and meta.get('availability') == item,
                  'return interpretation is detached from its raw evidence')
         if item.get('status') == 'available':
+            audit = item.get('cash_flow_audit')
             _require(_finite(values[name]) and item.get('unwrapped_xirr_is_error') is False
-                     and _finite(item.get('unwrapped_xirr')) and values[name] == raw[name],
+                     and _finite(item.get('unwrapped_xirr')) and values[name] == raw[name]
+                     and math.isclose(values[name], item['unwrapped_xirr'], rel_tol=1e-10, abs_tol=1e-10)
+                     and isinstance(audit, dict)
+                     and _count(audit.get('negative_count'), positive=True)
+                     and _count(audit.get('positive_count'), positive=True),
                      'available acquisition return lacks a valid underlying calculation')
         else:
             audit = item.get('cash_flow_audit', {})
@@ -116,8 +131,9 @@ def validate_evidence(native, record, package):
                      and item.get('total_return_ratio') == -1
                      and item.get('display_text') == 'Total loss: \u2212100%'
                      and isinstance(item.get('reason'), str) and bool(item['reason'].strip())
-                     and isinstance(audit.get('negative_count'), int) and audit['negative_count'] > 0
-                     and audit.get('positive_count') == 0,
+                     and isinstance(audit, dict)
+                     and _count(audit.get('negative_count'), positive=True)
+                     and type(audit.get('positive_count')) is int and audit['positive_count'] == 0,
                      'invalid acquisition return cannot be released as a loss')
     return dict(copy.deepcopy(checks), release_passed=True)
 
