@@ -199,10 +199,15 @@ def saved_receipt(receipt, tmp_path, monkeypatch):
     native['identity']['workbook_sha256'] = hashlib.sha256(artifact.read_bytes()).hexdigest()
     record.update(revision=1, root=str(tmp_path))
     pin_checks = []
+    def load_calculator():
+        pin_checks.append('live package checked')
+        # This suite exercises orchestration. Shared reconstruction is tested in
+        # the calculator's portable suite and the joint native Windows proofs.
+        return SimpleNamespace(validate_result_returns=lambda native, route: True)
     config = SimpleNamespace(data_root=tmp_path, template=tmp_path / 'not-opened-template.xlsx',
         calculator_root=tmp_path, calculator_python=Path(sys.executable), map_path=tmp_path / 'not-read-map.json',
         capabilities=None, expected_code_sha256='code_sha256',
-        load_calculator=lambda: pin_checks.append('live package checked'))
+        load_calculator=load_calculator)
     monkeypatch.setitem(sys.modules, 'tools.mono_template.package', SimpleNamespace(inspect=lambda path: package))
     terminal = tmp_path / 'terminal.json'
     terminal.write_text(json.dumps(native), encoding='utf-8')
@@ -216,8 +221,33 @@ def test_verified_result_preserves_raw_and_interpreted_audit_and_reads_live_pins
     assert result['raw_named_outputs'] == native['raw_named_outputs']
     assert result['return_evidence'] == native['return_evidence']
     assert result['_native_receipt_sha256'] == hashlib.sha256(terminal.read_bytes()).hexdigest()
+    assert result['checks']['return_audits_reconstructed'] is True
     native['return_evidence']['out_irr_lp']['value'] = 5
     assert result['return_evidence']['out_irr_lp']['value'] == 0
+
+
+@pytest.mark.parametrize('failure',['missing','false','raises'])
+def test_verified_result_requires_successful_pinned_shared_audit(saved_receipt,failure):
+    native,record,config,terminal,pins=saved_receipt
+    def validator(native,route):
+        if failure=='raises':
+            raise ValueError('Synthetic failed cash-flow reconstruction')
+        return False
+    config.load_calculator=lambda:SimpleNamespace(**({} if failure=='missing' else {'validate_result_returns':validator}))
+    with pytest.raises(ValueError):
+        verified_result(native,record,config,terminal)
+
+
+def test_verified_result_delegates_original_evidence_and_trusted_route_once(saved_receipt):
+    native,record,config,terminal,pins=saved_receipt
+    calls=[]
+    def validator(actual,route):
+        calls.append((actual,route))
+        return True
+    config.load_calculator=lambda:SimpleNamespace(validate_result_returns=validator)
+    result=verified_result(native,record,config,terminal)
+    assert calls==[(native,'ACQ')]
+    assert result['checks']['return_audits_reconstructed'] is True
 
 
 @pytest.mark.parametrize('attack', ['outside_root', 'wrong_workbook_hash', 'wrong_receipt_content'])

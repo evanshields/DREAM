@@ -354,6 +354,13 @@ def submit_mono_calculation(provider, deal_id, immutable_revision, **request_ide
     return provider.submit(deal_id, immutable_revision, **request_identity)
 
 
+def verify_mono_return_audits(calculator, native, route):
+    """Keep return reconstruction in the verified calculator package."""
+    validator = getattr(calculator, 'validate_result_returns', None)
+    if not callable(validator) or validator(native, route) is not True:
+        raise ValueError('Pinned calculator did not verify complete native return audits')
+
+
 def normalize_mono_rate(entered):
     """Explicit user rate scale crosses the existing numeric boundary once."""
     if not isinstance(entered, str):

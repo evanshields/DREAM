@@ -147,11 +147,15 @@ def verified_result(native, record, config, terminal_path, *, receipt_bytes=None
     from tools.mono_template.package import inspect
 
     # Load and hash the actual installed package rather than comparing a pin to itself.
-    config.load_calculator()
+    calculator = config.load_calculator()
     if receipt_bytes is None:
         receipt_bytes = Path(terminal_path).read_bytes()
     _require(json.loads(receipt_bytes) == native, 'receipt bytes differ from the validated content')
     checks = validate_evidence(native, record, inspect(config.template))
+    from engine_boundary import verify_mono_return_audits
+    route = next(a['value'] for a in record['doc_snapshot']['assumptions'] if a['id'] == 'deal_type')
+    verify_mono_return_audits(calculator, native, route)
+    checks['return_audits_reconstructed'] = True
     artifact = Path(native['artifact']).resolve(strict=True)
     _require(artifact.is_relative_to((config.data_root / 'calculations').resolve(strict=True)),
              'workbook is outside the private calculation root')
