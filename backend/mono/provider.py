@@ -255,13 +255,24 @@ class MonoProvider:
             registry['capabilities'] = config.capabilities
         if record.get('trusted_rulings'):
             registry['trusted_rulings'] = record['trusted_rulings']
+        from .comps_admission import protected_transport, assert_binding
+        admission = protected_transport(self.store, record, config.data_root, create=True)
+        if admission:
+            registry['trusted_comps'] = admission['pin']
         write_new(directory / 'registry.json', registry)
-        write_new(directory / 'envelope.json', {'calculator_root': str(config.calculator_root),
+        envelope = {'calculator_root': str(config.calculator_root),
             'expected_code_sha256': config.expected_code_sha256,
             'request': {'deal_id': deal_id, 'expected_revision': record['identity']['deal_sha256'],
-                        'expected_bundle_sha256': record['identity']['bundle_sha256']}})
+                        'expected_bundle_sha256': record['identity']['bundle_sha256']}}
+        if admission:
+            envelope['trusted_comps_context'] = admission['context']
+        write_new(directory / 'envelope.json', envelope)
         self.store.update_job(deal_id, job_id, {'state': 'running', 'started_at': now(), 'updated_at': now()})
         started = time.monotonic()
+        if admission:
+            if protected_transport(self.store, record, config.data_root) != admission:
+                raise ValueError('Protected comps transport changed before launch')
+            assert_binding(self.store, record, admission['binding'])
         write_new(directory / 'prelaunch.json', {'job_id': job_id, 'identity': record['identity'],
             'recorded_at': now(), 'expected_code_sha256': config.expected_code_sha256})
         with (directory / 'worker-stdout.log').open('x') as stdout, (directory / 'worker-stderr.log').open('x') as stderr:
@@ -312,13 +323,18 @@ class MonoProvider:
         result = None
         if state == 'complete':
             try:
+                if admission:
+                    if protected_transport(self.store, record, config.data_root) != admission:
+                        raise ValueError('Protected comps transport changed during calculation')
+                    assert_binding(self.store, record, admission['binding'])
                 self.builder.verify(record)
             except ValueError:
                 state = 'stale'
             if state == 'complete':
                 from .verification import verified_result
                 try:
-                    result = verified_result(native, record, config, terminal_path, receipt_bytes=receipt_bytes)
+                    result = verified_result(native, record, config, terminal_path, receipt_bytes=receipt_bytes,
+                        expected_comps_binding=admission['binding'] if admission else None)
                 except ValueError:
                     # A changed package is stale, while invalid evidence on the same
                     # package remains a failed validation with its useful diagnostic.

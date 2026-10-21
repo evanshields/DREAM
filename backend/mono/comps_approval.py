@@ -10,9 +10,10 @@ whole-file digest before calling. This module verifies transport identity, not
 the packet's financial or seven-artifact semantics. Legacy comparables group
 hashes cannot stand in for a directly registered canonical packet.
 
-Public store reads do not provide an atomic snapshot. Repeated reads detect
-observed supersession, but consumption needs an atomic current-event recheck
-and pinned transport verification. No external admission is implemented here.
+The protected store supplies one atomic revision and event snapshot. Exports
+and exact-event assertions prove currency only at that read transaction, never
+indefinitely after it. Jobs and publication must bind this receipt and recheck
+at point of use. No external admission is implemented here.
 """
 from __future__ import annotations
 
@@ -176,16 +177,17 @@ def export_comps_approval(store, *, deal_id, expected_revision, expected_identit
     _identity(expected_identity)
     # Freeze caller context before any I/O. The caller is trusted server code.
     identity = _json(_canonical(expected_identity))
-    record = store.current(deal_id)
+    snapshot = store.gate_snapshot(deal_id)
+    record = snapshot['record']
     if (record.get('deal_id') != deal_id or type(record.get('revision')) is not int
             or record['revision'] != expected_revision or record.get('identity') != identity):
         raise CompsApprovalError('Current revision or identity changed')
     if identity['source_hashes'].get('comps') != expected:
         raise CompsApprovalError('Current comps identity does not bind the whole canonical packet')
-    gates = store.gates(deal_id)
+    gates = snapshot['gates']
     event = gates.get('comps')
     _event(event, record, expected)
-    history = store.gate_history(deal_id)
+    history = snapshot['gate_history']
     current_comps = [e for e in history if e.get('gate') == 'comps' and e.get('revision') == expected_revision]
     if not current_comps or current_comps[-1] != event:
         raise CompsApprovalError('The selected confirmation has been superseded')
@@ -193,11 +195,12 @@ def export_comps_approval(store, *, deal_id, expected_revision, expected_identit
         raise CompsApprovalError('Protected event identity was reused')
     try:
         relative, semantic_sha = _artifact(record, expected)
+        # Files are outside SQLite. Verify the immutable transport bytes again
+        # before returning, without pretending this creates a filesystem lock.
+        if _artifact(record, expected) != (relative, semantic_sha):
+            raise CompsApprovalError('Current canonical packet changed during export')
     except (OSError, RuntimeError) as exc:
         raise CompsApprovalError('Current canonical packet is unavailable') from exc
-    if (store.current(deal_id) != record or store.gates(deal_id) != gates
-            or store.gate_history(deal_id) != history):
-        raise CompsApprovalError('Protected state changed during export')
     payload = {
         'format': 'dream-protected-comps-export-v1', 'deal_id': deal_id,
         'revision': expected_revision, 'identity': identity, 'comps_sha256': expected,
@@ -208,3 +211,27 @@ def export_comps_approval(store, *, deal_id, expected_revision, expected_identit
     }
     content = _canonical(payload)
     return CompsApprovalExport(content, hashlib.sha256(content).hexdigest())
+
+
+def assert_current_comps_approval(store, *, deal_id, expected_revision, expected_identity,
+                                  expected_canonical_comps_sha256, expected_event_id,
+                                  expected_event_sha256):
+    """Recheck an exact server-pinned comps confirmation in one read transaction.
+
+    Expected fields come from trusted server context and a previously pinned
+    export receipt. Caller JSON events are never authentication. The returned
+    immutable receipt establishes only comps confirmation at the snapshot.
+    It grants no financial or publication permission. Later use must bind and
+    recheck this receipt, since the transaction has ended before this returns.
+    """
+    if not isinstance(expected_event_id, str) or re.fullmatch('[0-9a-f]{32}', expected_event_id) is None:
+        raise CompsApprovalError('An exact protected comps event ID is required')
+    event_sha = _sha(expected_event_sha256)
+    receipt = export_comps_approval(
+        store, deal_id=deal_id, expected_revision=expected_revision,
+        expected_identity=expected_identity,
+        expected_canonical_comps_sha256=expected_canonical_comps_sha256)
+    payload = _json(receipt.content)
+    if payload['event']['event_id'] != expected_event_id or payload['event_sha256'] != event_sha:
+        raise CompsApprovalError('Current protected comps event changed')
+    return receipt

@@ -73,8 +73,26 @@ class MonoService:
         registry = Registry({record['deal_id']: root}, config.data_root / 'calculations', config.template, config.map_path,
                             config.capabilities, record.get('trusted_rulings'))
         mapping = load_map(config.map_path)
-        prepared = prepare(doc, bundle, root, mapping, hybrid_proven=_capability(registry, 'hybrid'),
+        from .comps_admission import protected_transport, canonical_packet
+        kwargs = {}
+        admission_problem = None
+        if canonical_packet(record) is not None:
+            from tools.mono_calc.comps_admission import TrustedCompsContext
+            from tools.mono_template.package import inspect
+            try:
+                admission = protected_transport(self.store, record, config.data_root)
+            except ValueError as exc:
+                # Read-only preview remains editable and cannot admit unpinned comps.
+                admission = None
+                admission_problem = str(exc)
+            kwargs = {'trusted_comps': admission['pin'] if admission else None,
+                'trusted_context': TrustedCompsContext(expected_revision=record['revision'], identity=record['identity']),
+                'template_package': inspect(config.template), 'template_sha256': config.template_sha256}
+        prepared = prepare(doc, bundle, root, mapping, **kwargs, hybrid_proven=_capability(registry, 'hybrid'),
                            trusted_rulings=read(record['trusted_rulings']['path']) if record.get('trusted_rulings') else None)
+        if admission_problem:
+            prepared['ready'] = False
+            prepared['problems'].append('Protected comps admission unavailable: ' + admission_problem)
         return doc, bundle, mapping, prepared
 
     def _current_job(self, record):
@@ -84,12 +102,16 @@ class MonoService:
         try:
             self.builder.verify(record)
             result = job['result']
+            from .comps_admission import canonical_packet, assert_binding
+            if canonical_packet(record) is not None:
+                assert_binding(self.store, record, result.get('comps_binding'))
             if digest(result['_artifact']) != result['artifact_sha256']:
                 return None
             if digest(result['_native_receipt']) != result.get('_native_receipt_sha256'):
                 return None
             receipt = read(result['_native_receipt'])
-            if receipt['identity'] != result['identity'] or receipt['outputs'] != result['outputs']:
+            if (receipt['identity'] != result['identity'] or receipt['outputs'] != result['outputs']
+                    or receipt.get('comps_binding') != result.get('comps_binding')):
                 return None
         except (ValueError, OSError, KeyError):
             return None

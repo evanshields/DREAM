@@ -34,6 +34,8 @@ class MonoPublicationStore:
                 or not result.get('checks', {}).get('release_passed') or not result.get('result_id')
                 or not result.get('artifact_sha256')):
             raise MonoConflict('Current result is not eligible for publication', current['revision'])
+        if not self.deals._comps_binding_current(db, current, result):
+            raise MonoConflict('Current result comps confirmation changed', current['revision'])
         gates = {}
         for gate, raw in db.execute('SELECT gate, record FROM mono_gates '
                 'WHERE deal_id=? AND revision=? ORDER BY sequence', (deal_id, current['revision'])):

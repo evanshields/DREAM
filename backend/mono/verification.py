@@ -56,7 +56,8 @@ def validate_evidence(native, record, package):
                  and expected[source_key] == identity[target_key], 'revision or package identity differs')
     _require(isinstance(identity.get('calculation_id'), str) and bool(identity['calculation_id']),
              'calculation identity is absent')
-    sources = {k: v for k, v in expected.get('source_hashes', {}).items() if k != 'comps'}
+    direct_comps = any(s.get('id') == 'comps' for s in record.get('bundle_snapshot', {}).get('sources', []))
+    sources = {k: v for k, v in expected.get('source_hashes', {}).items() if k != 'comps' or direct_comps}
     _require(identity.get('source_hashes') == sources, 'source identities differ')
     names = {n['attributes']['name'] for n in package['names']
              if n['attributes']['name'].startswith('out_')}
@@ -143,7 +144,7 @@ def validate_evidence(native, record, package):
     return dict(copy.deepcopy(checks), release_passed=True, cleanup_verified=True)
 
 
-def verified_result(native, record, config, terminal_path, *, receipt_bytes=None):
+def verified_result(native, record, config, terminal_path, *, receipt_bytes=None, expected_comps_binding=None):
     from tools.mono_template.package import inspect
 
     # Load and hash the actual installed package rather than comparing a pin to itself.
@@ -151,6 +152,15 @@ def verified_result(native, record, config, terminal_path, *, receipt_bytes=None
     if receipt_bytes is None:
         receipt_bytes = Path(terminal_path).read_bytes()
     _require(json.loads(receipt_bytes) == native, 'receipt bytes differ from the validated content')
+    from .comps_admission import canonical_packet
+    canonical = canonical_packet(record)
+    if canonical is not None:
+        _require(expected_comps_binding is not None and native.get('comps_binding') == expected_comps_binding,
+                 'protected comps binding differs from dispatched export')
+        _require(native.get('identity', {}).get('trusted_comps_sha256') == expected_comps_binding['trusted_comps_sha256'],
+                 'protected comps transport identity differs')
+    else:
+        _require(native.get('comps_binding') is None, 'unexpected canonical comps binding')
     checks = validate_evidence(native, record, inspect(config.template))
     from engine_boundary import verify_mono_return_audits, verify_mono_investment_audits
     route = next(a['value'] for a in record['doc_snapshot']['assumptions'] if a['id'] == 'deal_type')
@@ -169,6 +179,7 @@ def verified_result(native, record, config, terminal_path, *, receipt_bytes=None
             'raw_named_outputs': copy.deepcopy(native['raw_named_outputs']),
             'return_evidence': copy.deepcopy(native['return_evidence']),
             'investment_evidence': copy.deepcopy(native['investment_evidence']),
+            **({'comps_binding': copy.deepcopy(expected_comps_binding)} if expected_comps_binding else {}),
             '_cleanup': copy.deepcopy(native['cleanup']),
             '_native_receipt': str(terminal_path),
             '_native_receipt_sha256': hashlib.sha256(receipt_bytes).hexdigest(),

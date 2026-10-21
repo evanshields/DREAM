@@ -18,7 +18,11 @@ def main():
     if code_identity() != envelope['expected_code_sha256']:
         raise ValueError('Pinned calculator package changed before dispatch')
     registry = registry_from_file(directory / 'registry.json')
-    store = JobStore(registry, lambda req, cancellation: calculate(req, registry, cancellation=cancellation))
+    context = None
+    if envelope.get('trusted_comps_context') is not None:
+        from tools.mono_calc.comps_admission import TrustedCompsContext
+        context = TrustedCompsContext(**envelope['trusted_comps_context'])
+    store = JobStore(registry, lambda req, cancellation: calculate(req, registry, cancellation=cancellation, trusted_context=context))
     try:
         job = store.submit(envelope['request'])
         write_json_new(directory / 'submitted.json', job)

@@ -8,7 +8,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from mono.comps_approval import CompsApprovalError, export_comps_approval
+from mono.comps_approval import CompsApprovalError, assert_current_comps_approval, export_comps_approval
 from mono.service import MonoService
 from store.mono_deal_store import MonoDealStore
 
@@ -203,17 +203,106 @@ def test_strict_packet_parser_refuses_ambiguous_or_nonfinite_json(evidence, raw)
         export(evidence, expected_revision=2, expected_identity=identity, expected_canonical_comps_sha256=sha(raw))
 
 
-def test_observed_confirmation_race_fails_closed(evidence, monkeypatch):
-    original = evidence.store.gate_history
-    calls = 0
+def consume(evidence, **changes):
+    return assert_current_comps_approval(evidence.store, **{**evidence.args,
+        'expected_event_id': evidence.event['event_id'],
+        'expected_event_sha256': sha(canonical(evidence.event)), **changes})
 
-    def history(deal):
-        nonlocal calls
-        calls += 1
-        if calls == 2:
-            evidence.confirm('during-read')
+
+def test_exact_consumption_is_read_only_and_uses_one_snapshot(evidence, monkeypatch):
+    original = evidence.store.gate_snapshot
+    calls = []
+
+    def snapshot(deal):
+        calls.append(deal)
         return original(deal)
 
-    monkeypatch.setattr(evidence.store, 'gate_history', history)
-    with pytest.raises(CompsApprovalError, match='changed during export'):
-        export(evidence)
+    def forbidden(*args):
+        pytest.fail('Separate store reads cannot provide the approval snapshot')
+
+    monkeypatch.setattr(evidence.store, 'gate_snapshot', snapshot)
+    for name in ('current', 'gates', 'gate_history'):
+        monkeypatch.setattr(evidence.store, name, forbidden)
+    before = Path(evidence.store.path).read_bytes()
+    receipt = consume(evidence)
+    assert calls == ['fixture']
+    assert json.loads(receipt.content)['event'] == evidence.event
+    assert json.loads(receipt.content)['release_eligible'] is False
+    assert Path(evidence.store.path).read_bytes() == before
+
+
+@pytest.mark.parametrize('change', [
+    {'expected_event_id': 'f' * 32}, {'expected_event_id': None},
+    {'expected_event_sha256': 'f' * 64}, {'expected_event_sha256': 'invalid'},
+    {'expected_canonical_comps_sha256': 'f' * 64},
+    {'expected_identity': {}}, {'expected_revision': True},
+])
+def test_exact_consumption_rejects_changed_binding(evidence, change):
+    with pytest.raises(CompsApprovalError):
+        consume(evidence, **change)
+
+
+def test_exact_consumption_rejects_complete_changed_identity(evidence):
+    changed = copy.deepcopy(evidence.args['expected_identity'])
+    changed['map_sha256'] = 'f' * 64
+    with pytest.raises(CompsApprovalError, match='identity changed'):
+        consume(evidence, expected_identity=changed)
+
+
+def test_idempotent_replay_cannot_restore_superseded_consumption(evidence):
+    assert consume(evidence) == export(evidence)
+    assert evidence.confirm('first') == evidence.event
+    assert consume(evidence) == export(evidence)
+    latest = evidence.confirm('second')
+    assert evidence.confirm('first') == evidence.event
+    with pytest.raises(CompsApprovalError, match='event changed'):
+        consume(evidence)
+    assert consume(evidence, expected_event_id=latest['event_id'],
+                   expected_event_sha256=sha(canonical(latest))) == export(evidence)
+
+
+@pytest.mark.parametrize('decision', ['refuse', 'reject'])
+def test_later_refusal_prevents_exact_consumption(evidence, decision):
+    peer = MonoDealStore(evidence.store.path)
+    event = {**evidence.event, 'decision': decision, 'event_id': 'e' * 32}
+    peer.record_gate('fixture', 1, event, 'refusal', 'refusal')
+    with pytest.raises(CompsApprovalError, match='event binding'):
+        consume(evidence)
+
+
+def test_new_revision_prevents_exact_consumption(evidence):
+    peer = MonoDealStore(evidence.store.path)
+    peer.commit_revision('fixture', 1, {**evidence.record, 'revision': 2}, {}, 'edit', 'edit')
+    with pytest.raises(CompsApprovalError, match='revision'):
+        consume(evidence)
+
+
+@pytest.mark.parametrize('target', ['comps.json', 'source-bundle.json'])
+def test_artifact_bytes_are_rechecked_before_export_or_consumption(evidence, monkeypatch, target):
+    from mono import comps_approval
+    original = comps_approval._artifact
+
+    def artifact(*args):
+        result = original(*args)
+        path = evidence.packet_path.parent / target
+        path.write_bytes(path.read_bytes() + b' ')
+        return result
+
+    monkeypatch.setattr(comps_approval, '_artifact', artifact)
+    with pytest.raises(CompsApprovalError, match='bytes changed'):
+        consume(evidence)
+
+
+def test_confirmation_can_change_after_snapshot_and_must_be_rechecked_at_use(evidence, monkeypatch):
+    original = evidence.store.gate_snapshot
+
+    def snapshot(deal):
+        result = original(deal)
+        evidence.confirm('after-snapshot')
+        return result
+
+    with monkeypatch.context() as patch:
+        patch.setattr(evidence.store, 'gate_snapshot', snapshot)
+        assert json.loads(consume(evidence).content)['event'] == evidence.event
+    with pytest.raises(CompsApprovalError, match='event changed'):
+        consume(evidence)

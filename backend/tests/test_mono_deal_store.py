@@ -1,6 +1,7 @@
 """Storage proofs use disposable engineering records with no financial math."""
 from concurrent.futures import ThreadPoolExecutor
-from threading import Barrier
+from contextlib import contextmanager
+from threading import Barrier, Event
 
 import pytest
 
@@ -272,3 +273,78 @@ def test_concurrent_calculation_replays_enqueue_only_one_job(store):
     assert sum(created for _, created in results) == 1
     assert results[0][0]['job_id'] == results[1][0]['job_id']
     assert len(store.jobs('fixture')) == 1
+
+
+def test_gate_snapshot_is_defensive_and_scoped_to_current_revision(store):
+    event = {'gate': 'comps', 'decision': 'confirm', 'revision': 1, 'actor': {'subject': 'test'}}
+    store.record_gate('fixture', 1, event, 'gate', 'digest')
+    snapshot = store.gate_snapshot('fixture')
+    assert snapshot == {'record': store.current('fixture'), 'gates': store.gates('fixture'),
+                        'gate_history': [event]}
+    snapshot['record']['identity']['deal_sha256'] = 'changed'
+    snapshot['gates']['comps']['actor']['subject'] = 'changed'
+    assert snapshot['gate_history'][0]['actor']['subject'] == 'test'
+    snapshot['gate_history'][0]['actor']['subject'] = 'also changed'
+    assert store.gate_snapshot('fixture')['gates']['comps'] == event
+    store.commit_revision('fixture', 1, revision(2), decision(), 'edit', 'edit')
+    snapshot = store.gate_snapshot('fixture')
+    assert snapshot['record']['revision'] == 2
+    assert snapshot['gates'] == {'comps': None, 'go_no_go': None}
+    assert snapshot['gate_history'] == [event]
+    with pytest.raises(MonoNotFound):
+        store.gate_snapshot('absent')
+
+
+@pytest.mark.parametrize('write_kind', ['gate', 'revision'])
+def test_gate_snapshot_remains_consistent_while_second_writer_is_staged(store, monkeypatch, write_kind):
+    peer = MonoDealStore(store.path)
+    staged = Event()
+    original_current = store._current
+    original_remember = peer._remember
+    event = {'gate': 'comps', 'decision': 'confirm', 'revision': 1}
+
+    def remember(*args):
+        original_remember(*args)
+        staged.set()
+
+    monkeypatch.setattr(peer, '_remember', remember)
+    with ThreadPoolExecutor(max_workers=1) as pool:
+        pending = []
+
+        def current(db, deal):
+            record = original_current(db, deal)
+            if write_kind == 'gate':
+                pending.append(pool.submit(peer.record_gate, 'fixture', 1, event, 'gate', 'digest'))
+            else:
+                pending.append(pool.submit(peer.commit_revision, 'fixture', 1, revision(2),
+                                           decision(), 'edit', 'digest'))
+            assert staged.wait(5), 'Independent writer did not stage its event'
+            return record
+
+        monkeypatch.setattr(store, '_current', current)
+        snapshot = store.gate_snapshot('fixture')
+        result = pending[0].result(timeout=5)
+        assert result == event if write_kind == 'gate' else result['revision'] == 2
+    assert snapshot['record']['revision'] == 1
+    assert snapshot['gates']['comps'] is None
+    assert snapshot['gate_history'] == []
+    fresh = peer.gate_snapshot('fixture')
+    if write_kind == 'gate':
+        assert fresh['gates']['comps'] == event
+    else:
+        assert fresh['record']['revision'] == 2
+
+
+def test_gate_snapshot_opens_exactly_one_read_transaction(store, monkeypatch):
+    original = store._connection
+    calls = []
+
+    @contextmanager
+    def connection(write=False):
+        calls.append(write)
+        with original(write=write) as db:
+            yield db
+
+    monkeypatch.setattr(store, '_connection', connection)
+    assert store.gate_snapshot('fixture')['record']['revision'] == 1
+    assert calls == [False]

@@ -7,6 +7,7 @@ Every operation uses a fresh connection, including independent app instances.
 from __future__ import annotations
 
 import json
+import hashlib
 import sqlite3
 from contextlib import contextmanager
 from datetime import datetime, timezone
@@ -215,6 +216,17 @@ class MonoDealStore:
         with self._connection(write=True) as db:
             record = self._job(db, deal_id, job_id)
             updated = {**record, **changes}
+            if (record['state'] not in _TERMINAL and updated.get('state') == 'complete'
+                    and isinstance(updated.get('result'), dict)):
+                current = self._current(db, deal_id)
+                revision = self._revision(db, deal_id, updated['revision'])
+                canonical = updated['result'].get('comps_binding') is not None or any(
+                    s.get('id') == 'comps' and s.get('format') == 'json'
+                    for s in revision.get('bundle_snapshot', {}).get('sources', []))
+                if canonical and (current['revision'] != updated['revision'] or current['identity'] != updated['identity']
+                        or not self._comps_binding_current(db, current, updated['result'])):
+                    updated.update(state='stale', result=None,
+                        diagnostics=[*updated.get('diagnostics', []), 'Current revision or comps confirmation changed'])
             if record["state"] in _TERMINAL and updated != record:
                 raise MonoConflict("Terminal job receipts are immutable")
             if not isinstance(updated.get("state"), str) or not updated["state"]:
@@ -231,6 +243,34 @@ class MonoDealStore:
             self._current(db, deal_id)
             return [_load(row) for row in db.execute("SELECT record FROM mono_jobs WHERE deal_id=? ORDER BY rowid", (deal_id,))]
 
+    @staticmethod
+    def _comps_binding_current(db, current, result):
+        """Bind canonical results to the latest event inside the caller transaction."""
+        direct = [s for s in current.get('bundle_snapshot', {}).get('sources', [])
+                  if s.get('id') == 'comps' and s.get('format') == 'json']
+        binding = result.get('comps_binding')
+        if not direct and binding is None:
+            return True
+        if not isinstance(binding, dict) or len(direct) != 1:
+            return False
+        row = db.execute("SELECT record FROM mono_gates WHERE deal_id=? AND revision=? "
+                         "AND gate='comps' ORDER BY sequence DESC LIMIT 1",
+                         (current['deal_id'], current['revision'])).fetchone()
+        event = _load(row)
+        expected = current['identity'].get('source_hashes', {}).get('comps')
+        if (not event or event.get('decision') != 'confirm' or event.get('identity') != current['identity']
+                or event.get('deal_id') != current['deal_id'] or event.get('revision') != current['revision']
+                or event.get('comps_sha256') != expected or direct[0].get('sha256') != expected
+                or binding.get('event_id') != event.get('event_id')
+                or binding.get('event_sha256') != hashlib.sha256(_json(event).encode()).hexdigest()
+                or binding.get('canonical_comps_sha256') != expected
+                or binding.get('revision') != current['revision'] or binding.get('identity') != current['identity']
+                or binding.get('historical_snapshot') is not True or binding.get('release_eligible') is not False
+                or result.get('identity', {}).get('trusted_comps_sha256') != binding.get('trusted_comps_sha256')):
+            return False
+        pin = binding.get('trusted_comps_sha256')
+        return isinstance(pin, str) and len(pin) == 64 and all(c in '0123456789abcdef' for c in pin)
+
     def promote_result(self, deal_id, job_id, expected_revision, expected_identity):
         with self._connection(write=True) as db:
             current = self._current(db, deal_id)
@@ -241,7 +281,7 @@ class MonoDealStore:
                     or not isinstance(job.get("result"), dict)):
                 return False
             result = job["result"]
-            if not result.get("result_id"):
+            if not result.get("result_id") or not self._comps_binding_current(db, current, result):
                 return False
             return db.execute("UPDATE mono_deals SET current_job_id=? WHERE deal_id=? AND revision=?", (job_id, deal_id, expected_revision)).rowcount == 1
 
@@ -274,6 +314,24 @@ class MonoDealStore:
             for gate, record in db.execute("SELECT gate, record FROM mono_gates WHERE deal_id=? AND revision=? ORDER BY sequence", (deal_id, current["revision"])):
                 result[gate] = json.loads(record)
             return result
+
+    def gate_snapshot(self, deal_id):
+        """Read revision, latest gates and history in one server-side transaction.
+
+        Every returned JSON tree is detached, including gates versus history.
+        This point-in-time view grants no authorization and holds no lock after
+        return. Consumers must bind exact evidence and recheck at point of use.
+        """
+        with self._connection() as db:
+            current = self._current(db, deal_id)
+            gates = {"comps": None, "go_no_go": None}
+            for gate, raw in db.execute(
+                    "SELECT gate, record FROM mono_gates WHERE deal_id=? AND revision=? ORDER BY sequence",
+                    (deal_id, current["revision"])):
+                gates[gate] = json.loads(raw)
+            history = [_load(row) for row in db.execute(
+                "SELECT record FROM mono_gates WHERE deal_id=? ORDER BY sequence", (deal_id,))]
+            return {"record": current, "gates": gates, "gate_history": history}
 
     def gate_history(self, deal_id):
         with self._connection() as db:
