@@ -8,6 +8,7 @@ import math
 from pathlib import Path
 
 from .config import digest
+from .cleanup import verified_cleanup
 
 
 INVESTMENT_OUTPUTS = frozenset({
@@ -40,6 +41,7 @@ def validate_evidence(native, record, package):
     configuration pins are checked separately by verified_result.
     """
     _require(isinstance(native, dict), 'receipt is malformed')
+    _require(verified_cleanup(native), 'positive native cleanup evidence is absent')
     _require(native.get('state') == 'complete' and native.get('diagnostics') == [],
              'receipt is not a successful completed calculation')
     identity = native.get('identity', {})
@@ -138,7 +140,7 @@ def validate_evidence(native, record, package):
                      and _count(audit.get('negative_count'), positive=True)
                      and type(audit.get('positive_count')) is int and audit['positive_count'] == 0,
                      'invalid acquisition return cannot be released as a loss')
-    return dict(copy.deepcopy(checks), release_passed=True)
+    return dict(copy.deepcopy(checks), release_passed=True, cleanup_verified=True)
 
 
 def verified_result(native, record, config, terminal_path, *, receipt_bytes=None):
@@ -160,6 +162,7 @@ def verified_result(native, record, config, terminal_path, *, receipt_bytes=None
             'artifact_limitations': copy.deepcopy(native.get('artifact_limitations', [])),
             'raw_named_outputs': copy.deepcopy(native['raw_named_outputs']),
             'return_evidence': copy.deepcopy(native['return_evidence']),
+            '_cleanup': copy.deepcopy(native['cleanup']),
             '_native_receipt': str(terminal_path),
             '_native_receipt_sha256': hashlib.sha256(receipt_bytes).hexdigest(),
             '_artifact': str(artifact)}

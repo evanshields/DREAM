@@ -13,6 +13,7 @@ import uuid
 
 from .revisions import now, write_new
 from store.mono_deal_store import MonoConflict
+from .cleanup import verified_cleanup
 
 
 _unsafe_roots = {}
@@ -33,7 +34,10 @@ def unresolved_launches(root):
         for prelaunch in (Path(root) / parent).glob('*/prelaunch.json'):
             try:
                 exited = json.loads(prelaunch.with_name('bridge-exit.json').read_bytes())
-                if not isinstance(exited, dict) or exited.get('quarantined') is not False:
+                terminal = json.loads(prelaunch.with_name('terminal.json').read_bytes())
+                clean = (verified_cleanup(terminal) if parent == 'bridge' else
+                         isinstance(terminal, dict) and terminal.get('cleanup_verified') is True)
+                if not isinstance(exited, dict) or exited.get('quarantined') is not False or not clean:
                     unresolved.append(str(prelaunch.parent))
             except (OSError, ValueError, TypeError):
                 unresolved.append(str(prelaunch.parent))
@@ -292,6 +296,10 @@ class MonoProvider:
             self._quarantine('Calculator terminal receipt is unreadable. Native cleanup is unverified.',
                              job_id=job_id, bridge_pid=process.pid)
             raise
+        if not verified_cleanup(native):
+            self._quarantine('Calculator did not positively verify owned-process cleanup.',
+                             job_id=job_id, bridge_pid=process.pid)
+            raise ValueError('Calculator cleanup evidence is absent or unverified')
         current = self.store.job(deal_id, job_id)
         if current['state'] not in ('queued', 'running'):
             return

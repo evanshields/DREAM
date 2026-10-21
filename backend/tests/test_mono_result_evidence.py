@@ -42,6 +42,13 @@ def receipt():
               'checks': {'errors': {'Checks': 0, 'Sheet': 0}, 'live_tranches': [True] + [False] * 7,
                          'rows': [{'row': i, 'label': 'check ' + str(i), 'status': 'OK'} for i in range(2, 50)],
                          'investment_returns': {name: 'available' for name in IRR_OUTPUTS}}}
+    native.update(cleanup_verified=True, cleanup={
+        'policy': 'mono-calculator-cleanup-v1', 'state': 'verified_exit', 'verified': True,
+        'native_launched': True, 'native_worker': {'pid': 123, 'returncode': 0},
+        'excel_owner': {'pid': 456, 'new_process': True, 'created': 'synthetic-process-identity',
+                        'image': 'C:/synthetic/EXCEL.EXE'},
+        'observation': {'method': 'identified_process_exit', 'native_worker_exited': True,
+                        'owned_excel_present': False}})
     return native, record, package
 
 
