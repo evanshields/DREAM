@@ -8,7 +8,7 @@ from pathlib import Path
 def expected_profile(record, config):
     from tools.deal_file.core import load_map
     from tools.mono_calc.sources import prepare
-    from tools.mono_calc.historical_profile import V9S_TEMPLATE
+    from tools.mono_calc.historical_profile import current_historical
     from tools.mono_template.package import inspect
     from .revisions import read
 
@@ -18,7 +18,7 @@ def expected_profile(record, config):
         bundle, root, load_map(config.map_path),
         template_package=inspect(config.template), template_sha256=config.template_sha256,
         trusted_rulings=read(record['trusted_rulings']['path']) if record.get('trusted_rulings') else None)
-    if config.template_sha256 == V9S_TEMPLATE and any(
+    if current_historical(config.template_sha256) and any(
             isinstance(region, dict) and region.get('adapter') == 'historical_profile'
             for region in bundle.get('regions', [])):
         # Protected comps admission is checked separately by the deal service.

@@ -17,25 +17,29 @@ from test_mono_publish_store import ready, publication
 REAL_VALIDATE_CONTEXT = financial_context.validate_context
 
 
-@pytest.fixture
-def real_historical_sources(tmp_path):
+@pytest.fixture(params=['v9s', 'v9z'])
+def real_historical_sources(tmp_path, request):
     pytest.importorskip('tools.mono_calc.historical_profile',
         reason='Paired private calculator checkout required for actual source preparation',
         exc_type=ModuleNotFoundError)
     from tools.deal_file.core import MAP_PATH
     from tools.mono_calc.historical_profile import V9S_TEMPLATE
+    from tools.mono_calc.template_versions import V9Z_TEMPLATE
     from mono.config import digest
     source = Path(os.environ.get('DREAM_HISTORICAL_APP_SOURCE_FIXTURE',
         'C:/Users/evana/Downloads/DREAM-HISTORICAL-API-FIXTURE-067-LEAD002/engineering-source'))
-    template = Path(os.environ.get('DREAM_HISTORICAL_APP_TEMPLATE',
-        'C:/Users/evana/dream-hq/models/5 - GS Residential Mono Model (10.21.26)_v9s.xlsx'))
+    version = request.param
+    expected_template = {'v9s': V9S_TEMPLATE, 'v9z': V9Z_TEMPLATE}[version]
+    template = Path(os.environ.get('DREAM_HISTORICAL_APP_TEMPLATE' + ('' if version == 'v9s' else '_V9Z'),
+        'C:/Users/evana/dream-hq/models/5 - GS Residential Mono Model ('
+        + ('10.21.26' if version == 'v9s' else '10.22.26') + ')_' + version + '.xlsx'))
     if not source.is_dir() or not template.is_file():
         pytest.skip('Private historical source fixture and exact repaired workbook are unavailable')
-    assert digest(template) == V9S_TEMPLATE
+    assert digest(template) == expected_template
     root = tmp_path / 'actual-source-copy'
     shutil.copytree(source, root)
-    record = dict(root=str(root), deal_id='esplanade', identity={'template_sha256': V9S_TEMPLATE})
-    config = SimpleNamespace(template=template, template_sha256=V9S_TEMPLATE, map_path=MAP_PATH)
+    record = dict(root=str(root), deal_id='esplanade', identity={'template_sha256': expected_template})
+    config = SimpleNamespace(template=template, template_sha256=expected_template, map_path=MAP_PATH)
     return record, config
 
 
@@ -60,6 +64,15 @@ def test_real_repaired_template_prepares_authenticated_seller_roll_and_missing_m
     roll = json.loads((Path(record['root']) / 'model-inputs/rent-roll-historical-payload.json').read_text())
     assert len(roll['rows']) == 186
     assert len({row['seller_type'] for row in roll['rows']}) == 4
+
+
+def test_current_historical_template_cannot_skip_source_reconciliation(real_historical_sources, monkeypatch):
+    from tools.mono_calc import sources
+    record, config = real_historical_sources
+    monkeypatch.setattr(sources, 'prepare', lambda *args, **kwargs: {
+        'historical_profile': {'profile': 'Forward'}})
+    with pytest.raises(ValueError, match='historical reconciliation is missing'):
+        financial_context.expected_profile(record, config)
 
 
 @pytest.mark.parametrize('attack', ['missing_roll', 'wrong_mapping', 'source_tamper'])
