@@ -65,6 +65,10 @@ async def lifespan(app: FastAPI):
     except Exception:
         logger.exception("startup job sweep failed; continuing")
     yield
+    if _mono_service is not None and _mono_service.provider is not None:
+        _mono_service.provider.close()
+    if _mono_service is not None:
+        _mono_service.publications.close()
     try:
         from jobs.queue import shutdown
         shutdown(wait=False)
@@ -96,6 +100,12 @@ app.include_router(jobs_router, dependencies=[Depends(require_auth)])
 # Pipeline deal-list (read-only; PRD §6). Surfaces DealStore.list for the pipeline screen.
 from routers.deals import router as deals_router  # noqa: E402
 app.include_router(deals_router, dependencies=[Depends(require_auth)])
+
+from mono.bootstrap import configured_service  # noqa: E402
+from mono.config import actor_dependency as mono_actor_dependency  # noqa: E402
+from routers.mono import create_router as create_mono_router  # noqa: E402
+_mono_service = configured_service()
+app.include_router(create_mono_router(_mono_service, mono_actor_dependency(_mono_service.config if _mono_service else None)), prefix='/api/deals')
 
 # Phase 5 — CRM layer (contacts + tasks/notes + links + unified deal timeline). LLM-free import
 # graph (store package + job_store only); auth-gated at mount time like every Wave A-D router.
