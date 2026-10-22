@@ -8,14 +8,27 @@ from pathlib import Path
 def expected_profile(record, config):
     from tools.deal_file.core import load_map
     from tools.mono_calc.sources import prepare
+    from tools.mono_calc.historical_profile import V9S_TEMPLATE
     from tools.mono_template.package import inspect
     from .revisions import read
 
     root = Path(record['root'])
+    bundle = read(root / 'model-inputs/source-bundle.json')
     prepared = prepare(read(root / 'model-inputs/deal-file.json'),
-        read(root / 'model-inputs/source-bundle.json'), root, load_map(config.map_path),
+        bundle, root, load_map(config.map_path),
         template_package=inspect(config.template), template_sha256=config.template_sha256,
         trusted_rulings=read(record['trusted_rulings']['path']) if record.get('trusted_rulings') else None)
+    if config.template_sha256 == V9S_TEMPLATE and any(
+            isinstance(region, dict) and region.get('adapter') == 'historical_profile'
+            for region in bundle.get('regions', [])):
+        # Protected comps admission is checked separately by the deal service.
+        # The shared calculator seals this report only after raw historical
+        # inputs, normal overlaps and authenticated source intake all validate.
+        report = prepared.get('historical_reconciliation') or {}
+        intake = report.get('source_intake') or {}
+        if (report.get('policy') != 'historical-provider-isolation-v3'
+                or intake.get('mode') != 'historical_seller_code_source'):
+            raise ValueError('Current financial source preparation is not ready: historical reconciliation is missing')
     return prepared.get('historical_profile')
 
 

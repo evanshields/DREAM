@@ -207,7 +207,8 @@ class PublicationProvider:
                 raise ValueError('Original native calculation receipt changed before preparation')
             envelope.update(frozen,native_receipt_sha256=job['_native_receipt_sha256'],
                 expected_native_identity=normalized_identity(release['result_identity'],deal_id,release['revision']),
-                expected_selected_financial_projection=read(job['_native_receipt']).get('selected_financial_projection'),
+                expected_financial_projection_sha256=release['financial_projection_sha256'],
+                expected_financial_provider_id=release['financial_provider_id'],
                 created_at=job['created_at'],comps_event_id=release['comps_event_id'],go_event_id=release['go_event_id'])
         else:
             envelope.update(projection=job['_registration']['projection'],artifact_root=job['_registration']['artifact_root'])

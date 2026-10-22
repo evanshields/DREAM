@@ -25,7 +25,7 @@ const historicalHeadlines: Record<string, string> = {
   historical_levered_net_cash_flow_y1: 'Year 1 levered net cash flow',
 };
 
-function monthLabel(value: unknown) {
+export function monthLabel(value: unknown) {
   if (typeof value !== 'string' || !/^\d{4}-\d{2}$/.test(value)) return 'Unknown';
   return new Date(`${value}-01T00:00:00Z`).toLocaleDateString('en-US', { month: 'long', year: 'numeric', timeZone: 'UTC' });
 }
@@ -34,7 +34,7 @@ function HistoricalFinancials({ result }: {result: MonoResult}) {
   const selected = result.selected_financial_projection;
   const context = asRecord(selected?.historical_profile);
   return <section aria-label="Historical financial comparison" className="space-y-3">
-    <p className="text-sm text-slate/70">Historical comparison: {monthLabel(context.comparison_month)}. Expected closing: {monthLabel(context.expected_closing_month)}. Actual closing day is unknown. These figures use the historical source conventions.</p>
+    <p className="text-sm text-slate/70">Historical source comparison: {monthLabel(context.comparison_month)}. Expected closing: {monthLabel(context.expected_closing_month)}, day unknown. Annual source periods and conventions apply.</p>
     <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3">{Object.entries(historicalHeadlines).map(([id, label]) => {
       const metric = selected?.metrics[id];
       return <div key={id} data-output-id={id} className="p-4 rounded-lg border border-slate/10 bg-white min-w-0">
@@ -45,6 +45,7 @@ function HistoricalFinancials({ result }: {result: MonoResult}) {
       </div>;
     })}</div>
     <p className="text-sm text-slate/70">Investment returns: Not applicable to Bond. Other forward monthly measures are unavailable in this historical comparison because their definitions differ.</p>
+    <p className="text-sm text-slate/70">Seller floor-plan codes establish source intake only. Resident qualification evidence is unavailable. Snapshot and monthly sheets show the normal audit, while Historical Bond supplies this comparison.</p>
   </section>;
 }
 

@@ -140,6 +140,10 @@ class PublicationService:
         except (ValueError, OSError, KeyError, MonoConflict):
             raise HTTPException(409, 'This publication is unavailable or historical. Generate a package from the current reviewed result')
         filename = 'underwriting-package.zip' if deliverable == 'package' else deliverable+path.suffix.lower()
+        release = job['identity']['release']
+        if release.get('financial_provider_id') == 'esplanade_historical_annual_v1':
+            month = release['historical_profile']['comparison_month']
+            filename = 'historical-source-comparison-' + month + '-' + filename
         return FileResponse(path, media_type=entry['media_type'], filename=filename,
             headers={'Cache-Control':'private, no-store', 'X-Content-Type-Options':'nosniff'})
 

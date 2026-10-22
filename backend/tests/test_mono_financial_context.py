@@ -1,6 +1,9 @@
 """App admission uses the real shared contract with synthetic saved evidence."""
 import copy
 import json
+import os
+from pathlib import Path
+import shutil
 from types import SimpleNamespace
 
 import pytest
@@ -12,6 +15,75 @@ from test_mono_result_evidence import receipt, saved_receipt, as_bond
 from test_mono_publish_store import ready, publication
 
 REAL_VALIDATE_CONTEXT = financial_context.validate_context
+
+
+@pytest.fixture
+def real_historical_sources(tmp_path):
+    pytest.importorskip('tools.mono_calc.historical_profile',
+        reason='Paired private calculator checkout required for actual source preparation',
+        exc_type=ModuleNotFoundError)
+    from tools.deal_file.core import MAP_PATH
+    from tools.mono_calc.historical_profile import V9S_TEMPLATE
+    from mono.config import digest
+    source = Path(os.environ.get('DREAM_HISTORICAL_APP_SOURCE_FIXTURE',
+        'C:/Users/evana/Downloads/DREAM-HISTORICAL-API-FIXTURE-067-LEAD002/engineering-source'))
+    template = Path(os.environ.get('DREAM_HISTORICAL_APP_TEMPLATE',
+        'C:/Users/evana/dream-hq/models/5 - GS Residential Mono Model (10.21.26)_v9s.xlsx'))
+    if not source.is_dir() or not template.is_file():
+        pytest.skip('Private historical source fixture and exact repaired workbook are unavailable')
+    assert digest(template) == V9S_TEMPLATE
+    root = tmp_path / 'actual-source-copy'
+    shutil.copytree(source, root)
+    record = dict(root=str(root), deal_id='esplanade', identity={'template_sha256': V9S_TEMPLATE})
+    config = SimpleNamespace(template=template, template_sha256=V9S_TEMPLATE, map_path=MAP_PATH)
+    return record, config
+
+
+def test_real_repaired_template_prepares_authenticated_seller_roll_and_missing_metric(real_historical_sources):
+    from tools.mono_calc.selected_financial_projection import build_selected_projection, _specs
+    record, config = real_historical_sources
+    # This path invokes actual prepare, package inspection and overlap checking.
+    profile = financial_context.expected_profile(record, config)
+    assert profile['comparison_month'] == '2026-09'
+    assert profile['expected_closing_month'] == '2027-08'
+    specs = _specs(config.template_sha256)
+    saved_cells = {locator: 500.0 for locator, spec in specs.values()}
+    saved_cells['Historical Bond!F36'] = 0.0
+    selected = build_selected_projection(config.template_sha256, deal_id='esplanade',
+        historical_profile=profile, saved_cells=saved_cells)
+    native = dict(historical_profile=profile, selected_financial_projection=selected)
+    assert financial_context.validate_context(native, record, config)['historical_profile'] == profile
+    assert next(metric for metric in selected['metrics'].values()
+                if metric['binding_locator'] == 'Historical Bond!F36')['availability'] == 'missing'
+    assert next(metric for metric in selected['metrics'].values()
+                if metric['binding_locator'] == 'Historical Bond!F93')['unit'] == 'USD/year'
+    roll = json.loads((Path(record['root']) / 'model-inputs/rent-roll-historical-payload.json').read_text())
+    assert len(roll['rows']) == 186
+    assert len({row['seller_type'] for row in roll['rows']}) == 4
+
+
+@pytest.mark.parametrize('attack', ['missing_roll', 'wrong_mapping', 'source_tamper'])
+def test_real_source_preparation_refuses_incomplete_or_untrusted_intake(real_historical_sources, attack):
+    from mono.config import digest
+    record, config = real_historical_sources
+    root = Path(record['root'])
+    path = root / 'model-inputs/rent-roll-historical-payload.json'
+    roll = json.loads(path.read_text())
+    if attack == 'missing_roll':
+        roll['rows'] = []
+    elif attack == 'wrong_mapping':
+        code = next(iter(roll['type_map']))
+        roll['type_map'][code] = 'Invented prospective qualification'
+    else:
+        roll['rows'][0]['actual_rent'] += 1
+    path.write_text(json.dumps(roll), encoding='utf-8')
+    if attack != 'source_tamper':
+        bundle_path = root / 'model-inputs/source-bundle.json'
+        bundle = json.loads(bundle_path.read_text())
+        next(source for source in bundle['sources'] if source['id'] == 'rr')['sha256'] = digest(path)
+        bundle_path.write_text(json.dumps(bundle), encoding='utf-8')
+    with pytest.raises(ValueError, match='source preparation is not ready'):
+        financial_context.expected_profile(record, config)
 
 
 @pytest.fixture
@@ -120,16 +192,57 @@ def test_each_control_change_is_rejected_even_with_recomputed_caller_hashes(sele
         verified_result(native, record, config, terminal)
 
 
-def test_package_receipt_cannot_switch_selected_projection(selected):
+@pytest.mark.parametrize('changed', ['financial_projection_sha256', 'financial_provider_id'])
+def test_package_receipt_cannot_switch_selected_projection(selected, changed):
     from mono.config import digest
     from mono.publication_verification import verify_native_binding
     (native, record, config, terminal, _), _ = selected
     release = financial_context.selection_identity(native)
-    release['financial_projection_sha256'] = 'c' * 64
+    release[changed] = 'c' * 64
     job = {'_native_receipt': str(terminal), '_native_receipt_sha256': digest(terminal),
            'identity': {'release': release}}
     with pytest.raises(ValueError, match='selected financial provider'):
         verify_native_binding(job, {'cleanup_verified': True})
+
+
+def test_preparation_envelope_freezes_independent_release_selection(tmp_path, monkeypatch):
+    pytest.importorskip('tools.mono_publish.source_plan',
+        reason='Paired calculator checkout required for publication preparation contract',
+        exc_type=ModuleNotFoundError)
+    from mono.config import digest
+    from mono.publication import PublicationProvider
+    import mono.publication as publication_module
+    receipt = tmp_path / 'receipt.json'
+    receipt.write_text(json.dumps({'selected_financial_projection': {
+        'provider_id': 'tampered-receipt-provider', 'projection_sha256': 'b' * 64}}))
+    release = dict(financial_provider_id='release-provider', financial_projection_sha256='a' * 64,
+        result_identity={}, revision=1, comps_event_id='comps', go_event_id='go')
+    job = dict(identity={'release': release, 'source_plan_sha256': 'plan', 'renderer_sha256': 'renderer'},
+        _revision_record={}, _registration={'artifact_root': str(tmp_path)}, _artifact='unopened.xlsx',
+        _native_receipt=str(receipt), _native_receipt_sha256=digest(receipt), created_at='fixture', steps=[])
+    provider = PublicationProvider.__new__(PublicationProvider)
+    provider.config = SimpleNamespace(data_root=tmp_path, expected_code_sha256='calculator',
+        calculator_python=Path('unexecuted'), calculator_root=tmp_path)
+    provider.store = SimpleNamespace(job=lambda *args: job, snapshot=lambda *args: copy.deepcopy(release),
+        update=lambda *args: None)
+    provider.builder = SimpleNamespace(verify=lambda *args: None)
+    provider._quarantine_path = tmp_path / 'not-quarantined'
+    monkeypatch.setattr(publication_module, 'registered_plan', lambda *args: {'deal_id': 'esplanade'})
+    monkeypatch.setattr('tools.mono_publish.source_plan.freeze_source_plan',
+        lambda *args: {'source_plan_sha256': 'plan'})
+    monkeypatch.setattr('tools.mono_publish.native_projection.normalized_identity', lambda *args: {})
+    class StopBeforeNative(Exception):
+        pass
+    def stop(*args, **kwargs):
+        raise StopBeforeNative()
+    monkeypatch.setattr(publication_module.subprocess, 'Popen', stop)
+    with pytest.raises(StopBeforeNative):
+        provider._run('esplanade', 'publication')
+    envelope = json.loads((tmp_path / 'publications/publication/envelope.json').read_text())
+    assert envelope['expected_financial_projection_sha256'] == 'a' * 64
+    assert envelope['expected_financial_provider_id'] == 'release-provider'
+    assert 'expected_selected_financial_projection' not in envelope
+    assert envelope['native_receipt_sha256'] == digest(receipt)
 
 
 @pytest.mark.parametrize('attack', ['result_profile', 'result_projection', 'prepared_source'])

@@ -159,6 +159,26 @@ def test_complete_files_download_only_through_current_scoped_package(setup):
     assert historical.value.status_code==409
 
 
+@pytest.mark.parametrize('kind,variant', [('workbook', 'workbook'), ('package', 'archive')])
+def test_historical_download_filename_preserves_comparison_month(tmp_path, monkeypatch, kind, variant):
+    service = PublicationService.__new__(PublicationService)
+    service.mono = SimpleNamespace(_record=lambda *args: None)
+    job = {'state': 'complete', 'package': {'verified': True}, 'identity': {'release': {
+        'financial_provider_id': 'esplanade_historical_annual_v1',
+        'historical_profile': {'comparison_month': '2026-09', 'expected_closing_month': '2027-08'}}}}
+    service.store = SimpleNamespace(job=lambda *args: job)
+    service._verified = lambda *args, **kwargs: (tmp_path, {'verified': True})
+    suffix = '.xlsx' if kind == 'workbook' else '.zip'
+    path = tmp_path / ('verified-file' + suffix)
+    monkeypatch.setattr('mono.publication_service.download_entry',
+        lambda *args: {'path': path.name, 'media_type': 'application/octet-stream'})
+    monkeypatch.setattr('mono.publication_service.output_file', lambda *args: path)
+    response = service.download('esplanade', 'publication', kind, variant, ACTOR)
+    assert response.filename.startswith('historical-source-comparison-2026-09-')
+    assert response.filename.endswith(suffix)
+    assert '2027-08' not in response.filename
+
+
 @pytest.mark.parametrize('change', ['native_receipt', 'reopened_binding', 'missing_cleanup', 'null_cleanup'])
 def test_later_fixed_package_use_rechecks_native_binding_and_positive_cleanup(setup, change):
     from mono.config import digest
