@@ -17,20 +17,20 @@ from test_mono_publish_store import ready, publication
 REAL_VALIDATE_CONTEXT = financial_context.validate_context
 
 
-@pytest.fixture(params=['v9s', 'v9z'])
+@pytest.fixture(params=['v9s', 'v9z', 'v9aa'])
 def real_historical_sources(tmp_path, request):
     pytest.importorskip('tools.mono_calc.historical_profile',
         reason='Paired private calculator checkout required for actual source preparation',
         exc_type=ModuleNotFoundError)
     from tools.deal_file.core import MAP_PATH
     from tools.mono_calc.historical_profile import V9S_TEMPLATE
-    from tools.mono_calc.template_versions import V9Z_TEMPLATE
+    from tools.mono_calc.template_versions import V9Z_TEMPLATE, V9AA_TEMPLATE
     from mono.config import digest
     source = Path(os.environ.get('DREAM_HISTORICAL_APP_SOURCE_FIXTURE',
         'C:/Users/evana/Downloads/DREAM-HISTORICAL-API-FIXTURE-067-LEAD002/engineering-source'))
     version = request.param
-    expected_template = {'v9s': V9S_TEMPLATE, 'v9z': V9Z_TEMPLATE}[version]
-    template = Path(os.environ.get('DREAM_HISTORICAL_APP_TEMPLATE' + ('' if version == 'v9s' else '_V9Z'),
+    expected_template = {'v9s': V9S_TEMPLATE, 'v9z': V9Z_TEMPLATE, 'v9aa': V9AA_TEMPLATE}[version]
+    template = Path(os.environ.get('DREAM_HISTORICAL_APP_TEMPLATE' + ('' if version == 'v9s' else '_' + version.upper()),
         'C:/Users/evana/dream-hq/models/5 - GS Residential Mono Model ('
         + ('10.21.26' if version == 'v9s' else '10.22.26') + ')_' + version + '.xlsx'))
     if not source.is_dir() or not template.is_file():
