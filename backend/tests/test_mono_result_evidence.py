@@ -197,7 +197,7 @@ def saved_receipt(receipt, tmp_path, monkeypatch):
     artifact.write_bytes(b'Portable artifact identity fixture, not an Excel calculation')
     native['artifact'] = str(artifact)
     native['identity']['workbook_sha256'] = hashlib.sha256(artifact.read_bytes()).hexdigest()
-    record.update(revision=1, root=str(tmp_path))
+    record.update(revision=1, root=str(tmp_path), deal_id='fixture')
     pin_checks = []
     def load_calculator():
         pin_checks.append('live package checked')
@@ -210,6 +210,9 @@ def saved_receipt(receipt, tmp_path, monkeypatch):
         capabilities=None, expected_code_sha256='code_sha256',
         load_calculator=load_calculator)
     monkeypatch.setitem(sys.modules, 'tools.mono_template.package', SimpleNamespace(inspect=lambda path: package))
+    # These synthetic receipts isolate orchestration, not the installed engine.
+    # The integration fixture restores the actual shared admission boundary.
+    monkeypatch.setattr('mono.financial_context.validate_context', lambda *args: {})
     terminal = tmp_path / 'terminal.json'
     native['investment_evidence'] = {}
     terminal.write_text(json.dumps(native), encoding='utf-8')
@@ -318,6 +321,7 @@ def test_current_result_is_invalidated_when_only_receipt_audit_changes(saved_rec
     result = verified_result(native, record, config, terminal)
     job = {'revision': record['revision'], 'identity': record['identity'], 'result': result}
     service = service_module.MonoService.__new__(service_module.MonoService)
+    service.config = config
     service.store = SimpleNamespace(current_result=lambda deal: job)
     service.builder = SimpleNamespace(verify=lambda record: None)
     record['deal_id'] = 'fixture'

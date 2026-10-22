@@ -13,6 +13,16 @@ from store.mono_deal_store import MonoConflict
 from test_mono_publish_store import ready
 
 
+@pytest.fixture(autouse=True)
+def isolate_financial_context_for_dispatcher_tests(monkeypatch):
+    # These fixtures exercise process ownership and races. Financial admission
+    # uses the real shared validator in test_mono_financial_context.py.
+    monkeypatch.setattr('mono.financial_context.validate_context', lambda *args: {})
+    import json
+    monkeypatch.setattr('mono.revisions.read',
+        lambda path: json.loads(Path(path).read_text(encoding='utf-8')))
+
+
 def inputs(ready, tmp_path):
     from mono.config import digest
     deals, publications = ready

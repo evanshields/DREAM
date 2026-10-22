@@ -35,6 +35,14 @@ export interface MonoResult {
   checks: unknown;
   artifact_sha256: string;
   identity: MonoIdentity;
+  historical_profile?: MonoRecord | null;
+  selected_financial_projection?: {
+    provider_id: string;
+    historical_profile: MonoRecord | null;
+    metrics: Record<string, {semantic_id: string; value: unknown; unit: string; period: unknown;
+      availability: string; binding_locator: unknown}>;
+    projection_sha256: string;
+  } | null;
 }
 
 export interface MonoJob {

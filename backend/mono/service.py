@@ -74,7 +74,8 @@ class MonoService:
                             config.capabilities, record.get('trusted_rulings'))
         mapping = load_map(config.map_path)
         from .comps_admission import protected_transport, canonical_packet
-        kwargs = {}
+        from tools.mono_template.package import inspect
+        kwargs = {'template_package': inspect(config.template), 'template_sha256': config.template_sha256}
         admission_problem = None
         if canonical_packet(record) is not None:
             from tools.mono_calc.comps_admission import TrustedCompsContext
@@ -110,6 +111,10 @@ class MonoService:
             if digest(result['_native_receipt']) != result.get('_native_receipt_sha256'):
                 return None
             receipt = read(result['_native_receipt'])
+            from .financial_context import assert_context_copy, validate_context
+            assert_context_copy(receipt, result)
+            self.config.load_calculator()
+            validate_context(receipt, record, self.config)
             if (receipt['identity'] != result['identity'] or receipt['outputs'] != result['outputs']
                     or receipt.get('comps_binding') != result.get('comps_binding')):
                 return None

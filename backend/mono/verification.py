@@ -152,6 +152,8 @@ def verified_result(native, record, config, terminal_path, *, receipt_bytes=None
     if receipt_bytes is None:
         receipt_bytes = Path(terminal_path).read_bytes()
     _require(json.loads(receipt_bytes) == native, 'receipt bytes differ from the validated content')
+    from .financial_context import validate_context
+    financial_context = validate_context(native, record, config)
     from .comps_admission import canonical_packet
     canonical = canonical_packet(record)
     if canonical is not None:
@@ -172,7 +174,7 @@ def verified_result(native, record, config, terminal_path, *, receipt_bytes=None
     _require(artifact.is_relative_to((config.data_root / 'calculations').resolve(strict=True)),
              'workbook is outside the private calculation root')
     _require(digest(artifact) == native['identity'].get('workbook_sha256'), 'saved workbook identity differs')
-    return {'result_id': native['identity']['calculation_id'], 'outputs': copy.deepcopy(native['outputs']),
+    return {**financial_context, 'result_id': native['identity']['calculation_id'], 'outputs': copy.deepcopy(native['outputs']),
             'output_metadata': copy.deepcopy(native['output_metadata']), 'checks': checks,
             'artifact_sha256': native['identity']['workbook_sha256'], 'identity': copy.deepcopy(native['identity']),
             'artifact_limitations': copy.deepcopy(native.get('artifact_limitations', [])),

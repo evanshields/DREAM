@@ -49,7 +49,8 @@ class MonoPublicationStore:
                 or go.get('comps_event_id') != comps.get('event_id')
                 or not comps.get('event_id') or not go.get('event_id')):
             raise MonoConflict('Publishing requires matching current comps and go reviews', current['revision'])
-        return {'revision': current['revision'], 'revision_identity': current['identity'],
+        from mono.financial_context import selection_identity
+        return {**selection_identity(result), 'revision': current['revision'], 'revision_identity': current['identity'],
                 'calculation_job_id': job['job_id'], 'result_id': result['result_id'],
                 'result_identity': result.get('identity'), 'artifact_sha256': result['artifact_sha256'],
                 'comps_event_id': comps['event_id'], 'go_event_id': go['event_id'],

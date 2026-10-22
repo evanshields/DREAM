@@ -14,6 +14,40 @@ const outputLabels: Record<string, string> = {
   out_sources_total: 'Total sources', out_uses_total: 'Total uses',
 };
 
+const historicalHeadlines: Record<string, string> = {
+  historical_gross_potential_rent_y1: 'Year 1 gross potential rent',
+  historical_effective_gross_income_y1: 'Year 1 effective gross income',
+  historical_operating_expenses_y1: 'Year 1 operating expenses',
+  historical_net_operating_income_y1: 'Year 1 net operating income',
+  historical_cash_flow_after_debt_service_y1: 'Year 1 cash flow after debt service',
+  historical_senior_coverage_y1: 'Year 1 senior debt coverage',
+  historical_aggregate_coverage_y1: 'Year 1 aggregate debt coverage',
+  historical_levered_net_cash_flow_y1: 'Year 1 levered net cash flow',
+};
+
+function monthLabel(value: unknown) {
+  if (typeof value !== 'string' || !/^\d{4}-\d{2}$/.test(value)) return 'Unknown';
+  return new Date(`${value}-01T00:00:00Z`).toLocaleDateString('en-US', { month: 'long', year: 'numeric', timeZone: 'UTC' });
+}
+
+function HistoricalFinancials({ result }: {result: MonoResult}) {
+  const selected = result.selected_financial_projection;
+  const context = asRecord(selected?.historical_profile);
+  return <section aria-label="Historical financial comparison" className="space-y-3">
+    <p className="text-sm text-slate/70">Historical comparison: {monthLabel(context.comparison_month)}. Expected closing: {monthLabel(context.expected_closing_month)}. Actual closing day is unknown. These figures use the historical source conventions.</p>
+    <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3">{Object.entries(historicalHeadlines).map(([id, label]) => {
+      const metric = selected?.metrics[id];
+      return <div key={id} data-output-id={id} className="p-4 rounded-lg border border-slate/10 bg-white min-w-0">
+        <p className="text-xs font-label uppercase tracking-wide text-slate/60">{label}</p>
+        <p className="text-xl tnum text-teal font-semibold mt-2">{metric?.availability === 'available' ? monoValue(metric.value, metric.unit === 'USD/year' ? 'USD' : metric.unit) : 'Unavailable'}</p>
+        {metric?.availability === 'available' && <p className="text-xs mt-1 text-slate/60">{metric.unit === 'USD/year' ? 'Annual dollars' : metric.unit === 'multiple' ? 'Coverage multiple' : 'Dollars'}</p>}
+        {metric?.availability !== 'available' && <p className="text-xs mt-2 text-warn">The historical source has no verified value for this measure.</p>}
+      </div>;
+    })}</div>
+    <p className="text-sm text-slate/70">Investment returns: Not applicable to Bond. Other forward monthly measures are unavailable in this historical comparison because their definitions differ.</p>
+  </section>;
+}
+
 function Output({ id, value, metadata }: { id: string; value: unknown; metadata: Record<string, unknown> }) {
   const applicability = asRecord(metadata.applicability);
   const availability = asRecord(metadata.availability);
@@ -36,9 +70,11 @@ export function MonoIdentityDetails({ identity }: { identity: MonoIdentity }) {
 
 export function MonoResultView({ result, historical = false }: { result: MonoResult; historical?: boolean }) {
   const checks = asRecord(result.checks);
+  const historicalProvider = result.selected_financial_projection?.provider_id === 'esplanade_historical_annual_v1';
+  const historicalContext = asRecord(result.historical_profile).profile !== undefined && asRecord(result.historical_profile).profile !== 'Forward';
   return <div className="space-y-4">
     <div className="flex flex-wrap gap-2 items-center"><Badge tone={historical ? 'taupe' : 'teal'}>{historical ? 'Historical result' : 'Validated current result'}</Badge><p className="text-xs text-slate/60 break-all">Result {result.result_id}</p></div>
-    <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3">{Object.entries(result.outputs).filter(([id]) => !id.startsWith('out_checks_')).map(([id, value]) => <Output key={id} id={id} value={value} metadata={result.output_metadata[id] ?? {}} />)}</div>
+    {historicalProvider ? <HistoricalFinancials result={result} /> : historicalContext ? <p className="text-sm text-warn">Historical financials are unavailable until the selected comparison is verified.</p> : <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3">{Object.entries(result.outputs).filter(([id]) => !id.startsWith('out_checks_')).map(([id, value]) => <Output key={id} id={id} value={value} metadata={result.output_metadata[id] ?? {}} />)}</div>}
     {!Object.keys(result.outputs).length && <p className="text-sm text-warn">This result contains no outputs.</p>}
     <Details title="Release checks and caution rows" open={checks.release_passed !== true}>
       <p className="text-sm">{checks.release_passed === true ? 'The server verified release checks for this result.' : 'Release checks have not been verified as passing.'}</p>

@@ -107,6 +107,13 @@ class PublicationProvider:
         receipt_hash = calculation.get('_native_receipt_sha256')
         if not isinstance(receipt_hash, str) or len(receipt_hash) != 64 or digest(calculation['_native_receipt']) != receipt_hash:
             raise ValueError('Native calculation receipt differs from the evidence verified by the app')
+        from .financial_context import assert_context_copy, validate_context, selection_identity
+        from .revisions import read
+        native = read(calculation['_native_receipt'])
+        assert_context_copy(native, calculation)
+        validate_context(native, revision, self.config)
+        if any(release.get(key) != value for key, value in selection_identity(calculation).items()):
+            raise ValueError('Selected financial provider changed before publication')
         job = {'job_id':uuid.uuid4().hex, 'deal_id':deal_id, 'revision':release['revision'],
             'state':'queued', 'created_at':now(), 'updated_at':now(), 'elapsed_seconds':0,
             'identity':identity, 'diagnostics':[], 'steps':['Sources and human reviews verified'], 'package':None,
@@ -200,6 +207,7 @@ class PublicationProvider:
                 raise ValueError('Original native calculation receipt changed before preparation')
             envelope.update(frozen,native_receipt_sha256=job['_native_receipt_sha256'],
                 expected_native_identity=normalized_identity(release['result_identity'],deal_id,release['revision']),
+                expected_selected_financial_projection=read(job['_native_receipt']).get('selected_financial_projection'),
                 created_at=job['created_at'],comps_event_id=release['comps_event_id'],go_event_id=release['go_event_id'])
         else:
             envelope.update(projection=job['_registration']['projection'],artifact_root=job['_registration']['artifact_root'])

@@ -13,6 +13,11 @@ def verify_native_binding(job, receipt):
     expected = job['_native_receipt_sha256']
     if not isinstance(expected, str) or len(expected) != 64 or digest(job['_native_receipt']) != expected:
         raise ValueError('Original native calculation receipt changed')
+    from .financial_context import selection_identity
+    native = json.loads(Path(job['_native_receipt']).read_bytes())
+    release = job['identity']['release']
+    if any(release.get(key) != value for key, value in selection_identity(native).items()):
+        raise ValueError('Publication selected financial provider differs from the native receipt')
     if receipt.get('cleanup_verified') is not True:
         raise ValueError('Publication cleanup has not been verified')
     verification = receipt['workbook_verification']
