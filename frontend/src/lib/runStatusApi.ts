@@ -1,8 +1,8 @@
 // Typed GET-only client for the read-only run status endpoints. Never sends anything but GET.
 import { API_BASE, ApiError, getAuthToken } from './api';
 
-export type GateStatus = 'green' | 'amber' | 'red' | 'not_run';
-export type EvidenceState = 'ok' | 'missing' | 'hash_mismatch';
+export type GateStatus = 'green' | 'amber' | 'red' | 'not_run' | 'missing';
+export type EvidenceState = 'ok' | 'missing' | 'hash_mismatch' | 'unverified' | 'unreadable' | 'invalid';
 export type DisplayState =
   | 'failed'
   | 'blocked'
@@ -40,6 +40,7 @@ export interface RunEvidence {
   path: string;
   sha256: string;
   state: EvidenceState;
+  detail?: string;
 }
 
 export interface RunHold {

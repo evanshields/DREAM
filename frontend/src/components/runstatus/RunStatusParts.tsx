@@ -34,13 +34,18 @@ export const STATE_TONE: Record<DisplayState, Tone> = {
   complete: 'ok',
 };
 
-const GATE_TONE: Record<GateStatus, Tone> = { green: 'ok', amber: 'warn', red: 'danger', not_run: 'neutral' };
-const GATE_LABEL: Record<GateStatus, string> = { green: 'Green', amber: 'Amber', red: 'Red', not_run: 'Not run' };
-const EVIDENCE_TONE: Record<EvidenceState, Tone> = { ok: 'ok', missing: 'danger', hash_mismatch: 'danger' };
+const GATE_TONE: Record<GateStatus, Tone> = { green: 'ok', amber: 'warn', red: 'danger', not_run: 'neutral', missing: 'danger' };
+const GATE_LABEL: Record<GateStatus, string> = { green: 'Green', amber: 'Amber', red: 'Red', not_run: 'Not run', missing: 'Missing' };
+const EVIDENCE_TONE: Record<EvidenceState, Tone> = {
+  ok: 'ok', missing: 'danger', hash_mismatch: 'danger', unverified: 'warn', unreadable: 'danger', invalid: 'danger',
+};
 const EVIDENCE_LABEL: Record<EvidenceState, string> = {
   ok: 'Verified',
   missing: 'Missing',
   hash_mismatch: 'Fingerprint mismatch',
+  unverified: 'Present, not verified',
+  unreadable: 'Unreadable',
+  invalid: 'Invalid entry',
 };
 
 export function StateBadge({ state }: { state: DisplayState }) {
@@ -169,7 +174,8 @@ export function EvidenceList({ items }: { items: RunEvidence[] }) {
               <div>
                 <div className="font-medium">{e.name}</div>
                 <div className="text-xs text-slate break-all">
-                  {e.path} (sha256 {e.sha256})
+                  {e.path} (sha256 {e.sha256 || 'not computed'})
+                  {e.detail ? ` ${e.detail}` : ''}
                 </div>
               </div>
             </li>

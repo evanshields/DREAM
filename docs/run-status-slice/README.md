@@ -33,7 +33,7 @@ Blocked and stale runs still show their numbers, labelled "diagnostic only". A b
 - No deploy steps.
 
 ## Follow-ups
-- Add a nav link in the app shell (not done here).
+- ~~Add a nav link in the app shell~~ done in the run source slice (below).
 - Read real runs from the Mono publication record once PR #7 and #8 land.
 - Per-user access to runs.
 
@@ -72,3 +72,56 @@ Real output, full backend suite (`cd backend && python -m pytest tests -q`):
 
 `cd frontend && npm run typecheck`: `tsc --noEmit` finished with no errors.
 `cd frontend && npm run build`: `✓ built in 7.29s` (only the usual chunk size warning).
+
+## Engine run source (slice 2, branch cloud/2026-11-03-dream-app-run-source)
+
+Reads real engine run records, read-only, behind an env var.
+
+- `DREAM_RUNS_DIR` unset (or empty, or not a directory): the six fixtures only, exactly as before.
+- `DREAM_RUNS_DIR` set: the list and detail endpoints also serve `<DREAM_RUNS_DIR>/<deal>/run/run.json`, plus `run/bote.json` when present. The run id is the deal folder name and must match `^[a-z0-9-]{1,64}$`. A fixture with the same id always wins. Still two GET routes.
+- Optional `DREAM_CURRENT_ENGINE_COMMIT` and `DREAM_CURRENT_INPUTS_HASH`: what "current" means for the stale check. Unset, a run reads as stale (cannot be verified), never complete.
+- Run it: `DREAM_RUNS_DIR=backend/fixtures/run_status_engine DREAM_CURRENT_ENGINE_COMMIT=synthetic-commit-0001 DREAM_CURRENT_INPUTS_HASH=synthetic-hash-0001 python -m uvicorn main:app --port 8765` then open `/runs`.
+
+### What the engine writes (from dream-underwrite `run.py`, `write_output(run_dir, "run.json", record)`)
+`{slug, route, ran, stop_after, force, stages: [{stage, name, status, why | error | waiting_on + what_to_do + files | wrote | print}], failed: [n], waiting: [n]}`. Stage status is one of ok, skipped, failed, waiting, blocked. `bote.json` is the stage 7 output. The engine writes no engine commit, no inputs hash and no gates today.
+
+### Mapping (`backend/run_status/adapter.py`, pure Python, no arithmetic)
+| Engine | View |
+|---|---|
+| stage ok | gate green |
+| stage failed | gate red, detail is the engine error |
+| stage waiting or blocked | gate not_run (a waiting stage also becomes an open hold with the engine instruction) |
+| stage skipped | gate amber, detail "Skipped: <why>" |
+| status absent or unknown, stage unreadable, no stage list | gate "missing" (shows blocked) |
+| exactly stages 1 to 8 once each and all ok, `stop_after` null, `force` boolean, `failed` and `waiting` lists present and empty, stage 7 wrote bote.json | run status completed |
+| any skipped stage | partial (shows failed, fail closed) |
+| any failure | stopped (shows blocked via the red gate) |
+| any waiting | awaiting_input (never complete) |
+| `stop_after` set, or no stages | partial (shows failed, fail closed) |
+| lists missing, or any unreadable gate | unreadable (shows blocked) |
+
+Headline rows are read from `bote.json` and passed through exactly as stored (floats stay floats, a stored 0 stays 0, a stored null stays null with a blank reason): price, year 1 NOI, bridge and takeout coverage (exempt case), IRR. A value that is absent or has no bote.json is blank with its reason. Evidence is one item per file a finished stage says it wrote, matched by file name inside the run folder and hashed (sha256 of the bytes): ok only when it matches the record's `output_sha256`; present with no recorded hash is `unverified`, a different hash is `hash_mismatch`, a rejected bote.json is `unreadable`, bad or repeated entries are `invalid`, otherwise missing. Only ok lets a run show complete. Files over 25 MB are never opened. Engine commit and inputs hash are carried through when the record has them.
+
+### Hardening
+Deal folder and `run/` may not be symlinks, resolved paths must stay under the runs root, files over 2 MB are ignored, the record's `slug` must equal its folder name, bad JSON is skipped in the list and 404 on detail.
+
+### Gaps found (not fixed here, engine side)
+1. The engine record has no engine commit or inputs hash, so every real run reads stale until the engine writes them (or the two current-value env vars match and the record carries them).
+2. The engine has no gate results in `run.json`; stages stand in for gates here. Real QA gates (inside `bote.json` for bond deals) are not read yet.
+3. Engine `wrote` paths are absolute paths from the machine that ran it, so only the file name is used.
+
+### Fixtures
+`backend/fixtures/run_status_engine/`: `synthetic-stopped-stage6` (stages 1 to 5 ok, 6 failed, 7 waiting, 8 blocked, no bote.json) and `synthetic-complete` (all ok, bote.json with a stored null IRR and a stored zero). Both say `synthetic: true` and use obviously fake values. The stopped fixture has stage 7 waiting beside a failed stage 6 because that was the case asked for; the real engine would write 7 as blocked, which a separate test covers.
+
+### Nav
+`AppShell.tsx` has a Runs link to `/runs` (desktop and mobile nav). The gate type gained a "missing" value so an unreadable stage shows a red "Missing" badge.
+
+Real output, full backend suite (`cd backend && python -m pytest tests -q`):
+
+```
+.......................................                                  [100%]
+470 passed, 1 skipped in 10.54s
+```
+New file only: `tests/test_run_status_engine_source.py`, 46 passed. Baseline before this slice: 414 passed, 1 skipped.
+`cd frontend && npm run typecheck`: `tsc --noEmit` no errors. `npm run build`: `✓ built in 7.02s` (usual chunk size warning).
+The existing boundary tests (no arithmetic tokens, no `os.environ`, no network words) apply to the new files and pass.

@@ -1,6 +1,6 @@
 import { type ReactNode } from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
-import { LayoutGrid, FilePlus2, Landmark, LogOut, Search } from 'lucide-react';
+import { LayoutGrid, FilePlus2, Landmark, Activity, LogOut, Search } from 'lucide-react';
 import { useAuth } from '../auth/AuthContext';
 import { Wordmark } from './Wordmark';
 import { CommandMenu } from './CommandMenu';
@@ -38,6 +38,9 @@ export function AppShell({ children }: { children: ReactNode }) {
               </NavLink>
               <NavLink to="/bond-screen" className={navClass}>
                 <Landmark className="w-4 h-4" /> Bond Screen
+              </NavLink>
+              <NavLink to="/runs" className={navClass}>
+                <Activity className="w-4 h-4" /> Runs
               </NavLink>
             </nav>
           </div>
@@ -84,6 +87,9 @@ export function AppShell({ children }: { children: ReactNode }) {
           </NavLink>
           <NavLink to="/bond-screen" className={navClass}>
             <Landmark className="w-4 h-4" /> Bond Screen
+          </NavLink>
+          <NavLink to="/runs" className={navClass}>
+            <Activity className="w-4 h-4" /> Runs
           </NavLink>
         </nav>
       </header>
