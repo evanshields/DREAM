@@ -1,6 +1,14 @@
 # Handoff: app API contract tests (2026-11-04)
 
-New file: `backend/tests/test_api_contract_refusals.py` (74 passing, 15 strict xfail). No application code or config changed.
+New file: `backend/tests/test_api_contract_refusals.py` (79 passing, 15 strict xfail). No application code or config changed.
+
+## Repair after Argon red team (same branch)
+- Ownership and real-app tests no longer inherit the host `AUTH_JWT_SECRET`, `GOOGLE_CLIENT_ID`, `DREAM_STRICT_OWNERSHIP` or `DREAM_DB_PATH`. New fixture `synthetic_env` pins them (auth off, empty allowlist, DB path under tmp_path).
+- `auth_on_main` login now uses an in-memory synthetic user store through `get_users`, so login can no longer reach the configured host database.
+- `synthetic_env` makes every default store accessor raise `REAL DATABASE TOUCHED`, and fails the test if the guarded db file appears.
+- New controls: ownership 404 and login both pass under a bogus host secret and DB path, a guard test, and a negative control showing an unpatched login trips the guard.
+- Rejected raw claim (silent zero-route) unchanged, the route-count test still guards it.
+- Known and out of scope: with a bogus host `AUTH_JWT_SECRET` set, 49 older tests in other files (for example `test_review_fixes.py`) fail on `main` too. This PR's file does not.
 Source of rows: `docs/research/2026-11-04-app-fail-closed-test-gap-map.md` (branch `cloud/2026-11-04-app-test-gap-map`).
 
 ## Rows now covered

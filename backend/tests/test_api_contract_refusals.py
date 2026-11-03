@@ -56,8 +56,43 @@ class FakeMemoGenerator:
         return "## Synthetic memo body"
 
 
+SYNTH_JWT_SECRET = "contract-test-secret-0123456789abcdef0123456789"
+_REAL_DB_MSG = "REAL DATABASE TOUCHED: a contract test reached a default store singleton"
+
+
+def _real_db_forbidden(*_a, **_k):
+    raise AssertionError(_REAL_DB_MSG)
+
+
 @pytest.fixture
-def stores(monkeypatch):
+def synthetic_env(monkeypatch, tmp_path):
+    """Pin every host setting these tests depend on, so the result never depends on the machine.
+
+    Auth is pinned OFF (local-dev pass-through, stub user) and the allowlist is emptied. The database
+    path points at a nonexistent file under tmp_path, and every default-store accessor raises, so any
+    code path that would reach a configured host database fails loudly instead of quietly.
+    """
+    monkeypatch.delenv("AUTH_JWT_SECRET", raising=False)
+    monkeypatch.delenv("GOOGLE_CLIENT_ID", raising=False)
+    monkeypatch.delenv("DREAM_STRICT_OWNERSHIP", raising=False)
+    monkeypatch.setattr("auth_dep.ALLOWED_EMAILS", set())
+    guarded = tmp_path / "must_never_be_created.db"
+    monkeypatch.setenv("DREAM_DB_PATH", str(guarded))
+    import store.deal_store as _ds_mod
+    import store.user_store as _us_mod
+    import jobs.job_store as _js_mod
+    import routers.auth_login as _login_mod
+    import store as _store_pkg
+    for mod, name in ((_ds_mod, "get_deal_store"), (_us_mod, "get_user_store"), (_js_mod, "get_job_store"),
+                      (_store_pkg, "get_deal_store"), (_login_mod, "get_user_store"),
+                      (_login_mod, "get_users")):
+        monkeypatch.setattr(mod, name, _real_db_forbidden, raising=False)
+    yield guarded
+    assert not guarded.exists(), _REAL_DB_MSG
+
+
+@pytest.fixture
+def stores(monkeypatch, synthetic_env):
     """Fresh in-memory deal + job stores wired into every router singleton."""
     ds = SQLiteDealStore(":memory:")
     js = SQLiteJobStore(":memory:")
@@ -130,10 +165,21 @@ def _real_api_routes():
 
 
 @pytest.fixture
-def auth_on_main(monkeypatch):
-    monkeypatch.setenv("AUTH_JWT_SECRET", "contract-test-secret-0123456789abcdef0123456789")
-    monkeypatch.delenv("GOOGLE_CLIENT_ID", raising=False)
-    monkeypatch.setattr("auth_dep.ALLOWED_EMAILS", set())
+def synthetic_users(monkeypatch, synthetic_env):
+    """In-memory synthetic user store patched in as login's get_users (never the host database)."""
+    from store.user_store import SQLiteUserStore
+    from password import hash_password
+    import routers.auth_login as login_mod
+    us = SQLiteUserStore(":memory:")
+    us.create_user("synthetic-user", "synthetic@example.com", hash_password("synthetic-pass-123"), NOW)
+    monkeypatch.setattr(login_mod, "get_users", lambda: us)
+    monkeypatch.setattr(login_mod, "ALLOWED_EMAILS", set())
+    return us
+
+
+@pytest.fixture
+def auth_on_main(monkeypatch, synthetic_env, synthetic_users):
+    monkeypatch.setenv("AUTH_JWT_SECRET", SYNTH_JWT_SECRET)
     import main
     return TestClient(main.app)
 
@@ -157,7 +203,9 @@ def test_b12_every_real_route_without_token_is_401(auth_on_main, method, path):
 def test_b12_open_paths_are_only_health_and_login(auth_on_main):
     assert auth_on_main.get("/api/health").status_code == 200
     # login is open by design: a bad login is refused by the login logic (401/422), not by the gate.
-    assert auth_on_main.post("/api/auth/login", json={"username": "x", "password": "y"}).status_code in (401, 422, 503)
+    r = auth_on_main.post("/api/auth/login", json={"username": "x", "password": "y"})
+    assert r.status_code == 401
+    assert r.json()["detail"] == "Invalid username or password"
 
 
 # ---------------------------------------------------------------------------
@@ -343,10 +391,8 @@ def test_b26_exit_cap_calc_missing_field_is_422(client):
 # ---------------------------------------------------------------------------
 
 @pytest.fixture
-def real_app_open(monkeypatch):
+def real_app_open(monkeypatch, synthetic_env):
     """Real main.app with auth off (local-dev mode) and a faked memo generator. No network."""
-    monkeypatch.delenv("AUTH_JWT_SECRET", raising=False)
-    monkeypatch.delenv("GOOGLE_CLIENT_ID", raising=False)
     import main
     return main, TestClient(main.app)
 
@@ -539,3 +585,66 @@ def test_b89_clean_completed_run_is_complete_and_not_diagnostic():
     view = build_view(_run_with_values("completed"))
     assert view["display_state"] == "complete"
     assert view["values_are_diagnostic"] is False
+
+
+# ---------------------------------------------------------------------------
+# Isolation controls: prove the repaired tests do not depend on, or touch, the host
+# ---------------------------------------------------------------------------
+
+@pytest.fixture
+def hostile_host_env(monkeypatch):
+    """Simulates a developer machine or CI box that has real-looking auth and database settings.
+    Applied BEFORE synthetic_env, which must override all of it."""
+    monkeypatch.setenv("AUTH_JWT_SECRET", "BOGUS-HOST-SECRET")
+    monkeypatch.setenv("GOOGLE_CLIENT_ID", "bogus-host.apps.googleusercontent.com")
+    monkeypatch.setenv("DREAM_STRICT_OWNERSHIP", "0")
+    monkeypatch.setenv("DREAM_DB_PATH", "/nonexistent-host-dir/real_host.db")
+
+
+def test_control_ownership_404_survives_hostile_host_auth(hostile_host_env, client, stores):
+    ds, _js, _ = stores
+    rec = ds.create(_spec(), owner="someone-else@example.com", now_iso=NOW, status="computed")
+    import os as _os
+    assert _os.environ.get("AUTH_JWT_SECRET") is None, "synthetic_env must clear host auth settings"
+    _os.environ["DREAM_STRICT_OWNERSHIP"] = "1"  # restored by monkeypatch teardown of hostile_host_env
+    r = client.delete(f"/api/deals/{rec.deal_id}")
+    assert r.status_code == 404
+    assert r.json()["detail"] == "deal not found"
+
+
+def test_control_login_and_gate_survive_hostile_host_db_and_auth(hostile_host_env, auth_on_main):
+    import os as _os
+    assert _os.environ["AUTH_JWT_SECRET"] == SYNTH_JWT_SECRET, "synthetic secret must win over the host's"
+    assert "GOOGLE_CLIENT_ID" not in _os.environ
+    r = auth_on_main.post("/api/auth/login", json={"username": "synthetic-user", "password": "synthetic-pass-123"})
+    assert r.status_code == 200
+    assert r.json()["email"] == "synthetic@example.com"
+    token = r.json()["access_token"]
+    assert auth_on_main.get("/api/deals").status_code == 401  # no token: still refused
+    assert auth_on_main.get("/api/me", headers={"Authorization": f"Bearer {token}"}).status_code == 200
+
+
+def test_control_login_wrong_password_is_401_from_synthetic_store(auth_on_main):
+    r = auth_on_main.post("/api/auth/login", json={"username": "synthetic-user", "password": "wrong"})
+    assert r.status_code == 401
+    assert r.json()["detail"] == "Invalid username or password"
+
+
+def test_guard_default_store_accessors_fail_loudly(synthetic_env):
+    """If any code path reaches the default singleton (the real database), the guard raises."""
+    from store.user_store import get_user_store
+    from jobs.job_store import get_job_store
+    from store import get_deal_store
+    for accessor in (get_user_store, get_job_store, get_deal_store):
+        with pytest.raises(AssertionError, match="REAL DATABASE TOUCHED"):
+            accessor()
+
+
+def test_guard_unpatched_login_would_fail_loudly(monkeypatch, synthetic_env):
+    """Negative control: login with NO synthetic user store patched in must trip the guard, not
+    quietly open the configured host database."""
+    monkeypatch.setenv("AUTH_JWT_SECRET", SYNTH_JWT_SECRET)
+    import main
+    c = TestClient(main.app, raise_server_exceptions=True)
+    with pytest.raises(AssertionError, match="REAL DATABASE TOUCHED"):
+        c.post("/api/auth/login", json={"username": "x", "password": "y"})
