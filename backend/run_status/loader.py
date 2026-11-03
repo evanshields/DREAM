@@ -21,8 +21,15 @@ def load_run(run_id: str) -> Optional[dict[str, Any]]:
     path = FIXTURE_DIR / f"{run_id}.json"
     if not path.is_file():
         return None
-    with path.open("r", encoding="utf-8") as fh:
-        return json.load(fh)
+    try:
+        with path.open("r", encoding="utf-8") as fh:
+            run = json.load(fh)
+    except (OSError, ValueError):
+        return None
+    # Only frozen synthetic fixtures are served, and the file must say it is the run asked for.
+    if not isinstance(run, dict) or run.get("synthetic") is not True or run.get("run_id") != run_id:
+        return None
+    return run
 
 
 def list_run_ids() -> list[str]:

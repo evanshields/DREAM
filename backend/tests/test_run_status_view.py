@@ -15,7 +15,7 @@ EXPECTED = {
     "run-clean-awaiting-cp1": "needs_human_check",
     "run-blocked-red-gate": "blocked",
     "run-stale-engine-commit": "stale",
-    "run-missing-values": "needs_human_check",
+    "run-missing-values": "blocked",
     "run-in-progress": "in_progress",
     "run-failed": "failed",
 }
