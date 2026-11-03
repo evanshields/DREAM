@@ -105,6 +105,8 @@ app.include_router(crm_router, dependencies=[Depends(require_auth)])
 # Wave C.4 — deal-memo generation (Kimi-backed; own router so deals.py stays LLM-free).
 from routers.memo import router as memo_router  # noqa: E402
 app.include_router(memo_router, dependencies=[Depends(require_auth)])
+from routers.run_status import router as run_status_router  # noqa: E402
+app.include_router(run_status_router, dependencies=[Depends(require_auth)])
 
 # Task C — username/password login (issues a short-lived app JWT accepted by require_auth
 # alongside Google OAuth). Urgent stopgap before Google Test Users propagate.

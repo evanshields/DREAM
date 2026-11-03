@@ -1,0 +1,107 @@
+{
+  "run_id": "run-stale-engine-commit",
+  "synthetic": true,
+  "deal_label": "Fixture Heights (stale variant)",
+  "route": "fixture-route",
+  "status": "awaiting_cp1",
+  "phase": "cp1_review",
+  "engine_commit": "fixture-commit-0000",
+  "current_engine_commit": "fixture-commit-0001",
+  "inputs_hash": "fixture-hash-0001",
+  "current_inputs_hash": "fixture-hash-0001",
+  "gates": [
+    {
+      "id": "gate-sources",
+      "name": "Source documents present",
+      "status": "green",
+      "detail": "Check passed."
+    },
+    {
+      "id": "gate-tieout",
+      "name": "Totals tie out",
+      "status": "green",
+      "detail": "Check passed."
+    },
+    {
+      "id": "gate-coverage",
+      "name": "Coverage check",
+      "status": "green",
+      "detail": "Check passed."
+    },
+    {
+      "id": "gate-sanity",
+      "name": "Range sanity check",
+      "status": "green",
+      "detail": "Check passed."
+    }
+  ],
+  "headline": [
+    {
+      "name": "Purchase price",
+      "value": "10000000",
+      "unit": "usd",
+      "blank_reason": null,
+      "source_file": "fixture-model.json",
+      "source_pointer": "/outputs/purchase_price"
+    },
+    {
+      "name": "Net operating income",
+      "value": "500000",
+      "unit": "usd",
+      "blank_reason": null,
+      "source_file": "fixture-model.json",
+      "source_pointer": "/outputs/noi"
+    },
+    {
+      "name": "Levered return",
+      "value": "0.15",
+      "unit": "ratio",
+      "blank_reason": null,
+      "source_file": "fixture-model.json",
+      "source_pointer": "/outputs/levered_return"
+    },
+    {
+      "name": "Coverage ratio",
+      "value": "1.5",
+      "unit": "ratio",
+      "blank_reason": null,
+      "source_file": "fixture-model.json",
+      "source_pointer": "/outputs/coverage"
+    }
+  ],
+  "evidence": [
+    {
+      "name": "Fixture model output",
+      "path": "fixture-evidence/model.json",
+      "sha256": "1111111111111111111111111111111111111111111111111111111111111111",
+      "state": "ok"
+    },
+    {
+      "name": "Fixture source summary",
+      "path": "fixture-evidence/sources.json",
+      "sha256": "2222222222222222222222222222222222222222222222222222222222222222",
+      "state": "ok"
+    }
+  ],
+  "holds": [
+    {
+      "id": "hold-0002",
+      "reason": "Engine version changed since this run. Rerun needed.",
+      "owner": "fixture-analyst"
+    }
+  ],
+  "events": [
+    {
+      "at_utc": "2026-01-01T09:00:00Z",
+      "text": "Run submitted."
+    },
+    {
+      "at_utc": "2026-01-01T09:05:00Z",
+      "text": "Engine finished."
+    },
+    {
+      "at_utc": "2026-01-01T09:06:00Z",
+      "text": "Stopped for human check."
+    }
+  ]
+}
