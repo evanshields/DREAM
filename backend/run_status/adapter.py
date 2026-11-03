@@ -10,14 +10,33 @@ Engine record, as written by dream-underwrite run.py:
 Stage statuses the engine writes: ok, skipped, failed, waiting, blocked.
 The engine does not write an engine commit or inputs hash today. They are carried through when present
 and shown as missing when absent, which the view treats as stale (unverifiable).
+The engine also writes no output fingerprints today. When the record carries `output_sha256`
+({file name: sha256}) each artifact is compared against it. Without it a present file is only "unverified".
+
+Fail closed: complete needs exactly stages 1 to 8 once each, all ok, typed empty failed and waiting lists,
+a boolean force, a null stop_after, well formed wrote lists, and bote.json written by stage 7, readable, and
+matching its recorded fingerprint. Anything else is never complete.
 """
 from __future__ import annotations
 
 import hashlib
+import re
 from pathlib import Path, PureWindowsPath
 from typing import Any, Optional
 
 MISSING = "missing"
+
+# Supported engine record: eight stages, stage 7 writes bote.json. Route does not change the set today.
+EXPECTED_STAGES = tuple(range(1, 9))
+BOTE_STAGE = 7
+BOTE_FILE = "bote.json"
+# Evidence limits: bytes hashed per artifact, artifacts per run, chunk size. Over-limit evidence is never opened.
+MAX_EVIDENCE_BYTES = 25_000_000
+MAX_EVIDENCE_ITEMS = 32
+_CHUNK = 1 << 16
+_SHA_RE = re.compile(r"^[0-9a-f]{64}$")
+_HASH_CACHE: dict[tuple[str, int, int], str] = {}  # (path, size, mtime_ns) -> sha256, so a repeat call does not re-read
+_HASH_CACHE_MAX = 256
 
 # Headline rows: (name, unit, bote.json pointer as path parts). Values are read, never computed.
 HEADLINE_SPEC = (
@@ -53,12 +72,14 @@ def _text(value: Any) -> str:
     return value if isinstance(value, str) and value.strip() else ""
 
 
-def _stage_gate(stage: Any) -> dict[str, Any]:
+def _valid_number(value: Any) -> bool:
+    return isinstance(value, int) and not isinstance(value, bool)
+
+
+def _stage_gate(stage: Any, gid: str) -> dict[str, Any]:
     if not isinstance(stage, dict):
-        return {"id": "stage-unknown", "name": "Unreadable stage record", "status": MISSING,
+        return {"id": gid, "name": "Unreadable stage record", "status": MISSING,
                 "detail": "This stage record could not be read."}
-    number = stage.get("stage")
-    gid = f"stage-{number}" if isinstance(number, int) and not isinstance(number, bool) else "stage-unknown"
     name = _text(stage.get("name")) or "Unnamed stage"
     status = stage.get("status")
     if status == "ok":
@@ -80,62 +101,181 @@ def _stage_gate(stage: Any) -> dict[str, Any]:
     return {"id": gid, "name": name, "status": MISSING, "detail": "Stage status missing or not recognised."}
 
 
-def _evidence(stages: list[Any], run_dir: Optional[Path]) -> list[dict[str, Any]]:
-    """One item per file a finished stage says it wrote. Present on disk and hashed is ok, otherwise missing."""
+def _gate_ids(stages: list[Any]) -> list[str]:
+    """Unique id per stage. A repeated or unreadable stage number gets an index suffix, never a shared id."""
+    ids, seen = [], set()
+    for i, s in enumerate(stages):
+        n = s.get("stage") if isinstance(s, dict) else None
+        gid = f"stage-{n}" if _valid_number(n) else f"stage-unknown-{i}"
+        if gid in seen:
+            gid = f"{gid}-dup{i}"
+        seen.add(gid)
+        ids.append(gid)
+    return ids
+
+
+def _stage_set_problem(stages: list[Any]) -> Optional[str]:
+    """None when the stages are exactly the expected set, once each. Otherwise what is wrong."""
+    numbers = [s.get("stage") if isinstance(s, dict) else None for s in stages]
+    if not all(_valid_number(n) for n in numbers):
+        return "A stage record has a missing or invalid stage number."
+    if len(set(numbers)) != len(numbers):
+        return "The run record repeats a stage number."
+    absent = [n for n in EXPECTED_STAGES if n not in numbers]
+    extra = [n for n in numbers if n not in EXPECTED_STAGES]
+    if absent:
+        return f"The run record has no stage {', '.join(str(n) for n in absent)}."
+    if extra:
+        return f"The run record has an unexpected stage {', '.join(str(n) for n in extra)}."
+    return None
+
+
+def _sha256_file(path: Path) -> str:
+    """sha256 of a file read in bounded chunks."""
+    h = hashlib.sha256()
+    with path.open("rb") as fh:
+        for chunk in iter(lambda: fh.read(_CHUNK), b""):
+            h.update(chunk)
+    return h.hexdigest()
+
+
+def _hash_bounded(path: Path) -> Optional[str]:
+    """sha256 when the file is within MAX_EVIDENCE_BYTES, else None without opening it. Cached by size and mtime."""
+    st = path.stat()
+    if st.st_size > MAX_EVIDENCE_BYTES:
+        return None
+    key = (str(path), st.st_size, st.st_mtime_ns)
+    hit = _HASH_CACHE.get(key)
+    if hit is not None:
+        return hit
+    digest = _sha256_file(path)
+    if len(_HASH_CACHE) >= _HASH_CACHE_MAX:
+        _HASH_CACHE.clear()
+    _HASH_CACHE[key] = digest
+    return digest
+
+
+def _expected_hashes(record: dict[str, Any]) -> dict[str, str]:
+    """The run's own recorded fingerprints, or {} when absent or malformed (nothing is then verifiable)."""
+    raw = record.get("output_sha256")
+    if not isinstance(raw, dict):
+        return {}
+    return {k: v for k, v in raw.items() if isinstance(k, str) and isinstance(v, str) and _SHA_RE.fullmatch(v)}
+
+
+def _evidence(stages: list[Any], run_dir: Optional[Path], expected: dict[str, str],
+              bote_problem: Optional[str]) -> list[dict[str, Any]]:
+    """One item per file a finished stage says it wrote.
+
+    States: ok (matches the run's recorded fingerprint), hash_mismatch (differs from it), unverified (present, but
+    there is no usable recorded fingerprint or it is over the size limit), missing, unreadable (rejected by the JSON
+    loader), invalid (malformed wrote entry, duplicate name, or past the item limit). Only ok verifies.
+    """
     items: list[dict[str, Any]] = []
+    seen: set[str] = set()
+
+    def add(name: str, path: str, digest: str, state: str, why: str = "") -> None:
+        item = {"name": name, "path": path, "sha256": digest, "state": state}
+        if why:
+            item["detail"] = why
+        items.append(item)
+
     for stage in stages:
         if not isinstance(stage, dict) or stage.get("status") != "ok":
             continue
-        wrote = stage.get("wrote")
-        for raw in wrote if isinstance(wrote, list) else []:
+        n = stage.get("stage")
+        if "wrote" in stage and not isinstance(stage.get("wrote"), list):
+            add(f"stage {n} wrote list", f"run/stage-{n}-wrote-invalid-{len(items)}", "", "invalid",
+                "The wrote entry is not a list.")
+            continue
+        for raw in stage.get("wrote") or []:
             if not isinstance(raw, str) or not raw.strip():
+                add(f"stage {n} wrote entry", f"run/stage-{n}-wrote-invalid-{len(items)}", "", "invalid",
+                    "A wrote entry is not a file name.")
                 continue
             # Engine paths come from another machine, so only the file name is used, inside run_dir.
             fname = PureWindowsPath(raw).name
+            if len(items) >= MAX_EVIDENCE_ITEMS:
+                add(fname or "unnamed", f"run/{fname}#over-limit-{len(items)}", "", "invalid",
+                    "More evidence files than the per-run limit.")
+                continue
+            if fname in seen:
+                add(fname, f"run/{fname}#duplicate-{len(items)}", "", "invalid", "This file is listed more than once.")
+                continue
+            seen.add(fname)
             digest, state = "", "missing"
             if run_dir is not None and fname and fname not in (".", ".."):
                 p = run_dir.joinpath(fname)
                 try:
-                    if p.is_file() and not p.is_symlink():
-                        digest, state = hashlib.sha256(p.read_bytes()).hexdigest(), "ok"
+                    if p.is_file() and not p.is_symlink() and p.resolve().parent == run_dir:
+                        if fname == BOTE_FILE and bote_problem:
+                            state = "unreadable"
+                        else:
+                            state = "unverified"
+                            want = expected.get(fname)
+                            if want is not None:
+                                got = _hash_bounded(p)
+                                if got is not None:
+                                    digest = got
+                                    state = "ok" if got == want else "hash_mismatch"
                 except OSError:
-                    pass
-            items.append({"name": fname, "path": f"run/{fname}", "sha256": digest, "state": state})
+                    state = "missing"
+            add(fname, f"run/{fname}", digest, state)
     return items
 
 
-def _headline(bote: Optional[dict[str, Any]]) -> list[dict[str, Any]]:
+def _headline(bote: Optional[dict[str, Any]], bote_problem: Optional[str] = None) -> list[dict[str, Any]]:
     rows = []
     for name, unit, parts in HEADLINE_SPEC:
-        value = _dig(bote, parts) if isinstance(bote, dict) else _ABSENT
-        if value is _ABSENT:
+        value = _dig(bote, parts) if isinstance(bote, dict) and not bote_problem else _ABSENT
+        value_out, reason = None, None
+        if bote_problem:
+            reason = f"bote.json was rejected: {bote_problem}"
+        elif value is _ABSENT:
             reason = "No bote.json for this run." if not isinstance(bote, dict) else "Not present in bote.json."
-            rows.append({"name": name, "value": None, "unit": unit, "blank_reason": reason,
-                         "source_file": "bote.json", "source_pointer": _pointer(parts)})
         elif value is None:
-            rows.append({"name": name, "value": None, "unit": unit,
-                         "blank_reason": "bote.json stores no figure here (null).",
-                         "source_file": "bote.json", "source_pointer": _pointer(parts)})
+            reason = "bote.json stores no figure here (null)."
+        elif isinstance(value, bool) or not isinstance(value, (int, float, str)):
+            reason = "bote.json holds something other than a number or text here."
         else:
-            rows.append({"name": name, "value": value, "unit": unit, "blank_reason": None,
-                         "source_file": "bote.json", "source_pointer": _pointer(parts)})
+            value_out = value
+        rows.append({"name": name, "value": value_out, "unit": unit, "blank_reason": reason,
+                     "source_file": "bote.json", "source_pointer": _pointer(parts)})
     return rows
 
 
-def _status(record: dict[str, Any], stages: list[Any], gates: list[dict[str, Any]]) -> str:
-    """completed only when every stage is ok or skipped, the run was not cut short, and nothing failed or waits."""
+def _status(record: dict[str, Any], stages: list[Any], gates: list[dict[str, Any]],
+            stage_problem: Optional[str], record_problem: Optional[str]) -> str:
+    """completed only when exactly the expected stages are all ok, the run was not cut short, and nothing failed or waits."""
     statuses = [g["status"] for g in gates]
     if MISSING in statuses:
         return "unreadable"
-    if "red" in statuses or record.get("failed"):
+    if "red" in statuses or (isinstance(record.get("failed"), list) and record["failed"]):
         return "stopped"
-    if "not_run" in statuses or record.get("waiting"):
+    if "not_run" in statuses or (isinstance(record.get("waiting"), list) and record["waiting"]):
         return "awaiting_input"
     if not stages or record.get("stop_after") is not None:
         return "partial"
-    if "failed" not in record or "waiting" not in record:
-        return "unreadable"  # the engine always writes both lists; absent means an unreadable record
+    if "amber" in statuses:
+        return "partial"  # a skipped stage did not run this time, so the run is not shown as complete
+    if record_problem or stage_problem:
+        return "unreadable"
+    if not isinstance(record.get("failed"), list) or not isinstance(record.get("waiting"), list):
+        return "unreadable"  # the engine always writes both lists; anything else is an unreadable record
+    if not isinstance(record.get("force"), bool):
+        return "unreadable"
     return "completed"
+
+
+def _bote_problem_text(stages: list[Any]) -> Optional[str]:
+    """Stage 7 must be ok and must list bote.json among the files it wrote."""
+    for st in stages:
+        if isinstance(st, dict) and st.get("stage") == BOTE_STAGE:
+            wrote = st.get("wrote")
+            names = [PureWindowsPath(w).name for w in wrote if isinstance(w, str)] if isinstance(wrote, list) else []
+            if st.get("status") == "ok" and BOTE_FILE not in names:
+                return "Stage 7 finished but does not say it wrote bote.json."
+    return None
 
 
 def adapt_engine_run(
@@ -145,21 +285,34 @@ def adapt_engine_run(
     run_dir: Optional[Path] = None,
     current_engine_commit: Optional[str] = None,
     current_inputs_hash: Optional[str] = None,
+    record_problem: Optional[str] = None,
+    bote_problem: Optional[str] = None,
 ) -> Optional[dict[str, Any]]:
-    """Return a view-shaped run dict, or None when the record is not a JSON object."""
+    """Return a view-shaped run dict, or None when the record is not a JSON object.
+
+    record_problem: the loader found the run record malformed (for example a repeated key). Never complete.
+    bote_problem: bote.json exists but the loader rejected it (bad JSON, not an object, too large, repeated key).
+    """
     if not isinstance(record, dict):
         return None
     raw_stages = record.get("stages")
     stages = raw_stages if isinstance(raw_stages, list) else []
-    gates = [_stage_gate(s) for s in stages]
+    ids = _gate_ids(stages)
+    gates = [_stage_gate(s, gid) for s, gid in zip(stages, ids)]
     if not isinstance(raw_stages, list):
         gates = [{"id": "stages", "name": "Stage list", "status": MISSING, "detail": "The run record has no stage list."}]
-    status = _status(record, stages, gates)
+    stage_problem = _stage_set_problem(stages) or _bote_problem_text(stages)
+    status = _status(record, stages, gates, stage_problem, record_problem)
+    if record_problem:
+        status = "unreadable"  # a repeated key can hide a failure, so even a stopped record shows as an error
+    if status == "unreadable" and (record_problem or MISSING not in [g["status"] for g in gates]):
+        why = record_problem or stage_problem or "Failed, waiting or force fields are missing or the wrong type."
+        gates.append({"id": "run-record", "name": "Run record check", "status": MISSING, "detail": why})
 
     holds = []
-    for s in stages:
+    for s, gid in zip(stages, ids):
         if isinstance(s, dict) and s.get("status") == "waiting":
-            holds.append({"id": f"hold-stage-{s.get('stage')}",
+            holds.append({"id": f"hold-{gid}",
                           "reason": _text(s.get("what_to_do")) or "Waiting on a person. The engine gave no instruction.",
                           "owner": _text(s.get("waiting_on")) or "unknown"})
 
@@ -179,8 +332,8 @@ def adapt_engine_run(
         "inputs_hash": _text(record.get("inputs_hash")),
         "current_inputs_hash": current_inputs_hash or "",
         "gates": gates,
-        "headline": _headline(bote),
-        "evidence": _evidence(stages, run_dir),
+        "headline": _headline(bote, bote_problem),
+        "evidence": _evidence(stages, run_dir, _expected_hashes(record), bote_problem),
         "holds": holds,
         "events": events,
     }

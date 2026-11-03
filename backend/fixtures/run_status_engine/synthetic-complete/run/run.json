@@ -64,5 +64,9 @@
     }
   ],
   "failed": [],
-  "waiting": []
+  "waiting": [],
+  "output_sha256": {
+      "sources.json": "7ec87f5c1030c9e268734eb3d1c45ee46e4b4439e2068c407757c0ad98bb2d5b",
+      "bote.json": "3b5de9fd2bf01fd4942bb6e2e7141511def2abdac7cd10d2945a6e65f584f2bc"
+  }
 }

@@ -93,13 +93,14 @@ Reads real engine run records, read-only, behind an env var.
 | stage waiting or blocked | gate not_run (a waiting stage also becomes an open hold with the engine instruction) |
 | stage skipped | gate amber, detail "Skipped: <why>" |
 | status absent or unknown, stage unreadable, no stage list | gate "missing" (shows blocked) |
-| every stage ok or skipped, `stop_after` null, `failed` and `waiting` lists present and empty | run status completed |
+| exactly stages 1 to 8 once each and all ok, `stop_after` null, `force` boolean, `failed` and `waiting` lists present and empty, stage 7 wrote bote.json | run status completed |
+| any skipped stage | partial (shows failed, fail closed) |
 | any failure | stopped (shows blocked via the red gate) |
 | any waiting | awaiting_input (never complete) |
 | `stop_after` set, or no stages | partial (shows failed, fail closed) |
 | lists missing, or any unreadable gate | unreadable (shows blocked) |
 
-Headline rows are read from `bote.json` and passed through exactly as stored (floats stay floats, a stored 0 stays 0, a stored null stays null with a blank reason): price, year 1 NOI, bridge and takeout coverage (exempt case), IRR. A value that is absent or has no bote.json is blank with its reason. Evidence is one item per file a finished stage says it wrote, matched by file name inside the run folder and hashed (sha256 of the bytes): on disk is ok, otherwise missing (blocked). Engine commit and inputs hash are carried through when the record has them.
+Headline rows are read from `bote.json` and passed through exactly as stored (floats stay floats, a stored 0 stays 0, a stored null stays null with a blank reason): price, year 1 NOI, bridge and takeout coverage (exempt case), IRR. A value that is absent or has no bote.json is blank with its reason. Evidence is one item per file a finished stage says it wrote, matched by file name inside the run folder and hashed (sha256 of the bytes): ok only when it matches the record's `output_sha256`; present with no recorded hash is `unverified`, a different hash is `hash_mismatch`, a rejected bote.json is `unreadable`, bad or repeated entries are `invalid`, otherwise missing. Only ok lets a run show complete. Files over 25 MB are never opened. Engine commit and inputs hash are carried through when the record has them.
 
 ### Hardening
 Deal folder and `run/` may not be symlinks, resolved paths must stay under the runs root, files over 2 MB are ignored, the record's `slug` must equal its folder name, bad JSON is skipped in the list and 404 on detail.

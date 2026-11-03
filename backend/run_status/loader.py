@@ -57,19 +57,61 @@ def runs_root() -> Optional[Path]:
         return None
 
 
-def _read_json_object(path: Path, root: Path) -> Optional[dict[str, Any]]:
-    """Read a JSON object that really lives inside root, not through a link and not oversized."""
+class _RepeatedKey(ValueError):
+    pass
+
+
+def _no_repeated_keys(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+    """JSON object hook that refuses a repeated key at any depth, so two values are never silently merged."""
+    out: dict[str, Any] = {}
+    for k, v in pairs:
+        if k in out:
+            raise _RepeatedKey(k)
+        out[k] = v
+    return out
+
+
+def _read_json_object(path: Path, root: Path) -> tuple[Optional[dict[str, Any]], Optional[str]]:
+    """Read a JSON object that really lives inside root, not through a link and not oversized.
+
+    Returns (document, None) when accepted, (None, None) when the file is simply absent, and (None, reason)
+    when the file exists but is rejected. The reason is plain English so callers can show it.
+    """
     try:
-        if path.is_symlink() or not path.is_file():
-            return None
+        if path.is_symlink():
+            return None, "the file is a link"
+        if not path.is_file():
+            return None, None
         resolved = path.resolve()
-        if root not in resolved.parents or resolved.stat().st_size > MAX_RUN_FILE_BYTES:
-            return None
+        if root not in resolved.parents:
+            return None, "the file resolves outside the runs folder"
+        if resolved.stat().st_size > MAX_RUN_FILE_BYTES:
+            return None, "the file is larger than the size limit"
         with resolved.open("r", encoding="utf-8") as fh:
-            doc = json.load(fh)
+            doc = json.load(fh, object_pairs_hook=_no_repeated_keys)
+    except _RepeatedKey as exc:
+        return None, f"the file repeats the key {str(exc)!r}"
     except (OSError, ValueError):
-        return None
-    return doc if isinstance(doc, dict) else None
+        return None, "the file is not valid JSON or could not be read"
+    if not isinstance(doc, dict):
+        return None, "the file is not a JSON object"
+    return doc, None
+
+
+def _read_run_record(path: Path, root: Path) -> tuple[Optional[dict[str, Any]], Optional[str]]:
+    """Like _read_json_object, but a repeated key still yields the record (last value wins) with a problem flag.
+
+    The caller must treat a flagged record as never complete. A repeated key is shown as an error, not merged.
+    """
+    doc, problem = _read_json_object(path, root)
+    if doc is not None or not problem or "repeats the key" not in problem:
+        return doc, None
+    try:
+        with path.resolve().open("r", encoding="utf-8") as fh:
+            lenient = json.load(fh)
+    except (OSError, ValueError):
+        return None, None
+    return (lenient, problem) if isinstance(lenient, dict) else (None, None)
 
 
 def load_engine_run(run_id: str) -> Optional[dict[str, Any]]:
@@ -85,10 +127,11 @@ def load_engine_run(run_id: str) -> Optional[dict[str, Any]]:
     run_dir = deal_dir.joinpath("run")
     if run_dir.is_symlink():
         return None
-    record = _read_json_object(run_dir.joinpath("run.json"), root)
+    record, record_problem = _read_run_record(run_dir.joinpath("run.json"), root)
     if record is None or record.get("slug") != run_id:
         return None  # the record must say it belongs to the deal folder it sits in
-    bote = _read_json_object(run_dir.joinpath("bote.json"), root)  # absent or unreadable shows as blank values
+    # Absent bote.json has no problem here (stage evidence reports it missing). A rejected one is passed on as a problem.
+    bote, bote_problem = _read_json_object(run_dir.joinpath("bote.json"), root)
     return adapt_engine_run(
         record,
         bote,
@@ -96,6 +139,8 @@ def load_engine_run(run_id: str) -> Optional[dict[str, Any]]:
         run_dir=run_dir.resolve(),
         current_engine_commit=os.getenv("DREAM_CURRENT_ENGINE_COMMIT", "").strip() or None,
         current_inputs_hash=os.getenv("DREAM_CURRENT_INPUTS_HASH", "").strip() or None,
+        record_problem=(f"Run record: {record_problem}." if record_problem else None),
+        bote_problem=bote_problem,
     )
 
 
