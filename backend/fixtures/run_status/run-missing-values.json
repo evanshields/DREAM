@@ -1,0 +1,101 @@
+{
+  "run_id": "run-missing-values",
+  "synthetic": true,
+  "deal_label": "Fixture Heights (missing values variant)",
+  "route": "fixture-route",
+  "status": "awaiting_cp1",
+  "phase": "cp1_review",
+  "engine_commit": "fixture-commit-0001",
+  "current_engine_commit": "fixture-commit-0001",
+  "inputs_hash": "fixture-hash-0001",
+  "current_inputs_hash": "fixture-hash-0001",
+  "gates": [
+    {
+      "id": "gate-sources",
+      "name": "Source documents present",
+      "status": "green",
+      "detail": "Check passed."
+    },
+    {
+      "id": "gate-tieout",
+      "name": "Totals tie out",
+      "status": "amber",
+      "detail": "Some totals could not be checked."
+    },
+    {
+      "id": "gate-coverage",
+      "name": "Coverage check",
+      "status": "green",
+      "detail": "Check passed."
+    },
+    {
+      "id": "gate-sanity",
+      "name": "Range sanity check",
+      "status": "green",
+      "detail": "Check passed."
+    }
+  ],
+  "headline": [
+    {
+      "name": "Purchase price",
+      "value": "10000000",
+      "unit": "usd",
+      "blank_reason": null,
+      "source_file": "fixture-model.json",
+      "source_pointer": "/outputs/purchase_price"
+    },
+    {
+      "name": "Net operating income",
+      "value": null,
+      "unit": "usd",
+      "blank_reason": "Operating statement was not provided.",
+      "source_file": null,
+      "source_pointer": null
+    },
+    {
+      "name": "Levered return",
+      "value": null,
+      "unit": "ratio",
+      "blank_reason": "Needs net operating income first.",
+      "source_file": null,
+      "source_pointer": null
+    },
+    {
+      "name": "Reserve shortfall",
+      "value": 0,
+      "unit": "usd",
+      "blank_reason": null,
+      "source_file": "fixture-model.json",
+      "source_pointer": "/outputs/reserve_shortfall"
+    }
+  ],
+  "evidence": [
+    {
+      "name": "Fixture model output",
+      "path": "fixture-evidence/model.json",
+      "sha256": "1111111111111111111111111111111111111111111111111111111111111111",
+      "state": "ok"
+    },
+    {
+      "name": "Fixture source summary",
+      "path": "fixture-evidence/sources.json",
+      "sha256": "2222222222222222222222222222222222222222222222222222222222222222",
+      "state": "missing"
+    }
+  ],
+  "holds": [],
+  "events": [
+    {
+      "at_utc": "2026-01-01T09:00:00Z",
+      "text": "Run submitted."
+    },
+    {
+      "at_utc": "2026-01-01T09:05:00Z",
+      "text": "Engine finished."
+    },
+    {
+      "at_utc": "2026-01-01T09:06:00Z",
+      "text": "Stopped for human check."
+    }
+  ]
+}

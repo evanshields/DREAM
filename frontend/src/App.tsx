@@ -8,6 +8,7 @@ import { Pipeline } from './pages/Pipeline';
 import { Underwrite } from './pages/Underwrite';
 import { DealDetail } from './pages/DealDetail';
 import { BondScreen } from './pages/BondScreen';
+import { RunStatusList, RunStatusDetail } from './pages/RunStatus';
 
 // Routes: /login (public) · /pipeline · /underwrite · /bond-screen · /deal/:id (all gated).
 export default function App() {
@@ -54,6 +55,27 @@ export default function App() {
               <RequireAuth>
                 <AppShell>
                   <DealDetail />
+                </AppShell>
+              </RequireAuth>
+            }
+          />
+
+          <Route
+            path="/runs"
+            element={
+              <RequireAuth>
+                <AppShell>
+                  <RunStatusList />
+                </AppShell>
+              </RequireAuth>
+            }
+          />
+          <Route
+            path="/runs/:id"
+            element={
+              <RequireAuth>
+                <AppShell>
+                  <RunStatusDetail />
                 </AppShell>
               </RequireAuth>
             }

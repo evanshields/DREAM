@@ -1,0 +1,59 @@
+{
+  "run_id": "run-failed",
+  "synthetic": true,
+  "deal_label": "Fixture Heights (failed variant)",
+  "route": "fixture-route",
+  "status": "failed",
+  "phase": "wave1_comps",
+  "engine_commit": "fixture-commit-0001",
+  "current_engine_commit": "fixture-commit-0001",
+  "inputs_hash": "fixture-hash-0001",
+  "current_inputs_hash": "fixture-hash-0001",
+  "gates": [
+    {
+      "id": "gate-sources",
+      "name": "Source documents present",
+      "status": "not_run",
+      "detail": "Not run yet."
+    },
+    {
+      "id": "gate-tieout",
+      "name": "Totals tie out",
+      "status": "not_run",
+      "detail": "Not run yet."
+    },
+    {
+      "id": "gate-coverage",
+      "name": "Coverage check",
+      "status": "not_run",
+      "detail": "Not run yet."
+    },
+    {
+      "id": "gate-sanity",
+      "name": "Range sanity check",
+      "status": "not_run",
+      "detail": "Not run yet."
+    }
+  ],
+  "headline": [],
+  "evidence": [
+    {
+      "name": "Fixture model output",
+      "path": "fixture-evidence/model.json",
+      "sha256": "3333333333333333333333333333333333333333333333333333333333333333",
+      "state": "hash_mismatch"
+    }
+  ],
+  "holds": [],
+  "events": [
+    {
+      "at_utc": "2026-01-01T09:00:00Z",
+      "text": "Run submitted."
+    },
+    {
+      "at_utc": "2026-01-01T09:02:00Z",
+      "text": "Run failed."
+    }
+  ],
+  "error_message": "The run stopped because a fixture step failed. Nothing was produced."
+}
