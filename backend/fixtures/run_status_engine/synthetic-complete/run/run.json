@@ -1,0 +1,68 @@
+{
+  "slug": "synthetic-complete",
+  "synthetic": true,
+  "route": "acq",
+  "ran": "2026-01-01T09:00:00+00:00",
+  "stop_after": null,
+  "force": false,
+  "engine_commit": "synthetic-commit-0001",
+  "inputs_hash": "synthetic-hash-0001",
+  "stages": [
+    {
+      "stage": 1,
+      "name": "drive pull and file sort",
+      "status": "ok",
+      "wrote": [
+        "C:\\\\synthetic\\\\deals\\\\X\\\\run\\\\sources.json"
+      ],
+      "print": null
+    },
+    {
+      "stage": 2,
+      "name": "rent roll parse and flags",
+      "status": "ok",
+      "print": null
+    },
+    {
+      "stage": 3,
+      "name": "T-12 parse and flags",
+      "status": "ok",
+      "print": null
+    },
+    {
+      "stage": 4,
+      "name": "Mission Driven benchmark",
+      "status": "ok",
+      "print": null
+    },
+    {
+      "stage": 5,
+      "name": "comps and market review",
+      "status": "ok",
+      "print": null
+    },
+    {
+      "stage": 6,
+      "name": "unit mix optimiser",
+      "status": "ok",
+      "print": null
+    },
+    {
+      "stage": 7,
+      "name": "back of the envelope",
+      "status": "ok",
+      "wrote": [
+        "C:\\\\synthetic\\\\deals\\\\X\\\\run\\\\bote.json"
+      ],
+      "print": null
+    },
+    {
+      "stage": 8,
+      "name": "workbook build and Drive save",
+      "status": "ok",
+      "print": null
+    }
+  ],
+  "failed": [],
+  "waiting": []
+}

@@ -1,0 +1,72 @@
+{
+  "slug": "synthetic-stopped-stage6",
+  "synthetic": true,
+  "route": "acq",
+  "ran": "2026-01-01T09:00:00+00:00",
+  "stop_after": null,
+  "force": false,
+  "engine_commit": "synthetic-commit-0001",
+  "inputs_hash": "synthetic-hash-0001",
+  "stages": [
+    {
+      "stage": 1,
+      "name": "drive pull and file sort",
+      "status": "ok",
+      "wrote": [
+        "C:\\\\synthetic\\\\deals\\\\X\\\\run\\\\sources.json"
+      ],
+      "print": null
+    },
+    {
+      "stage": 2,
+      "name": "rent roll parse and flags",
+      "status": "ok",
+      "print": null
+    },
+    {
+      "stage": 3,
+      "name": "T-12 parse and flags",
+      "status": "ok",
+      "print": null
+    },
+    {
+      "stage": 4,
+      "name": "Mission Driven benchmark",
+      "status": "ok",
+      "print": null
+    },
+    {
+      "stage": 5,
+      "name": "comps and market review",
+      "status": "ok",
+      "print": null
+    },
+    {
+      "stage": 6,
+      "name": "unit mix optimiser",
+      "status": "failed",
+      "error": "Synthetic failure: unit mix did not tie out."
+    },
+    {
+      "stage": 7,
+      "name": "back of the envelope",
+      "status": "waiting",
+      "waiting_on": "evan",
+      "what_to_do": "Synthetic: confirm the unit mix, then rerun.",
+      "files": []
+    },
+    {
+      "stage": 8,
+      "name": "workbook build and Drive save",
+      "status": "blocked",
+      "why": "stage 6, 7 did not finish"
+    }
+  ],
+  "failed": [
+    6,
+    8
+  ],
+  "waiting": [
+    7
+  ]
+}
