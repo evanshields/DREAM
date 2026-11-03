@@ -8,7 +8,7 @@ A read-only screen that shows where a deal run stands: the quality gates, the he
 2. Backend: `cd backend && python -m uvicorn main:app --port 8765`
 3. Check: `curl -s localhost:8765/api/run-status`
 4. Frontend: `cd frontend && npm ci && npm run dev`, then open `/runs`.
-5. Tests: `cd backend && python -m pytest tests/test_run_status_*.py -q`
+5. Tests: `cd backend && python -m pytest tests -q`
 
 ## Display states
 The first row that matches wins.
@@ -36,3 +36,18 @@ Blocked and stale runs still show their numbers, labelled "diagnostic only". A b
 - Add a nav link in the app shell (not done here).
 - Read real runs from the Mono publication record once PR #7 and #8 land.
 - Per-user access to runs.
+
+## Auth regression tests (repair round 1)
+`backend/tests/test_run_status_auth.py` mounts the router the same way `backend/main.py` does (`dependencies=[Depends(require_auth)]`) with auth switched on. For both GET routes it checks: no token gives 401, a garbage or wrongly signed token gives 401, a valid token gives 200. A last test checks that `main.py` still contains the authenticated mount line. Run with the auth mount removed, 10 of the 13 tests fail, so the tests do guard it.
+
+Real output, full backend suite (`cd backend && python -m pytest tests -q`):
+
+```
+..................s..................................................... [ 18%]
+........................................................................ [ 37%]
+........................................................................ [ 55%]
+........................................................................ [ 74%]
+........................................................................ [ 93%]
+..........................                                               [100%]
+385 passed, 1 skipped in 11.01s
+```
