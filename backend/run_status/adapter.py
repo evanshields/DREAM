@@ -35,8 +35,6 @@ MAX_EVIDENCE_BYTES = 25_000_000
 MAX_EVIDENCE_ITEMS = 32
 _CHUNK = 1 << 16
 _SHA_RE = re.compile(r"^[0-9a-f]{64}$")
-_HASH_CACHE: dict[tuple[str, int, int], str] = {}  # (path, size, mtime_ns) -> sha256, so a repeat call does not re-read
-_HASH_CACHE_MAX = 256
 
 # Headline rows: (name, unit, bote.json pointer as path parts). Values are read, never computed.
 HEADLINE_SPEC = (
@@ -140,19 +138,14 @@ def _sha256_file(path: Path) -> str:
 
 
 def _hash_bounded(path: Path) -> Optional[str]:
-    """sha256 when the file is within MAX_EVIDENCE_BYTES, else None without opening it. Cached by size and mtime."""
-    st = path.stat()
-    if st.st_size > MAX_EVIDENCE_BYTES:
+    """sha256 of the bytes read now, or None when the file is over MAX_EVIDENCE_BYTES (checked without opening it).
+
+    Deliberately not cached: a cache keyed on size and modified time can return an old digest for changed bytes
+    that kept the same size and time. The hash is always of what is on disk at the moment of the call.
+    """
+    if path.stat().st_size > MAX_EVIDENCE_BYTES:
         return None
-    key = (str(path), st.st_size, st.st_mtime_ns)
-    hit = _HASH_CACHE.get(key)
-    if hit is not None:
-        return hit
-    digest = _sha256_file(path)
-    if len(_HASH_CACHE) >= _HASH_CACHE_MAX:
-        _HASH_CACHE.clear()
-    _HASH_CACHE[key] = digest
-    return digest
+    return _sha256_file(path)
 
 
 def _expected_hashes(record: dict[str, Any]) -> dict[str, str]:
@@ -164,7 +157,7 @@ def _expected_hashes(record: dict[str, Any]) -> dict[str, str]:
 
 
 def _evidence(stages: list[Any], run_dir: Optional[Path], expected: dict[str, str],
-              bote_problem: Optional[str]) -> list[dict[str, Any]]:
+              bote_problem: Optional[str], bote_sha256: Optional[str] = None) -> list[dict[str, Any]]:
     """One item per file a finished stage says it wrote.
 
     States: ok (matches the run's recorded fingerprint), hash_mismatch (differs from it), unverified (present, but
@@ -214,7 +207,9 @@ def _evidence(stages: list[Any], run_dir: Optional[Path], expected: dict[str, st
                             state = "unverified"
                             want = expected.get(fname)
                             if want is not None:
-                                got = _hash_bounded(p)
+                                # bote.json: the digest of the very bytes the loader parsed for the headline.
+                                within = p.stat().st_size <= MAX_EVIDENCE_BYTES
+                                got = bote_sha256 if (fname == BOTE_FILE and bote_sha256 and within) else _hash_bounded(p)
                                 if got is not None:
                                     digest = got
                                     state = "ok" if got == want else "hash_mismatch"
@@ -287,10 +282,12 @@ def adapt_engine_run(
     current_inputs_hash: Optional[str] = None,
     record_problem: Optional[str] = None,
     bote_problem: Optional[str] = None,
+    bote_sha256: Optional[str] = None,
 ) -> Optional[dict[str, Any]]:
     """Return a view-shaped run dict, or None when the record is not a JSON object.
 
     record_problem: the loader found the run record malformed (for example a repeated key). Never complete.
+    bote_sha256: sha256 of the exact bote.json bytes the loader parsed, so the shown hash matches the shown numbers.
     bote_problem: bote.json exists but the loader rejected it (bad JSON, not an object, too large, repeated key).
     """
     if not isinstance(record, dict):
@@ -333,7 +330,7 @@ def adapt_engine_run(
         "current_inputs_hash": current_inputs_hash or "",
         "gates": gates,
         "headline": _headline(bote, bote_problem),
-        "evidence": _evidence(stages, run_dir, _expected_hashes(record), bote_problem),
+        "evidence": _evidence(stages, run_dir, _expected_hashes(record), bote_problem, bote_sha256),
         "holds": holds,
         "events": events,
     }

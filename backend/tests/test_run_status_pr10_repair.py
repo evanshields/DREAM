@@ -201,15 +201,18 @@ def test_a4_hashing_is_chunked_never_read_bytes(run, monkeypatch):
     assert run.view()["display_state"] == "complete"
 
 
-def test_a4_list_request_does_not_rehash_unchanged_files(run, monkeypatch):
+def test_a4_list_request_hashes_each_file_once_and_never_rereads_bote(run, monkeypatch):
+    """No digest cache (it was the Argon recheck defect), so work is bounded another way: each request hashes
+    each non-BOTE evidence file once, and bote.json is read once by the loader, not again by the adapter."""
     import run_status.adapter as adapter
-    run.view()  # warm
+    run.view()
     calls = []
     real = adapter._sha256_file
-    monkeypatch.setattr(adapter, "_sha256_file", lambda p: calls.append(p) or real(p))
+    monkeypatch.setattr(adapter, "_sha256_file", lambda p: calls.append(p.name) or real(p))
     for _ in range(3):
         assert run.listed() == "complete"
-    assert calls == []
+    assert "bote.json" not in calls
+    assert len(calls) == 3 * len(set(calls))  # one hash per file per request
 
 
 def test_a4_evidence_item_count_is_bounded(run, monkeypatch):
@@ -325,3 +328,29 @@ def test_l1_non_scalar_headline_value_is_blank_with_reason(run, value):
     rows = {h["source_pointer"]: h for h in run.view()["headline"]}
     assert rows["/price"]["value"] is None and rows["/price"]["blank_reason"]
     assert rows["/projection/years/0/noi"]["value"] == 111111.0
+
+
+# ---- Argon recheck: the hash cache must never validate bytes other than the ones shown ----
+
+def test_r8_same_size_same_mtime_changed_bytes_is_not_verified(run):
+    """Warm any digest cache with the sealed bytes, then swap in different bytes of the same size with the
+    original modified time. The old metadata-only cache key still matched and kept the Verified badge."""
+    bote = run.dir / "bote.json"
+    assert run.view()["display_state"] == "complete"  # warm: digest of the sealed bytes is now remembered
+    st = bote.stat()
+    original = bote.read_bytes()
+    changed = original.replace(b'"price": 1111111.0', b'"price": 9999999.0')
+    assert changed != original and len(changed) == len(original)
+    bote.write_bytes(changed)
+    os.utime(bote, ns=(st.st_atime_ns, st.st_mtime_ns))
+    after = bote.stat()
+    assert (after.st_size, after.st_mtime_ns) == (st.st_size, st.st_mtime_ns)
+    v = not_complete(run)
+    assert {e["name"]: e["state"] for e in v["evidence"]}["bote.json"] == "hash_mismatch"
+
+
+def test_r8_displayed_hash_is_the_hash_of_the_bytes_parsed(run):
+    """The headline value and the evidence digest come from one read of bote.json."""
+    v = run.view()
+    ev = {e["name"]: e for e in v["evidence"]}["bote.json"]
+    assert ev["sha256"] == _sha(run.dir / "bote.json")

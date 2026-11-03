@@ -1,6 +1,7 @@
 """Loads frozen JSON fixtures from backend/fixtures/run_status/ by run id. Read-only."""
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import re
@@ -71,31 +72,42 @@ def _no_repeated_keys(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
     return out
 
 
-def _read_json_object(path: Path, root: Path) -> tuple[Optional[dict[str, Any]], Optional[str]]:
+def _read_json_object_hashed(path: Path, root: Path) -> tuple[Optional[dict[str, Any]], Optional[str], Optional[str]]:
     """Read a JSON object that really lives inside root, not through a link and not oversized.
 
-    Returns (document, None) when accepted, (None, None) when the file is simply absent, and (None, reason)
-    when the file exists but is rejected. The reason is plain English so callers can show it.
+    Returns (document, None, sha256) when accepted, (None, None, None) when the file is simply absent, and
+    (None, reason, None) when the file exists but is rejected. The reason is plain English so callers can show it.
+    The file is read once; the document is parsed from, and the sha256 is of, those same bytes.
     """
     try:
         if path.is_symlink():
-            return None, "the file is a link"
+            return None, "the file is a link", None
         if not path.is_file():
-            return None, None
+            return None, None, None
         resolved = path.resolve()
         if root not in resolved.parents:
-            return None, "the file resolves outside the runs folder"
+            return None, "the file resolves outside the runs folder", None
         if resolved.stat().st_size > MAX_RUN_FILE_BYTES:
-            return None, "the file is larger than the size limit"
-        with resolved.open("r", encoding="utf-8") as fh:
-            doc = json.load(fh, object_pairs_hook=_no_repeated_keys)
+            return None, "the file is larger than the size limit", None
+        with resolved.open("rb") as fh:
+            raw = fh.read(MAX_RUN_FILE_BYTES)  # bounded even if the file grew after the size check
+            grew = bool(fh.read(1))
+        if grew:
+            return None, "the file is larger than the size limit", None
+        digest = hashlib.sha256(raw).hexdigest()
+        doc = json.loads(raw.decode("utf-8"), object_pairs_hook=_no_repeated_keys)
     except _RepeatedKey as exc:
-        return None, f"the file repeats the key {str(exc)!r}"
+        return None, f"the file repeats the key {str(exc)!r}", None
     except (OSError, ValueError):
-        return None, "the file is not valid JSON or could not be read"
+        return None, "the file is not valid JSON or could not be read", None
     if not isinstance(doc, dict):
-        return None, "the file is not a JSON object"
-    return doc, None
+        return None, "the file is not a JSON object", None
+    return doc, None, digest
+
+
+def _read_json_object(path: Path, root: Path) -> tuple[Optional[dict[str, Any]], Optional[str]]:
+    doc, problem, _digest = _read_json_object_hashed(path, root)
+    return doc, problem
 
 
 def _read_run_record(path: Path, root: Path) -> tuple[Optional[dict[str, Any]], Optional[str]]:
@@ -131,7 +143,7 @@ def load_engine_run(run_id: str) -> Optional[dict[str, Any]]:
     if record is None or record.get("slug") != run_id:
         return None  # the record must say it belongs to the deal folder it sits in
     # Absent bote.json has no problem here (stage evidence reports it missing). A rejected one is passed on as a problem.
-    bote, bote_problem = _read_json_object(run_dir.joinpath("bote.json"), root)
+    bote, bote_problem, bote_sha256 = _read_json_object_hashed(run_dir.joinpath("bote.json"), root)
     return adapt_engine_run(
         record,
         bote,
@@ -141,6 +153,7 @@ def load_engine_run(run_id: str) -> Optional[dict[str, Any]]:
         current_inputs_hash=os.getenv("DREAM_CURRENT_INPUTS_HASH", "").strip() or None,
         record_problem=(f"Run record: {record_problem}." if record_problem else None),
         bote_problem=bote_problem,
+        bote_sha256=bote_sha256,
     )
 
 

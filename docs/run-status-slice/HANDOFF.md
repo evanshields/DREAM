@@ -48,7 +48,7 @@ Each finding was reproduced with a failing test first (`backend/tests/test_run_s
 | Astra 1 / Argon 1: missing stages, duplicate or invalid stage numbers, untyped failed/waiting reach Complete | Yes (absent 6, 7, 8, duplicates, null lists) | Complete needs exactly stages 1 to 8 once each, `failed` and `waiting` real lists, else an unreadable "Run record check" gate (blocked) | `test_a1_*` |
 | Astra 2 / Argon 2: rejected BOTE (bad JSON, array, oversized) shows Verified and Complete | Yes | Loader returns the rejection reason; evidence state `unreadable`, headline reason says rejected, blocked | `test_a2_*` |
 | Astra 3 / Argon 3: fresh hash shown as Verified | Yes | Verified only when the file matches the run record's `output_sha256`. No recorded hash gives `unverified`, a different hash gives `hash_mismatch`. Real runs have no recorded hash today, so they show blocked until the engine writes one | `test_a3_*` |
-| Astra 4 / Argon 4: unbounded evidence reads on list and detail | Yes | Chunked hashing, 25 MB cap per file (over-limit file is never opened), 32 items per run, hash cache keyed on path, size and mtime, and nothing is read when no recorded hash exists | `test_a4_*` |
+| Astra 4 / Argon 4: unbounded evidence reads on list and detail | Yes | Chunked hashing, 25 MB cap per file (over-limit file is never opened), 32 items per run, a hash cache keyed on path, size and mtime (removed in repair 2, see below), and nothing is read when no recorded hash exists | `test_a4_*` |
 | Argon 5: skipped stages bypass evidence, skipped stage 7 with no bote reaches Complete | Yes | Any skipped stage makes the run `partial` (never complete); stage 7 must be ok and list bote.json | `test_r5_*` |
 | Argon 6: stop_after truthiness and untyped force, failed, waiting, wrote | stop_after: **No.** `is not None` already stops 0, "", False, [], {} (7 cases pass on the old code, left unchanged). Rest: Yes | `force` must be a boolean; malformed `wrote` (not a list, non-string entry, blank) is an `invalid` evidence item, blocked; failed and waiting overlap finding 1 | `test_r6_*` |
 | Argon 7: duplicate stage numbers, evidence names, JSON keys | Yes | Gate, hold and evidence ids are unique; duplicate file names and items past the limit are `invalid`; a repeated key in run.json shows an error gate (blocked), in bote.json rejects the file | `test_r7_*` |
@@ -64,3 +64,12 @@ Real output, full backend suite (`cd backend && python -m pytest tests -q`):
 548 passed, 1 skipped in 10.88s
 ```
 New repair file only: `78 passed in 1.38s`. Baseline before repair: 470 passed, 1 skipped. `cd frontend && npm run typecheck`: `tsc --noEmit` no errors. `npm run build`: `built in 5.86s` (usual chunk size warning).
+
+## Slice 2 repair 2 (Argon recheck of head 3e67c110: 1 REAL confirmed, 1 disputed)
+
+| Finding | Disposition | Fix | Proving tests |
+|---|---|---|---|
+| Digest cache keyed on path, size and mtime returns an old hash for changed bytes of the same size and time, so a changed bote.json can keep a Verified badge | Confirmed, reproduced with a failing test first | Cache removed. The loader reads bote.json once; the headline is parsed from, and the evidence digest is the sha256 of, those same bytes. Other evidence files are hashed fresh on every request (chunked, 25 MB cap kept) | `test_r8_*`, `test_a4_list_request_hashes_each_file_once_and_never_rereads_bote` |
+| Duplicate slug key in the diagnostic fallback | No code change: the loader only reads the requested run folder (never a folder named by the repeated slug), and a repeated key already forces an unreadable gate that blocks the run, so it cannot reach Complete or read another deal's files | none | existing `test_r7_*` |
+
+Note: `test_a4_list_request_does_not_rehash_unchanged_files` asserted the cache itself, so it was replaced by a test that each request hashes each non-BOTE file once and never re-reads bote.json in the adapter.
