@@ -217,7 +217,6 @@ def _seed_job(ds, js):
     return deal, job
 
 
-@pytest.mark.xfail(strict=True, reason="gap B55: Wave 0 accepts exit_cap 0 as present, the run is not stopped to ask again")
 def test_b55_zero_exit_cap_is_treated_as_missing():
     ds, js = SQLiteDealStore(":memory:"), SQLiteJobStore(":memory:")
     _deal, job = _seed_job(ds, js)
@@ -315,8 +314,12 @@ def test_b40b_conflicting_t12_lines_do_not_prefill_first_match():
     assert "gpr_annual" not in out or out["gpr_annual"] is None
 
 
+@pytest.mark.xfail(strict=True, reason="gap B40c (found by this test): _first_dollar uses a greedy [^\\n]{0,80} before the number, so only the last digit is captured and '$4,800,000' extracts as 0.0. No fixture can pass until the regex is fixed")
 def test_b40b_single_t12_line_still_extracts():
-    """Control for B40b: a fix must keep the unambiguous case working."""
+    """Control for B40b: a fix must keep the unambiguous case working.
+
+    Observed at d73a0abb: the extractor matches the line but returns only the last
+    digit (0.0 for $4,800,000, 2.0 for 'GPR 12'). Expected to pass once fixed."""
     from intake.intake_service import _extract_t12_from_text
 
     out = _extract_t12_from_text("Gross Potential Rent  $4,800,000\n")
