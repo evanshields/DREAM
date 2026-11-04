@@ -1,16 +1,22 @@
 // Shared display formatters (data cells, headline numbers). Used across screens.
 
+// A missing or non-finite number must show a dash, never "NaN%" or "$NaN".
+const DASH = '—';
+const finite = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v);
+
 export const fmtUSD = (v: number): string =>
-  v >= 1_000_000
-    ? `$${(v / 1_000_000).toFixed(2)}M`
-    : `$${v.toLocaleString('en-US', { maximumFractionDigits: 0 })}`;
+  !finite(v)
+    ? DASH
+    : v >= 1_000_000
+      ? `$${(v / 1_000_000).toFixed(2)}M`
+      : `$${v.toLocaleString('en-US', { maximumFractionDigits: 0 })}`;
 
 export const fmtUSDFull = (v: number): string =>
-  `$${v.toLocaleString('en-US', { maximumFractionDigits: 0 })}`;
+  finite(v) ? `$${v.toLocaleString('en-US', { maximumFractionDigits: 0 })}` : DASH;
 
-export const fmtPct = (v: number): string => `${(v * 100).toFixed(2)}%`;
-export const fmtPct1 = (v: number): string => `${(v * 100).toFixed(1)}%`;
-export const fmtEM = (v: number): string => `${v.toFixed(2)}x`;
+export const fmtPct = (v: number): string => (finite(v) ? `${(v * 100).toFixed(2)}%` : DASH);
+export const fmtPct1 = (v: number): string => (finite(v) ? `${(v * 100).toFixed(1)}%` : DASH);
+export const fmtEM = (v: number): string => (finite(v) ? `${v.toFixed(2)}x` : DASH);
 
 export function fmtDate(iso: string): string {
   if (!iso) return '—';
