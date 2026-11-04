@@ -43,10 +43,11 @@ All read at main commit `953cda4835602bbdfcf3df767adca936ddece3b5`. No real deal
 - `AGENTS.md` and `docs/DREAM_PRD_V4.md` (governing rules: fail closed, flag never guess, no self-certification, engines only for numbers).
 - `backend/intake/intake_service.py`: intake uses pymupdf (`fitz`) to flatten the PDF to one text string, then regex finds the first dollar figure near a label. Page and position are lost, and the file bytes are not stored.
 - `backend/jobs/contracts.py`: values carry a `source` string, either `llm-inferred` or a free-text citation such as "OM p.3". That free text is the only provenance today.
-- `backend/jobs/analysts.py`: cells are `{cell, value, source, phase}` and `source` is validated as a string.
+- `backend/jobs/analysts.py`: cells are `{cell, value, source, phase}` and `source` is validated as a string. Headline calculations are fed by `assumptions_engine_inputs`, a separate dict of engine input values.
+- `backend/routers/deals.py`: the delete route and the `_assert_can_touch` ownership seam with its `DREAM_STRICT_OWNERSHIP` option.
 - `backend/adapters/spec_models.py`: the spec is the master record and the view round-trip preserves each cell's original metadata, so a new key on a cell will ride through untouched.
 - `backend/run_status/adapter.py` and `frontend/src/lib/runStatusApi.ts`: the run status screen already has `source_file` and `source_pointer` on headline rows and a closed evidence state list (`ok`, `missing`, `hash_mismatch`, `unverified`, `unreadable`, `invalid`). The viewer reuses that vocabulary.
-- `frontend/src/pages/DealDetail.tsx`: headline tiles (`HeadlineMetricsBlock`, `EFBMetricTiles`) and the open questions list with the "Cited" or "LLM-inferred" badge. These are the click targets.
+- `frontend/src/pages/DealDetail.tsx`: headline tiles (`HeadlineMetricsBlock`, `EFBMetricTiles`) and the `AssumptionDashboard` component, and the open questions list with the "Cited" or "LLM-inferred" badge. These are the click targets.
 - `backend/requirements.txt`: `pymupdf==1.24.11` is already a dependency, so word positions and page rendering need no new library.
 
 ## Technical detail
@@ -94,7 +95,8 @@ Rules for the contract:
 - `matched_text` must normalise to the cell value. Normalising means stripping `$`, `,`, `%` and spaces and comparing as text against the cell value written the same way, with a percent cell compared after a fixed scale of 100. This is a text comparison done outside the Decimal seam on purpose, so no Decimal is introduced outside `engine_boundary.py`.
 - Two citations that disagree on value make the whole cell `conflict`, shown with both, never resolved silently.
 - A spreadsheet citation uses `doc_kind: "xlsx"`, `sheet` and `cell_ref` in place of `page` and `rects_pt`.
-- Computed outputs (headline metrics) do not carry `evidence`. They are covered by a fixed lineage table in code, `metric -> [input cell addresses]`, for example `irr -> [B10, B45, B79, B80, B81, ...]`. The table is written by hand, reviewed, and tested to only name cells that exist in the routing's field map.
+- Computed outputs (headline metrics) do not carry `evidence`. They are covered by a fixed lineage table in code, `metric -> [input identifiers]`. An identifier is one of two kinds. A cell address (`B10`) names a mapped spreadsheet cell. An engine-input key (`stabilized_noi`) names a value in `assumptions_engine_inputs`, which is how `backend/jobs/analysts.py` and `backend/jobs/synthesis.py` feed the headline calculations. Example: `irr -> [cell:B10, cell:B45, engine:stabilized_noi, ...]`. The table is written by hand, reviewed, and tested to only name cells that exist in the routing's field map and engine-input keys that exist in the deal's engine inputs.
+- Engine-input keys carry evidence too. Each key in `assumptions_engine_inputs` gets a sibling `assumptions_engine_inputs_evidence` map, `key -> evidence object` in the same shape as a cell's `evidence`. The existing engine-input dict is left untouched so the engine bridge and every existing test keep working. A key with no evidence entry is shown as `no_source` with the reason "no source recorded".
 
 ### 2. Document store
 
@@ -103,6 +105,13 @@ Rules for the contract:
 - Write is idempotent on hash. Read recomputes the hash of the bytes and refuses on mismatch (hash mismatch is a hard stop).
 - Size cap per file (proposed 50 MB) and a page cap for rendering (proposed 500 pages).
 - `POST /api/intake` keeps its current response and additionally stores the file and returns its `doc_sha256`. Linking a document to a deal happens when the deal is saved.
+- Lifecycle contract. Documents are confidential, so the plan states what happens at every end of life:
+  - Deal deletion. The existing delete route (`delete_deal` in `backend/routers/deals.py`) must also remove every link row for that deal in the same step. After that, a document with no links left becomes unreferenced.
+  - Unlinked page requests. A hash with no remaining link to a deal the caller can read answers 404 immediately, even while the bytes still sit on disk.
+  - Abandoned uploads. An intake upload that is never attached to a saved deal stays unreferenced. Each index row records `linked_at` (empty until linked) so such rows can be found.
+  - Retention policy for unreferenced blobs (proposed, for Evan to confirm). A scheduled sweep deletes the bytes and the index row of any blob with no links that is older than 7 days. A blob that lost its last link through deal deletion is deleted on the same sweep. The sweep logs counts only, never file names. A dry run mode reports what it would delete before the first real run.
+  - Archive keeps links. Archiving a deal does not remove its documents, and unarchiving works as before.
+  - Authorization. Every read of a stored document goes through the current deal check described in section 4. Upload requires `require_auth` and records `uploaded_by`.
 
 ### 3. Locator (where on the page)
 
@@ -117,16 +126,24 @@ Both live in a new `backend/routers/evidence.py`, mounted in `main.py` with `dep
 
 `GET /api/deals/{deal_id}/evidence/{field}`
 
-- `field` is a cell address (`B10`) or a headline metric key (`irr`).
+- `field` is a cell address (`B10`), an engine-input key (`stabilized_noi`), a headline metric key (`irr`), or a declared target from an open question (see "Assumption and open-question targets" below). The server resolves the kind from the deal itself and never guesses. A name that matches more than one kind is rejected as `invalid`.
 - For a cell it returns the stored contract plus a server-computed `state` per citation: the server loads the document by hash, re-extracts the words on that page, and checks that `matched_text` is present inside `rects_pt` (with a small tolerance) and still normalises to the cell value.
-- For a metric it returns `{kind: "computed", value, inputs: [{field, value, state}]}` from the lineage table.
+- For an engine-input key it returns the stored evidence from `assumptions_engine_inputs_evidence`, verified the same way as a cell.
+- For a metric it returns `{kind: "computed", value, inputs: [{field, kind, value, state}]}` from the lineage table, where `kind` is `cell` or `engine_input`.
 - Response states reuse the run status vocabulary and add three: `ok`, `missing`, `hash_mismatch`, `unverified`, `unreadable`, `invalid`, `ambiguous`, `conflict`, `no_source`.
-- 404 for an unknown deal or field. Ownership follows the current deals router read rule (everyone reads all).
+- 404 for an unknown deal or field.
+- Authorization is checked against the deal on every request, not once at upload. The route calls the same ownership seam the deals router uses (`_assert_can_touch` in `backend/routers/deals.py`) so it honours `DREAM_STRICT_OWNERSHIP`. Under strict ownership another owner's deal answers 404, never 403. Under the current default everyone reads all deals, and the viewer follows that. The viewer never adds a looser rule than the deal page itself.
+
+#### Assumption and open-question targets
+
+- The assumptions area of the deal page is the interactive `AssumptionDashboard` component. Each interactive control is mapped in a fixed table in code, `control -> evidence field`, pointing at the cell or engine-input key it seeds. A control with no mapping shows `no_source` with the reason "not tied to a source". A control the analyst has changed in the browser shows `manual_entry` with the reason "typed by a person", because the viewer must not show a document line for a value a person overrode.
+- Open questions can name a target that is not a spreadsheet cell, for example `meta.routing`. Each open question is mapped by a second fixed table, `declared target -> evidence field`. A target that is a deal setting rather than a figure (such as `meta.routing`) returns `{kind: "setting", value, basis, reason}` with the basis taken from how it was decided (a person chose it, a policy default, or a model inferred it). It never returns a page image. A target that is in neither table returns `no_source` with the reason "unknown target". Nothing is ever dropped silently.
+- Both tables are tested the same way as the lineage table. Every target they name must exist, and every target the page can display must have an entry.
 
 `GET /api/documents/{sha256}/pages/{page}.png?scale=2`
 
 - Renders one page with pymupdf to PNG. Highlight boxes are drawn by the browser on top, not burned into the image, so one cached page serves every number on it.
-- Only serves a hash that is linked to at least one deal the caller can read. A valid hash that is not linked gets 404, the same as a missing one, so hashes cannot be probed.
+- Only serves a hash that is linked to at least one deal the caller is currently allowed to read, using the same ownership seam, so `DREAM_STRICT_OWNERSHIP` applies. A valid hash that is not linked, or linked only to deals the caller may not read, gets 404, the same as a missing one, so hashes cannot be probed.
 - Validates `page` within the page count and `scale` within a small allowed set. `Cache-Control: private`.
 - Re-hashes the bytes before rendering, and refuses with 409 on mismatch.
 
@@ -137,7 +154,7 @@ Both live in a new `backend/routers/evidence.py`, mounted in `main.py` with `dep
 - Drawer layout, top to bottom: field name and value, a state line in words, document name and page, the page image with absolutely positioned highlight boxes scaled from points to pixels using `page_width_pt`, then `line_text` as selectable text.
 - Computed metric drawer: value, then the list of inputs as `SourcedValue` rows. Clicking one swaps the drawer to that input, with a back link.
 - Every non-`ok` state shows a sentence and no page image. Examples: "The file this came from has changed since it was read, so the location cannot be trusted." or "A model estimated this. No document supports it."
-- Wired into `HeadlineMetricsBlock`, `EFBMetricTiles` and the assumptions and open questions lists on `DealDetail.tsx`. The existing "Cited" and "LLM-inferred" badge stays.
+- Wired into `HeadlineMetricsBlock`, `EFBMetricTiles` and the `AssumptionDashboard` controls and open questions on `DealDetail.tsx`, using the mapping tables from section 4. The existing "Cited" and "LLM-inferred" badge stays.
 - The drawer closes on Escape and returns focus to the number that opened it. It works at phone width as a full-screen sheet.
 
 ### 6. Test plan (red first, synthetic only)
@@ -145,7 +162,7 @@ Both live in a new `backend/routers/evidence.py`, mounted in `main.py` with `dep
 Fixtures:
 
 - `backend/fixtures/evidence/build_synthetic_docs.py` generates PDFs at test time with pymupdf for an invented property, "Synthetic Oak Court, 1 Example Way". Every fixture says SYNTHETIC on each page. No real deal file, name or figure is used or copied.
-- Fixture set: a clean three-page offering memo, one where the purchase price appears twice with different values (conflict), one where the same value appears under two labels (ambiguous), one with the price split across a line wrap, one image-only page (no text layer), a one-byte-changed copy (hash mismatch), and a small synthetic rent roll spreadsheet.
+- Fixture set: a clean five-page offering memo with the purchase price on page four, one where the purchase price appears twice with different values (conflict), one where the same value appears under two labels (ambiguous), one with the price split across a line wrap, one image-only page (no text layer), a one-byte-changed copy (hash mismatch), and a small synthetic rent roll spreadsheet.
 
 Red tests to write before each slice's code (each must be seen failing first, then passing):
 
@@ -155,7 +172,9 @@ Red tests to write before each slice's code (each must be seen failing first, th
 4. Spec round-trip: a spec with `evidence` on cells survives `spec_to_view` then `view_to_spec` byte-identical, and the memo assumptions output is unchanged.
 5. Evidence endpoint: 401 without a token, 404 for unknown deal or field, `ok` on clean fixture, `hash_mismatch` after swapping bytes on disk, `unverified` when stored rectangles are moved, computed metric returns its input list.
 6. Page endpoint: 401 without a token, 404 for unlinked hash, 400 for page 0 or past the end, 409 on tampered bytes, PNG magic bytes on success.
-7. Lineage table: every named input exists in the routing's field map, and every headline metric shown on the page has an entry.
+7. Lineage table: every named cell exists in the routing's field map, every named engine-input key exists in the deal's engine inputs, and every headline metric shown on the page has an entry. A metric whose inputs include an engine-input key returns that key with its evidence or `no_source`.
+7a. Targets: every assumption control and open-question target has a table entry. `meta.routing` returns a `setting` answer with no page image. An unknown target returns `no_source`.
+7b. Lifecycle: deleting a deal removes its links and the page route then answers 404. Under `DREAM_STRICT_OWNERSHIP` another owner gets 404 on both routes. An unlinked blob older than the retention window is removed by the sweep and a younger one is kept. The sweep dry run deletes nothing.
 8. Front end: `tsc --noEmit` and `npm run build` green. A component test (or, if the repo still has no front-end test runner, a fixture-driven story page checked by a Playwright screenshot) for `ok`, `no_source`, `hash_mismatch`, `ambiguous` and computed states.
 9. Oracles: Esplanade ACQ IRR 0.2251 and Rayzor EFB $63,868,907 unchanged after every slice. The existing suite stays green on every slice.
 
@@ -166,7 +185,7 @@ Red tests to write before each slice's code (each must be seen failing first, th
 | Real deal documents end up in the cloud or in git | Fixtures are generated in tests from invented text. `DREAM_DOC_ROOT` is outside the repo and git-ignored. A test fails if any file under `backend/fixtures/evidence/` lacks the SYNTHETIC marker. |
 | A highlight points at the wrong line and looks authoritative | Locator abstains on zero or many matches. The server re-verifies on every view. Non-`ok` states show no image. |
 | A computed number pointed at one line gives false comfort | Outputs show their input list only, never a page. |
-| Stored confidential memos widen the attack surface | Auth on both routes, hash only served when linked to a readable deal, size and page caps, private caching, files stored outside the web root. Backup and retention of the document folder goes into the deploy runbook before go-live. |
+| Stored confidential memos widen the attack surface | Auth on both routes, deal check on every request including strict ownership, hash only served when linked to a readable deal, links removed on deal deletion, unreferenced blobs swept after the retention window, size and page caps, private caching, files stored outside the web root. Backup of the document folder goes into the deploy runbook before go-live. |
 | A future agent driver supplies its own citations | Treated as claims. The server locator and verifier must confirm them before `ok`. No self-certification. |
 | Scanned PDFs without text | Shown as `unreadable` with a reason. OCR is a separate later decision. |
 | pymupdf version change moves boxes | `locator_version` stored. Verification tolerates small drift. A version bump is its own slice with fixture re-checks. |
@@ -182,12 +201,12 @@ Each slice is one branch, one draft PR, red tests first, full backend suite gree
 |---|---|---|
 | 1 | Contract module `backend/evidence/contract.py` with a pure validator and closed state list | Contract red tests written, seen failing, then green |
 | 2 | Synthetic fixture builder plus SYNTHETIC-marker guard test | Fixture set builds in a temp folder during tests, guard green |
-| 3 | `backend/store/document_store.py` content-addressed store | Store tests green, existing storage guard still green |
+| 3 | `backend/store/document_store.py` content-addressed store, link cleanup on deal deletion, unreferenced-blob sweep | Store and lifecycle tests green, existing storage guard still green |
 | 4 | `backend/evidence/locator.py` word locator | All locator cases green on fixtures |
-| 5 | Intake stores the file and attaches `evidence` to extracted cells | Intake response keeps its shape plus `doc_sha256`. Spec round-trip byte-identical. Memo test unchanged |
-| 6 | `GET /api/deals/{id}/evidence/{field}` with server re-verify | Endpoint and auth tests green, mounted with `require_auth` |
+| 5 | Intake stores the file and attaches `evidence` to extracted cells and engine-input keys | Intake response keeps its shape plus `doc_sha256`. Spec round-trip byte-identical. Memo test unchanged |
+| 6 | `GET /api/deals/{id}/evidence/{field}` with server re-verify and the per-request deal check | Endpoint and auth tests green, mounted with `require_auth`, strict ownership honoured |
 | 7 | `GET /api/documents/{sha}/pages/{n}.png` | Page endpoint tests green |
-| 8 | Lineage table for headline metrics plus the computed branch of the evidence endpoint | Lineage tests green |
+| 8 | Lineage table (cells and engine-input keys), assumption and open-question target tables, and the computed and setting branches of the evidence endpoint | Lineage and target tests green |
 | 9 | `evidenceApi.ts`, `SourcedValue`, `EvidenceDrawer` built against fixture JSON only | Typecheck and build green, state screenshots attached to the PR |
 | 10 | Wire into `DealDetail.tsx` tiles, assumptions and open questions. End-to-end run on a synthetic deal locally | Clicking each number on the synthetic deal opens the right page and box. Oracles unchanged |
 
@@ -199,3 +218,4 @@ Agent use: one implementation agent per slice, no parallel workers by default. S
 
 1. Is it acceptable to keep uploaded deal documents on the US server disk (outside the repo, backed up with the database)? The viewer cannot work without stored files.
 2. Should the first version cover spreadsheet sources with a highlighted grid, or is "Sheet, cell" text enough for now? This plan assumes text only.
+3. Is a 7 day retention window for unreferenced documents right, or should abandoned uploads be kept longer?
