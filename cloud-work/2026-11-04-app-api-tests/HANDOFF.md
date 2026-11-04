@@ -2,6 +2,11 @@
 
 New file: `backend/tests/test_api_contract_refusals.py` (83 passing, 15 strict xfail). No application code or config changed.
 
+## Third repair: real archive and unarchive transitions (same branch)
+- `test_b13_strict_ownership_same_owner_succeeds` now proves the transitions, not just status 200. Archive: the owner archives an active computed deal, the in-memory store shows `archived` and `meta.pre_archive_status` is `computed`. Unarchive: the owner first archives the deal (store shows `archived`), then unarchives it, and the store shows `computed` again with the stash consumed, so the idempotent no-op path cannot satisfy it. Delete keeps its removal assertion. Other-owner denial checks kept.
+- Isolation seams and dotenv handling untouched. Tests only, no product code change.
+- Totals: this file 83 passed, 15 xfailed. Full backend 633 passed, 1 skipped, 15 xfailed.
+
 ## Second repair: strict ownership same-owner control (same branch)
 - B13 now proves strict mode both ways. New `test_b13_strict_ownership_same_owner_succeeds` runs archive, unarchive and delete as the owner (in-memory synthetic login user) with `DREAM_STRICT_OWNERSHIP` ON and expects 200, then the same call on another owner's deal and expects 404 with the deal untouched.
 - The hostile-host ownership control got a matching same-owner success test, `test_control_strict_ownership_allows_same_owner_under_hostile_host`.

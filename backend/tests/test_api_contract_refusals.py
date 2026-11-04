@@ -247,8 +247,24 @@ def test_b13_strict_ownership_same_owner_succeeds(auth_on_main, stores, syntheti
     headers = _synthetic_bearer(auth_on_main)
     mine = ds.create(_spec(), owner="synthetic@example.com", now_iso=NOW, status="computed")
     theirs = ds.create(_spec(slug="other-heights"), owner="someone-else@example.com", now_iso=NOW, status="computed")
+    assert ds.get(mine.deal_id).status == "computed"
+    if suffix == "/unarchive":
+        # start from a deal truly in the archived state: owner archives it first, and the store shows it
+        pre = auth_on_main.post(f"/api/deals/{mine.deal_id}/archive", headers=headers)
+        assert pre.status_code == 200, pre.text
+        assert ds.get(mine.deal_id).status == "archived"
     r = auth_on_main.request(method, f"/api/deals/{mine.deal_id}{suffix}", headers=headers)
     assert r.status_code == 200, r.text
+    if suffix == "/archive":
+        stored = ds.get(mine.deal_id)
+        # the owner-controlled transition really happened, with the prior state stashed
+        assert stored.status == "archived"
+        assert stored.spec["meta"]["pre_archive_status"] == "computed"
+    elif suffix == "/unarchive":
+        stored = ds.get(mine.deal_id)
+        # restored to the prior state (not the idempotent no-op), and the stash is consumed
+        assert stored.status == "computed"
+        assert "pre_archive_status" not in stored.spec.get("meta", {})
     if method == "DELETE":
         assert r.json() == {"deleted": True, "deal_id": mine.deal_id}
         with pytest.raises(Exception):
