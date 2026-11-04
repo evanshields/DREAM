@@ -252,3 +252,102 @@ def test_t12_unit_label_before_the_number_is_blank():
 )
 def test_t12_clean_amounts_still_read(line, expected):
     assert _extract_t12_from_text(line)["gpr_annual"] == expected
+
+
+# ---------------------------------------------------------------------------
+# Argon recheck: the full qualifier sequence after the number is read, not just
+# the first suffix. Statement fields are annual only. The market-rent field is
+# monthly only. Synthetic strings only.
+# ---------------------------------------------------------------------------
+
+from intake.intake_service import _extract_costar_from_text  # noqa: E402
+
+
+@pytest.mark.parametrize(
+    "line",
+    [
+        "Gross Potential Rent  $4,800,000 annual per unit\n",
+        "Gross Potential Rent  $4,800,000 annually per sf\n",
+        "Gross Potential Rent  $4,800,000 per year per unit\n",
+        "Gross Potential Rent  $4,800,000 yearly / month\n",
+        "Gross Potential Rent  $4,800,000 /yr per door\n",
+        "Gross Potential Rent  $4,800,000 annual, per month\n",
+    ],
+)
+def test_t12_chained_annual_then_per_unit_is_blank(line):
+    assert "gpr_annual" not in _extract_t12_from_text(line)
+
+
+@pytest.mark.parametrize(
+    "line",
+    [
+        "Gross Potential Rent  $400,000 USD per month\n",
+        "Gross Potential Rent  $400,000 USD/month\n",
+        "Gross Potential Rent  $1,200 USD per unit\n",
+        "Gross Potential Rent  $18.50 dollars per sf\n",
+        "Gross Potential Rent  $400,000 US$ monthly\n",
+    ],
+)
+def test_t12_currency_text_before_a_rate_is_blank(line):
+    assert "gpr_annual" not in _extract_t12_from_text(line)
+
+
+@pytest.mark.parametrize(
+    "line, expected",
+    [
+        ("Gross Potential Rent  $4,800,000 USD per year\n", 4800000.0),
+        ("Gross Potential Rent  $4,800,000 USD annual\n", 4800000.0),
+        ("Gross Potential Rent  $4,800,000 annual USD\n", 4800000.0),
+    ],
+)
+def test_t12_currency_with_annual_marker_still_reads(line, expected):
+    assert _extract_t12_from_text(line)["gpr_annual"] == expected
+
+
+def test_t12_monthly_value_in_statement_field_is_blank():
+    out = _extract_t12_from_text("Net Operating Income  $400,000 per month\n")
+    assert "noi_annual" not in out
+
+
+def test_t12_negative_noi_is_blank_by_design():
+    """Disclosed side effect: a negative or parenthesized NOI is blank, never positive."""
+    for line in (
+        "Net Operating Income  (250,000)\n",
+        "Net Operating Income  -250,000\n",
+        "NOI  $(250,000)\n",
+    ):
+        assert "noi_annual" not in _extract_t12_from_text(line)
+    assert _extract_t12_from_text("Net Operating Income  $250,000\n")["noi_annual"] == 250000.0
+
+
+@pytest.mark.parametrize(
+    "line",
+    [
+        "Market Rent  $14,400 per year\n",
+        "Market Rent  $14,400 annual\n",
+        "Market Rent  $14,400 /yr\n",
+        "Market Rent  $14,400 annually per unit\n",
+        "Market Rent  annual $14,400\n",
+        "Market Rent  $1,200 per sf\n",
+        "Market Rent  $1,200 per unit\n",
+        "Market Rent  $1,200 USD per year\n",
+    ],
+)
+def test_market_rent_annual_or_other_unit_is_blank(line):
+    assert "market_avg_rent" not in _extract_costar_from_text(line)
+
+
+@pytest.mark.parametrize(
+    "line, expected",
+    [
+        ("Market Rent  $1,200 per month\n", 1200.0),
+        ("Market Rent  $1,200/mo\n", 1200.0),
+        ("Market Rent  $1,200 monthly\n", 1200.0),
+        ("Market Rent  $1,200 USD per month\n", 1200.0),
+        ("Market Rent  per month $1,200\n", 1200.0),
+        ("Market Rent  $1,200\n", 1200.0),
+        ("Average Rent  $1,200 (budget)\n", 1200.0),
+    ],
+)
+def test_market_rent_monthly_value_reads(line, expected):
+    assert _extract_costar_from_text(line)["market_avg_rent"] == expected
