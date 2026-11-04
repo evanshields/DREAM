@@ -171,7 +171,7 @@ Also High, just outside the top 10: B40b (intake number extraction), F15 (sensit
 | F12 | pages/Pipeline.tsx:269-272, 291 | Error banner, empty list text | fetch fails → banner. L |
 | F13 | hooks/useJobPolling.ts:28, 74-82 | 3 failures in a row → stop and report, terminal statuses stop | 3 errors → onError once. M |
 | F14 | components/livecalc.tsx:71-77 | Error sets a message but **keeps last result** (stale numbers beside a red line) | failing second call → result cleared. **H** |
-| F15 | components/AssumptionDashboard.tsx:421-433, 261-264 | Sensitivity error sets message, grid data kept | failing sweep → chart cleared. **H** |
+| F15 | components/AssumptionDashboard.tsx:419-435, 488-490 | Sensitivity error sets message, grid data kept | failing sweep → chart cleared. **H** |
 | F16 | components/AssumptionDashboard.tsx:287, 581 | `—` when no value / null point | null point → `—`. L |
 | F17 | components/livecalc.tsx:18-24, 36, 141-142 | Null → `—`, non-finite input ignored, required field can't be blanked | `abc` input ignored. L |
 | F18 | pages/BondScreen.tsx:95, 112, 228, 245 | `!= null` else `—` | null max_loan → `—`. L |
