@@ -69,9 +69,10 @@ def test_second_label_used_when_first_absent():
     assert _first_pct("Physical Vacancy 4%", "vacancy rate", "physical vacancy") == pytest.approx(0.04)
 
 
-def test_parenthesized_trailing_paren_form_is_blank():
-    # "(5.0)%" does not match the plain pattern, so it is already blank. Control.
-    assert _first_pct("Vacancy (5.0)%", "vacancy") is None
+@pytest.mark.parametrize("cell", ["Vacancy (5.0)%", "Vacancy (5)%"])
+def test_parenthesized_trailing_paren_form_is_blank(cell):
+    # "(5.0)%" and "(5)%" do not match the plain pattern, so they are already blank. Control.
+    assert _first_pct(cell, "vacancy") is None
 
 
 # --- Negative or parenthesized percents ----------------------------------------------------
