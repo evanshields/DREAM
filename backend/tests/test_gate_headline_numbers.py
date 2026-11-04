@@ -60,6 +60,8 @@ class _FakeMemo:
 
 @pytest.fixture
 def api(monkeypatch):
+    for var in ("AUTH_JWT_SECRET", "AUTH_JWT_TTL_HOURS", "GOOGLE_CLIENT_ID"):
+        monkeypatch.delenv(var, raising=False)  # host auth settings must not decide these tests
     ds = SQLiteDealStore(":memory:")
     js = SQLiteJobStore(":memory:")
     fake = _FakeMemo()
@@ -128,26 +130,58 @@ def test_b70_memo_with_number_not_in_headline_is_flagged(api):
 # B33: /api/agent/memo trusts client-sent model_results
 # ---------------------------------------------------------------------------
 
-@pytest.mark.xfail(strict=True, reason="gap B33: /api/agent/memo writes a memo from client-sent model_results with no tie to a stored engine result")
-def test_b33_agent_memo_rejects_client_supplied_model_results(monkeypatch):
+class _AgentGen:
+    """Fake memo generator for /api/agent/memo. Records every call."""
+
+    def __init__(self):
+        self.calls = []
+
+    def generate(self, inputs, model_results):
+        self.calls.append(model_results)
+        return "memo"
+
+    def generate_executive_summary(self, inputs, model_results):
+        return "summary"
+
+
+@pytest.fixture
+def agent_memo_client(monkeypatch):
+    """Real app client with auth isolated: host auth env cleared and require_auth replaced by a
+    synthetic user, so a 401 or 403 from the host environment can never decide the result."""
     import main
+    from auth_dep import require_auth
 
-    class Gen:
-        calls = []
+    for var in ("AUTH_JWT_SECRET", "AUTH_JWT_TTL_HOURS", "GOOGLE_CLIENT_ID"):
+        monkeypatch.delenv(var, raising=False)
+    gen = _AgentGen()
+    monkeypatch.setattr(main, "get_memo_generator", lambda: gen)
+    monkeypatch.setitem(main.app.dependency_overrides, require_auth,
+                        lambda: {"email": "synthetic@example.com"})
+    return TestClient(main.app), gen
 
-        def generate(self, inputs, model_results):
-            Gen.calls.append(model_results)
-            return "memo"
 
-        def generate_executive_summary(self, inputs, model_results):
-            return "summary"
+def test_b33_control_agent_memo_reaches_generator_with_valid_request(agent_memo_client):
+    """Control for B33: an allowed request reaches the memo boundary and calls the generator, so the
+    refusal test below cannot pass because the endpoint was unreachable."""
+    c, gen = agent_memo_client
+    r = c.post("/api/agent/memo", json={"inputs": {}, "model_results": {"irr": 0.2221}})
+    assert r.status_code == 200, r.text
+    assert r.json()["memo_markdown"] == "memo"
+    assert gen.calls == [{"irr": 0.2221}]
 
-    monkeypatch.setattr(main, "get_memo_generator", lambda: Gen())
-    c = TestClient(main.app)
+
+@pytest.mark.xfail(strict=True, reason="gap B33: /api/agent/memo writes a memo from client-sent model_results with no tie to a stored engine result")
+def test_b33_agent_memo_rejects_client_supplied_model_results(agent_memo_client):
+    c, gen = agent_memo_client
     fabricated = {"irr": 0.99, "equity_multiple": 9.9}  # not from any engine run
     r = c.post("/api/agent/memo", json={"inputs": {}, "model_results": fabricated})
-    assert r.status_code in (400, 401, 403, 404, 409, 422)
-    assert Gen.calls == []
+    # Not an auth refusal and not a schema refusal for an unrelated field
+    assert r.status_code not in (401, 403), "auth refusal does not prove the results check"
+    assert r.status_code in (400, 404, 409, 422), r.text
+    detail = r.json().get("detail")
+    assert isinstance(detail, str), "a pydantic field-error list is a schema refusal, not a results check"
+    assert any(w in detail.lower() for w in ("stored", "model_results", "engine result", "run")), detail
+    assert gen.calls == []
 
 
 # ---------------------------------------------------------------------------
