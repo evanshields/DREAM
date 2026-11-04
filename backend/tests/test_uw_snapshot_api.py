@@ -128,3 +128,45 @@ def test_get_does_not_mutate_the_stored_deal(client):
     after = ds.get(deal_id)
     assert after.version == before.version
     assert after.spec == copy.deepcopy(before.spec)
+
+
+@pytest.mark.parametrize("bad", [{"major": 1}, ["x"], 7, True])
+def test_non_string_engine_version_is_dropped_in_ready_view(client, bad):
+    ds, c = client
+    snap = _snapshot()
+    snap["engine_version"] = bad
+    body = c.get(f"/api/deals/{_make(ds, snap)}/uw-snapshot").json()
+    assert body["state"] == "ready"
+    assert "engine_version" not in body["snapshot"]
+
+
+@pytest.mark.parametrize("bad", [{"a": 1}, ["x"], 7])
+def test_non_string_metadata_is_dropped_in_blank_view(client, bad):
+    ds, c = client
+    snap = _snapshot()
+    snap["verdict"] = "INCOMPLETE: synthetic"
+    snap["engine_version"] = bad
+    snap["property_name"] = bad
+    body = c.get(f"/api/deals/{_make(ds, snap)}/uw-snapshot").json()
+    assert body["state"] == "blank"
+    assert "engine_version" not in body["snapshot"]
+    assert "property_name" not in body["snapshot"]
+
+
+@pytest.mark.parametrize(
+    "field,bad",
+    [
+        ("unit_mix", {"0": {"unit_type": "Studio"}}),
+        ("seller_t12", {"line": "x"}),
+        ("unit_mix", [None]),
+        ("seller_t12", [None]),
+        ("unit_mix", [{"unit_type": "Studio", "units": {"n": 1}}]),
+    ],
+)
+def test_malformed_collections_fail_closed_to_blank(client, field, bad):
+    ds, c = client
+    snap = _snapshot()
+    snap[field] = bad
+    body = c.get(f"/api/deals/{_make(ds, snap)}/uw-snapshot").json()
+    assert body["state"] == "blank"
+    assert "stabilized_noi" not in (body["snapshot"] or {})
