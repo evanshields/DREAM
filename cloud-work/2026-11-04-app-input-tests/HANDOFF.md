@@ -62,3 +62,11 @@ Finding: the zero-equity expected-failure test (B23) accepted a 200 after checki
 Fix (test file only): a new constant `EQUITY_DEPENDENT_HEADLINES` = irr, equity_multiple, coc_year1, coc_stabilized. The test now passes only on a 422, or on a 200 where all four are null or absent. Still a strict xfail with its gap reason. The negative equity and negative loan tests already require a 422 only, so they have no partial field pattern and were not changed.
 Observed today at zero equity: 200 with irr null, equity_multiple 0.0, coc_year1 0.0, coc_stabilized 0.0, so the test still fails as expected.
 Totals from `backend/` (venv from `requirements.txt` plus `pytest==8.3.3`): this file 45 passed, 21 xfailed; full suite 602 passed, 1 skipped, 31 xfailed, 0 failed. No product code changed.
+
+## Restack round 2 onto layer 1 head ebd392a2 (2026-11-04, merge, no force push)
+Observed, read back through the GitHub API after the merge push:
+- Layer 1 branch moved from `584b9f23` to `ebd392a24f4747b477d8914dc6adfe23f683b625`. PR 16 head before `55b78899df97f41edf4d3bd6f1ddbb1843bd22da`, after the merge `00b116ac00b8ae0a9babdf730499bff620ca96a3`. This handoff note was added in a follow-up commit on top.
+- `git merge --no-ff` made the merge commit with no conflicts. The merge changed only layer 1 files (`test_gate_headline_numbers.py` and its handoff).
+- PR 16 base sha after: `ebd392a24f4747b477d8914dc6adfe23f683b625`. Changed files 2, additions 635. The diff still shows only layer 2 files. Mergeable state clean, still draft.
+- Own file: 45 passed, 21 xfailed, 0 failed. Full suite from `backend/`: 603 passed, 1 skipped, 31 xfailed, 0 failed.
+- Layer 1 branch and PR 15 were not touched.
