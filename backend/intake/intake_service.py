@@ -338,24 +338,76 @@ def _extract_fields(file_bytes: bytes, ext: str, doc_type: str) -> dict:
 # T-12 extraction
 # ---------------------------------------------------------------------------
 
-# Dollar amount pattern: optional $, digits with optional commas, optional decimal
-# The gap before the number is lazy so the whole number is captured. The number must not
-# start mid-number and must not carry a K/M/B suffix (unsupported, so it stays blank).
-_DOLLAR = r"\$?\s*(?<![\d,.])(\d[\d,]*(?:\.\d+)?)(?!\d|[,.]\d|\s?[kKmMbB]\b)"
+# Dollar amount token. Matched at the FIRST numeric token after a label, never later.
+# A supported amount is plain digits with optional thousands commas and optional decimals,
+# with an optional leading $. Anything else (magnitude suffix such as K, MM, B, million,
+# billion, a percent sign, a date or range, a year-like bare number, a letter-prefixed
+# token such as FY2025) is unsupported or ambiguous, so the line comes back blank.
+_DOLLAR_TOKEN = re.compile(r"(\d[\d,]*(?:\.\d+)?)")
 # Percentage pattern
 _PCT = r"([\d.]+)\s*%"
 
 
+def _amount_after_label(line_tail: str, start_limit: int = 80) -> float | None:
+    """Return the first numeric token in line_tail as a float, or None.
+
+    Only the first numeric token is considered. If it is not an unambiguous supported
+    amount the result is None. The parser never skips forward to a later column.
+    """
+    m = re.search(r"\d", line_tail[:start_limit])
+    if not m:
+        return None
+    i = m.start()
+    # Letter or digit-separator glued before the digits (FY2025, Q3, 12/31, 2025-26 tail).
+    if i > 0 and (line_tail[i - 1].isalpha() or line_tail[i - 1] in "_/\\.,"):
+        return None
+    tok = _DOLLAR_TOKEN.match(line_tail, i)
+    if not tok:
+        return None
+    raw = tok.group(1)
+    # Well-formed number only: no trailing comma/dot run, commas only as thousands groups.
+    if raw.endswith(","):
+        raw = raw[:-1]
+    if not re.fullmatch(r"(?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d+)?", raw):
+        return None
+    end = i + len(raw)
+    after = line_tail[end:]
+    if after[:1].isdigit():
+        return None
+    # Glued or spaced suffix: K, MM, B, million, billion, or any unit word.
+    if re.match(r"[A-Za-z]|\s?%", after):
+        return None
+    if re.match(r"\s+(?:k|m|mm|mn|mil|mill\w*|b|bn|bil\w*|t|tn|tril\w*|thou\w*|hundred)\b",
+                after, re.IGNORECASE):
+        return None
+    # Date, range or fraction continuation (12/31/2025, 2025-26, 3/4).
+    if re.match(r"[/-]\d", after):
+        return None
+    # A bare 4-digit number 1900-2100 with no $ and no comma is a year, not an amount.
+    prefix = line_tail[:i].rstrip()
+    has_dollar = prefix.endswith("$")
+    if not has_dollar and re.fullmatch(r"(?:19|20|21)\d{2}", raw):
+        return None
+    try:
+        return float(raw.replace(",", ""))
+    except ValueError:
+        return None
+
+
 def _first_dollar(text: str, *labels: str) -> float | None:
-    """Find the first dollar amount near any of the given label patterns."""
+    """Find the first dollar amount after any of the given labels.
+
+    On each label occurrence only the first numeric token on that line is read. If it is
+    not an unambiguous supported amount that occurrence yields nothing (no guessing, no
+    skipping to a later column on the same line).
+    """
     for label in labels:
-        pattern = rf"(?i){re.escape(label)}\b[^\n]{{0,80}}?{_DOLLAR}"
-        m = re.search(pattern, text)
-        if m:
-            try:
-                return float(m.group(1).replace(",", ""))
-            except ValueError:
-                continue
+        for m in re.finditer(rf"(?i){re.escape(label)}\b", text):
+            nl = text.find("\n", m.end())
+            tail = text[m.end(): nl if nl != -1 else len(text)]
+            value = _amount_after_label(tail)
+            if value is not None:
+                return value
     return None
 
 
