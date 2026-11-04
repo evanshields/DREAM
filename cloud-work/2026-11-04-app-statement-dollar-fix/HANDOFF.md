@@ -25,3 +25,18 @@ Tests: `backend/tests/test_intake_t12_dollar_parse.py` grew from 11 to 34 cases,
 - after the fix: 584 passed, 1 skipped (no failures)
 
 Known tradeoff: a real amount between 1900 and 2100 with no `$` and no comma (for example `GPR 2025`) now reads blank, because it cannot be told apart from a year.
+
+## Repair round 2 (Argon recheck on head c627be619f760a992bb8903d459303eb01306937)
+
+Finding 1: only the first suffix after the number was checked, so a chain such as an annual marker followed by per-unit text passed, and currency text before a rate hid the unit. Fix: `_qualifier_kinds` reads the full qualifier run (currency text, `per X`, `/ X`, `a X`, bare unit words) and every unit kind in it must match the field.
+
+Finding 2: the shared reader served both annual statement fields and the monthly market-rent field. Fix: `_amount_after_label` and `_first_dollar` take `unit`. Statement fields use `annual` (default). The market-rent field uses `monthly`. A bare amount is accepted for either. A marker before the number is checked the same way.
+
+Behavior changes and disclosed side effects:
+- Market rent `$1,200 per month` now reads 1200. `$14,400 per year` in a market-rent line now reads blank.
+- A monthly figure in a statement field reads blank. A negative or parenthesized NOI reads blank (never positive). Both are pinned by direct tests.
+- `per unit` and `per sf` stay blank in both fields. Asking price still uses the annual reader, unchanged.
+
+Tests: 36 new cases in `backend/tests/test_intake_t12_dollar_parse.py`, committed first at 4d74ebd4bc8b6b3536cb678db0d7d71c6c02730a.
+- before the fix: 21 failed, 99 passed in that file
+- after the fix: 120 passed in that file, full backend suite 670 passed, 1 skipped

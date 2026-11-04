@@ -344,24 +344,68 @@ def _extract_fields(file_bytes: bytes, ext: str, doc_type: str) -> dict:
 # billion, a percent sign, a date or range, a year-like bare number, a letter-prefixed
 # token such as FY2025) is unsupported or ambiguous, so the line comes back blank.
 _DOLLAR_TOKEN = re.compile(r"(\d[\d,]*(?:\.\d+)?)")
-# Unit or rate words that make a figure something other than an annual dollar amount.
-_UNIT_WORDS = (r"month\w*|mo|pm|pupm|pupy|psf|psm|sf|sqft|sq\.?\s*ft|square|unit\w*|door\w*|"
+# Unit or rate words that make a figure something other than a plain amount.
+_MONTH_WORDS = r"month\w*|mo|pm|pupm"
+_UNIT_WORDS = (_MONTH_WORDS + r"|pupy|psf|psm|sf|sqft|sq\.?\s*ft|square|unit\w*|door\w*|"
                r"bed\w*|each|week\w*|day\w*|daily|quarter\w*|qtr|annualized|acre\w*")
-_UNIT_AFTER = re.compile(rf"\s*(?:{_UNIT_WORDS})\b", re.IGNORECASE)
-_UNIT_BEFORE = re.compile(rf"(?:\bper\b|/|\b(?:{_UNIT_WORDS})\b)", re.IGNORECASE)
-# "per X", "/ X" or "a X" right after the number. X must be an annual word to be accepted.
-_PER_AFTER = re.compile(r"\s*(?:(?:per|/)\s*|a\s+)(\w+)", re.IGNORECASE)
 _ANNUAL_WORD = re.compile(r"(?:year|yr|annum|annual|annually|ann|yearly|y)", re.IGNORECASE)
+_MONTHLY_WORD = re.compile(rf"(?:{_MONTH_WORDS})", re.IGNORECASE)
+_CURRENCY_WORD = r"(?:usd|us\$|dollars?|\$)"
+# One qualifier after the number: currency text, "per X", "/ X", "a X", or a bare unit or
+# annual word. The whole run of qualifiers is read, not just the first one.
+_QUALIFIER = re.compile(
+    rf"[\s,;(]*(?:(?P<cur>{_CURRENCY_WORD})(?![A-Za-z])"
+    r"|(?:(?:per|/)\s*|a\s+)(?P<per>[\w.]+)"
+    rf"|(?P<word>annual\w*|yearly|year|yr|annum|{_UNIT_WORDS})\b)\)?",
+    re.IGNORECASE)
+# A marker before the number: "per X", "/ X", or a unit or annual word.
+_MARKER_BEFORE = re.compile(
+    rf"(?:\b(?:per|a)\s+(?P<per>\w+)|/\s*(?P<slash>\w*)|\b(?P<word>annual\w*|yearly|"
+    rf"year|yr|annum|{_UNIT_WORDS})\b)", re.IGNORECASE)
+
+
+def _unit_kind(word: str) -> str:
+    """Classify a unit word as annual, monthly or other. 'annualized' is other."""
+    w = word.strip().lower()
+    if _ANNUAL_WORD.fullmatch(w) or w.startswith("annual") and w != "annualized":
+        return "annual"
+    if _MONTHLY_WORD.fullmatch(w):
+        return "monthly"
+    return "other"
+
+
+def _qualifier_kinds(after: str) -> set[str]:
+    """Return the set of unit kinds in the full qualifier run after the number."""
+    kinds: set[str] = set()
+    pos = 0
+    while True:
+        m = _QUALIFIER.match(after, pos)
+        if not m or m.end() == pos:
+            return kinds
+        if m.group("per") is not None:
+            kinds.add(_unit_kind(m.group("per")))
+        elif m.group("word") is not None:
+            kinds.add(_unit_kind(m.group("word")))
+        pos = m.end()
+
+
 # Percentage pattern
 _PCT = r"([\d.]+)\s*%"
 
 
-def _amount_after_label(line_tail: str, start_limit: int = 80) -> float | None:
+def _amount_after_label(line_tail: str, start_limit: int = 80,
+                        unit: str = "annual") -> float | None:
     """Return the first numeric token in line_tail as a float, or None.
 
     Only the first numeric token is considered. If it is not an unambiguous supported
     amount the result is None. The parser never skips forward to a later column.
+
+    unit is the one unit the calling field accepts: "annual" for statement fields or
+    "monthly" for the market-rent field. A bare amount is accepted for either. Any
+    qualifier of another kind, anywhere in the qualifier run, blanks the value.
     """
+    if unit not in ("annual", "monthly"):
+        raise ValueError(f"unsupported unit: {unit}")
     m = re.search(r"\d", line_tail[:start_limit])
     if not m:
         return None
@@ -378,8 +422,10 @@ def _amount_after_label(line_tail: str, start_limit: int = 80) -> float | None:
     if re.search(r"[-\u2212\u2013\u2014(]\s*\$?\s*$", line_tail[:i]):
         return None
     # A unit or rate word between the label and the number ("per month $400,000").
-    if _UNIT_BEFORE.search(line_tail[:i]):
-        return None
+    for mb in _MARKER_BEFORE.finditer(line_tail[:i]):
+        word = mb.group("per") or mb.group("slash") or mb.group("word") or ""
+        if _unit_kind(word) != unit:
+            return None
     raw = tok.group(1)
     # Well-formed number only: no trailing comma/dot run, commas only as thousands groups.
     if raw.endswith(","):
@@ -402,12 +448,10 @@ def _amount_after_label(line_tail: str, start_limit: int = 80) -> float | None:
     # Trailing minus or closing parenthesis: negative or ambiguous, so blank.
     if re.match(r"\s*[-\u2212\u2013\u2014)]", after):
         return None
-    # Unit or rate after the number: per month, per unit, per sf, monthly, psf and the
-    # like. Only an explicit annual marker (per year, /yr, annual, USD) is accepted.
-    if _UNIT_AFTER.match(after):
-        return None
-    m_per = _PER_AFTER.match(after)
-    if m_per and not _ANNUAL_WORD.fullmatch(m_per.group(1)):
+    # Unit or rate after the number. Read the whole qualifier run (currency text, then
+    # any chain such as "annual per unit"). Every unit kind in it must match the field.
+    kinds = _qualifier_kinds(after)
+    if any(k != unit for k in kinds):
         return None
     # A bare 4-digit number 1900-2100 with no $ and no comma is a year, not an amount.
     prefix = line_tail[:i].rstrip()
@@ -420,18 +464,18 @@ def _amount_after_label(line_tail: str, start_limit: int = 80) -> float | None:
         return None
 
 
-def _first_dollar(text: str, *labels: str) -> float | None:
+def _first_dollar(text: str, *labels: str, unit: str = "annual") -> float | None:
     """Find the first dollar amount after any of the given labels.
 
     On each label occurrence only the first numeric token on that line is read. If it is
     not an unambiguous supported amount that occurrence yields nothing (no guessing, no
-    skipping to a later column on the same line).
+    skipping to a later column on the same line). unit is "annual" or "monthly".
     """
     for label in labels:
         for m in re.finditer(rf"(?i){re.escape(label)}\b", text):
             nl = text.find("\n", m.end())
             tail = text[m.end(): nl if nl != -1 else len(text)]
-            value = _amount_after_label(tail)
+            value = _amount_after_label(tail, unit=unit)
             if value is not None:
                 return value
     return None
@@ -799,7 +843,8 @@ def _extract_costar_from_text(text: str) -> dict:
         extracted["market_vacancy_rate"] = vac
 
     # Average market rent
-    avg_rent = _first_dollar(text, "average rent", "avg rent", "market rent", "asking rent")
+    avg_rent = _first_dollar(text, "average rent", "avg rent", "market rent", "asking rent",
+                           unit="monthly")
     if avg_rent is not None:
         extracted["market_avg_rent"] = avg_rent
 
