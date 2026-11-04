@@ -37,6 +37,6 @@ Behavior changes and disclosed side effects:
 - A monthly figure in a statement field reads blank. A negative or parenthesized NOI reads blank (never positive). Both are pinned by direct tests.
 - `per unit` and `per sf` stay blank in both fields. Asking price still uses the annual reader, unchanged.
 
-Tests: 36 new cases in `backend/tests/test_intake_t12_dollar_parse.py`, committed first at 4d74ebd4bc8b6b3536cb678db0d7d71c6c02730a.
+Tests: 31 new cases in `backend/tests/test_intake_t12_dollar_parse.py`, committed first at 4d74ebd4bc8b6b3536cb678db0d7d71c6c02730a.
 - before the fix: 21 failed, 99 passed in that file
 - after the fix: 120 passed in that file, full backend suite 670 passed, 1 skipped
