@@ -242,3 +242,96 @@ def test_module_is_pure_no_forbidden_imports():
     for banned in ("import decimal", "from decimal", "sqlite3", "psycopg", "import requests",
                    "import httpx", "openai", "import fitz", "import os", "open("):
         assert banned not in src, banned
+
+
+# ---- Red team repair group 1: one percent normalization family for value and matched text ----
+@pytest.mark.parametrize("matched,value,ok", [
+    ("6.5%", "6.5%", True),
+    ("6.5%", "0.065", True),
+    ("0.065", "6.5%", True),
+    ("65%", "65%", True),
+    ("6.5", "6.5%", False),
+    ("6.5%", "6.5", False),
+    ("$1,000", "1,000", True),
+])
+def test_percent_in_value_text_is_scaled_like_matched_text(matched, value, ok):
+    assert c.matched_text_agrees(matched, value) is ok
+
+
+# ---- Group 2: infinite page dimensions must not disable the upper bound ----
+@pytest.mark.parametrize("field", ["page_width_pt", "page_height_pt"])
+@pytest.mark.parametrize("bad", [float("inf"), float("-inf"), float("nan")])
+def test_non_finite_page_dimension_is_rejected(fx, field, bad):
+    ev = copy.deepcopy(fx["cell"]["evidence"])
+    ev["citations"][0][field] = bad
+    ev["citations"][0]["rects_pt"] = [[72.0, 310.5, 100000.0, 100000.0]]
+    assert "bad_rects" in _codes(c.validate_evidence(ev, 41250000))
+
+
+def test_non_finite_rect_coordinate_is_rejected(fx):
+    for bad in (float("inf"), float("-inf"), float("nan")):
+        ev = copy.deepcopy(fx["cell"]["evidence"])
+        ev["citations"][0]["rects_pt"] = [[72.0, 310.5, bad, 324.1]]
+        assert "bad_rects" in _codes(c.validate_evidence(ev, 41250000)), bad
+
+
+# ---- Group 3: citation field types and nonempty semantic text ----
+_TEXT_FIELDS = ["doc_name", "line_text", "matched_text", "label_text", "locator", "locator_version"]
+
+
+@pytest.mark.parametrize("field", _TEXT_FIELDS)
+@pytest.mark.parametrize("bad", [5, None, ["x"], {"a": 1}, True])
+def test_citation_text_field_must_be_a_string(fx, field, bad):
+    ev = copy.deepcopy(fx["cell"]["evidence"])
+    ev["citations"][0][field] = bad
+    result = c.validate_evidence(ev, 41250000)
+    assert result["valid"] is False
+    assert "bad_field_type" in _codes(result)
+
+
+@pytest.mark.parametrize("field", _TEXT_FIELDS)
+@pytest.mark.parametrize("bad", ["", "   ", "\t\n"])
+def test_citation_text_field_must_be_nonempty(fx, field, bad):
+    ev = copy.deepcopy(fx["cell"]["evidence"])
+    ev["citations"][0][field] = bad
+    result = c.validate_evidence(ev, 41250000)
+    assert result["valid"] is False
+    assert "empty_field" in _codes(result)
+
+
+@pytest.mark.parametrize("bad,code", [("", "empty_field"), (7, "bad_field_type")])
+def test_xlsx_sheet_must_be_a_nonempty_string(fx, bad, code):
+    ev = copy.deepcopy(fx["cell"]["evidence"])
+    cite = ev["citations"][0]
+    for k in ("page", "page_width_pt", "page_height_pt", "rects_pt"):
+        del cite[k]
+    cite.update({"doc_kind": "xlsx", "sheet": bad, "cell_ref": "D7"})
+    assert code in _codes(c.validate_evidence(ev, 41250000))
+
+
+def test_mixed_valid_and_invalid_citations_still_report_invalid(fx):
+    ev = copy.deepcopy(fx["cell"]["evidence"])
+    bad = copy.deepcopy(ev["citations"][0])
+    bad["locator"] = ""
+    ev["citations"].append(bad)
+    result = c.validate_evidence(ev, 41250000)
+    assert result["valid"] is False and result["state"] == "invalid"
+    assert any(e["message"].startswith("citation 1 ") for e in result["errors"])
+    assert not any(e["message"].startswith("citation 0 ") for e in result["errors"])
+
+
+# ---- Group 4: malformed roots are refused, never coerced to a no-source state ----
+@pytest.mark.parametrize("bad", [None, [], "x", 3, ("a",)])
+def test_non_dict_engine_inputs_are_refused(bad):
+    with pytest.raises(ValueError):
+        c.validate_engine_input_evidence(bad, {})
+
+
+@pytest.mark.parametrize("bad", [None, [], "x", 3, ("a",)])
+def test_non_dict_evidence_map_is_refused(bad):
+    with pytest.raises(ValueError):
+        c.validate_engine_input_evidence({"exit_cap": 0.05}, bad)
+
+
+def test_empty_dicts_are_still_accepted():
+    assert c.validate_engine_input_evidence({}, {}) == {}

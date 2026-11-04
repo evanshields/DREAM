@@ -3,6 +3,7 @@
 Pure on purpose: no file, network, database or model access. Values are compared as text so no
 Decimal is introduced outside engine_boundary.py. This module only checks the shape and honesty
 of provenance. It never computes or changes a figure."""
+import math
 import re
 
 SCHEMA = "dream.evidence.v1"
@@ -25,6 +26,7 @@ _CELL_RE = re.compile(r"^[A-Z]{1,3}[1-9][0-9]*$")
 _KEY_RE = re.compile(r"^[a-z][a-z0-9_]*$")
 _NUM_RE = re.compile(r"^-?[0-9]*\.?[0-9]+$")
 _RECT_TOLERANCE_PT = 1.0
+_TEXT_FIELDS = ("doc_name", "line_text", "matched_text", "label_text", "locator", "locator_version")
 
 
 def _err(code, message):
@@ -32,7 +34,7 @@ def _err(code, message):
 
 
 def _is_num(x):
-    return isinstance(x, (int, float)) and not isinstance(x, bool)
+    return isinstance(x, (int, float)) and not isinstance(x, bool) and math.isfinite(x)
 
 
 def _canonical(text):
@@ -92,8 +94,7 @@ def matched_text_agrees(matched_text, value):
     vt = _value_text(value)
     if vt is None or not isinstance(matched_text, str):
         return False
-    vt = _strip(vt).replace("%", "")
-    mc, vc = _norm_matched(matched_text), _canonical(vt)
+    mc, vc = _norm_matched(matched_text), _norm_matched(vt)
     return mc is not None and vc is not None and mc == vc
 
 
@@ -128,6 +129,12 @@ def _check_citation(i, cite, value, page_count, errors):
     for k in need:
         if k not in cite:
             errors.append(_err("missing_field", "%s is missing %s" % (tag, k)))
+    for k in _TEXT_FIELDS + (("sheet",) if kind == "xlsx" else ()):
+        if k in cite:
+            if not isinstance(cite[k], str):
+                errors.append(_err("bad_field_type", "%s %s must be a string" % (tag, k)))
+            elif not cite[k].strip():
+                errors.append(_err("empty_field", "%s %s must not be empty" % (tag, k)))
     sha = cite.get("doc_sha256")
     if "doc_sha256" in cite and not (isinstance(sha, str) and _SHA_RE.match(sha)):
         errors.append(_err("bad_sha256", tag + " doc_sha256 must be 64 lowercase hex characters"))
@@ -215,10 +222,15 @@ def format_identifier(kind, name):
 def validate_engine_input_evidence(engine_inputs, evidence_map, page_count=None):
     """Validate assumptions_engine_inputs_evidence against assumptions_engine_inputs.
     Returns key -> result. A key with no evidence is no_source, reason 'no source recorded'.
-    An evidence key that is not an engine input is invalid."""
+    An evidence key that is not an engine input is invalid.
+    Raises ValueError when either argument is not a dict, so a malformed root is refused and
+    never reads as an all-no_source state."""
     results = {}
-    inputs = engine_inputs if isinstance(engine_inputs, dict) else {}
-    emap = evidence_map if isinstance(evidence_map, dict) else {}
+    if not isinstance(engine_inputs, dict):
+        raise ValueError("engine_inputs must be a dict")
+    if not isinstance(evidence_map, dict):
+        raise ValueError("evidence_map must be a dict")
+    inputs, emap = engine_inputs, evidence_map
     for key, value in inputs.items():
         if key in emap:
             results[key] = validate_evidence(emap[key], value, page_count=page_count)
