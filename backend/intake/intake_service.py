@@ -339,7 +339,9 @@ def _extract_fields(file_bytes: bytes, ext: str, doc_type: str) -> dict:
 # ---------------------------------------------------------------------------
 
 # Dollar amount pattern: optional $, digits with optional commas, optional decimal
-_DOLLAR = r"\$?\s*([\d,]+(?:\.\d+)?)"
+# The gap before the number is lazy so the whole number is captured. The number must not
+# start mid-number and must not carry a K/M/B suffix (unsupported, so it stays blank).
+_DOLLAR = r"\$?\s*(?<![\d,.])(\d[\d,]*(?:\.\d+)?)(?!\d|[,.]\d|\s?[kKmMbB]\b)"
 # Percentage pattern
 _PCT = r"([\d.]+)\s*%"
 
@@ -347,7 +349,7 @@ _PCT = r"([\d.]+)\s*%"
 def _first_dollar(text: str, *labels: str) -> float | None:
     """Find the first dollar amount near any of the given label patterns."""
     for label in labels:
-        pattern = rf"(?i){re.escape(label)}\b[^\n]{{0,80}}{_DOLLAR}"
+        pattern = rf"(?i){re.escape(label)}\b[^\n]{{0,80}}?{_DOLLAR}"
         m = re.search(pattern, text)
         if m:
             try:
