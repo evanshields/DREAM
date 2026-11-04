@@ -344,6 +344,14 @@ def _extract_fields(file_bytes: bytes, ext: str, doc_type: str) -> dict:
 # billion, a percent sign, a date or range, a year-like bare number, a letter-prefixed
 # token such as FY2025) is unsupported or ambiguous, so the line comes back blank.
 _DOLLAR_TOKEN = re.compile(r"(\d[\d,]*(?:\.\d+)?)")
+# Unit or rate words that make a figure something other than an annual dollar amount.
+_UNIT_WORDS = (r"month\w*|mo|pm|pupm|pupy|psf|psm|sf|sqft|sq\.?\s*ft|square|unit\w*|door\w*|"
+               r"bed\w*|each|week\w*|day\w*|daily|quarter\w*|qtr|annualized|acre\w*")
+_UNIT_AFTER = re.compile(rf"\s*(?:{_UNIT_WORDS})\b", re.IGNORECASE)
+_UNIT_BEFORE = re.compile(rf"(?:\bper\b|/|\b(?:{_UNIT_WORDS})\b)", re.IGNORECASE)
+# "per X", "/ X" or "a X" right after the number. X must be an annual word to be accepted.
+_PER_AFTER = re.compile(r"\s*(?:(?:per|/)\s*|a\s+)(\w+)", re.IGNORECASE)
+_ANNUAL_WORD = re.compile(r"(?:year|yr|annum|annual|annually|ann|yearly|y)", re.IGNORECASE)
 # Percentage pattern
 _PCT = r"([\d.]+)\s*%"
 
@@ -364,6 +372,14 @@ def _amount_after_label(line_tail: str, start_limit: int = 80) -> float | None:
     tok = _DOLLAR_TOKEN.match(line_tail, i)
     if not tok:
         return None
+    # Sign or parentheses before the number: negative or ambiguous, so blank.
+    # Covers -4,800,000, -$4,800,000, $-4,800,000, (4,800,000), ($4,800,000), and a
+    # spaced hyphen ("Rent - $4,800,000") which could be a minus or a separator.
+    if re.search(r"[-\u2212\u2013\u2014(]\s*\$?\s*$", line_tail[:i]):
+        return None
+    # A unit or rate word between the label and the number ("per month $400,000").
+    if _UNIT_BEFORE.search(line_tail[:i]):
+        return None
     raw = tok.group(1)
     # Well-formed number only: no trailing comma/dot run, commas only as thousands groups.
     if raw.endswith(","):
@@ -382,6 +398,16 @@ def _amount_after_label(line_tail: str, start_limit: int = 80) -> float | None:
         return None
     # Date, range or fraction continuation (12/31/2025, 2025-26, 3/4).
     if re.match(r"[/-]\d", after):
+        return None
+    # Trailing minus or closing parenthesis: negative or ambiguous, so blank.
+    if re.match(r"\s*[-\u2212\u2013\u2014)]", after):
+        return None
+    # Unit or rate after the number: per month, per unit, per sf, monthly, psf and the
+    # like. Only an explicit annual marker (per year, /yr, annual, USD) is accepted.
+    if _UNIT_AFTER.match(after):
+        return None
+    m_per = _PER_AFTER.match(after)
+    if m_per and not _ANNUAL_WORD.fullmatch(m_per.group(1)):
         return None
     # A bare 4-digit number 1900-2100 with no $ and no comma is a year, not an amount.
     prefix = line_tail[:i].rstrip()
