@@ -1,6 +1,13 @@
 # Handoff: app API contract tests (2026-11-04)
 
-New file: `backend/tests/test_api_contract_refusals.py` (79 passing, 15 strict xfail). No application code or config changed.
+New file: `backend/tests/test_api_contract_refusals.py` (83 passing, 15 strict xfail). No application code or config changed.
+
+## Second repair: strict ownership same-owner control (same branch)
+- B13 now proves strict mode both ways. New `test_b13_strict_ownership_same_owner_succeeds` runs archive, unarchive and delete as the owner (in-memory synthetic login user) with `DREAM_STRICT_OWNERSHIP` ON and expects 200, then the same call on another owner's deal and expects 404 with the deal untouched.
+- The hostile-host ownership control got a matching same-owner success test, `test_control_strict_ownership_allows_same_owner_under_hostile_host`.
+- Delete reaches CRM link cleanup, so the new `synthetic_crm` fixture swaps in an in-memory CRM store. No network, no product code change.
+- Raw dotenv handling left alone, that finding was rejected because the module-level parametrization already imports main at collection.
+- Totals: this file 83 passed, 15 xfailed. Full backend 633 passed, 1 skipped, 15 xfailed.
 
 ## Repair after Argon red team (same branch)
 - Ownership and real-app tests no longer inherit the host `AUTH_JWT_SECRET`, `GOOGLE_CLIENT_ID`, `DREAM_STRICT_OWNERSHIP` or `DREAM_DB_PATH`. New fixture `synthetic_env` pins them (auth off, empty allowlist, DB path under tmp_path).

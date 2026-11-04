@@ -224,6 +224,42 @@ def test_b13_strict_ownership_other_owner_404(client, stores, monkeypatch, metho
     assert ds.get(rec.deal_id).status == "computed"
 
 
+def _synthetic_bearer(auth_on_main):
+    r = auth_on_main.post("/api/auth/login", json={"username": "synthetic-user", "password": "synthetic-pass-123"})
+    assert r.status_code == 200
+    return {"Authorization": f"Bearer {r.json()['access_token']}"}
+
+
+@pytest.fixture
+def synthetic_crm(monkeypatch):
+    """In-memory CRM store so a delete's link cleanup never reaches the host database."""
+    from store.crm_store import SQLiteCRMStore
+    crm = SQLiteCRMStore(":memory:")
+    monkeypatch.setattr(deals_router, "get_crm_store", lambda: crm)
+    return crm
+
+
+@pytest.mark.parametrize("method,suffix", [("POST", "/archive"), ("POST", "/unarchive"), ("DELETE", "")])
+def test_b13_strict_ownership_same_owner_succeeds(auth_on_main, stores, synthetic_crm, monkeypatch, method, suffix):
+    """Strict mode ON must allow the deal's own owner (the synthetic login user) and still deny others."""
+    ds, _js, _ = stores
+    monkeypatch.setenv("DREAM_STRICT_OWNERSHIP", "1")
+    headers = _synthetic_bearer(auth_on_main)
+    mine = ds.create(_spec(), owner="synthetic@example.com", now_iso=NOW, status="computed")
+    theirs = ds.create(_spec(slug="other-heights"), owner="someone-else@example.com", now_iso=NOW, status="computed")
+    r = auth_on_main.request(method, f"/api/deals/{mine.deal_id}{suffix}", headers=headers)
+    assert r.status_code == 200, r.text
+    if method == "DELETE":
+        assert r.json() == {"deleted": True, "deal_id": mine.deal_id}
+        with pytest.raises(Exception):
+            ds.get(mine.deal_id)
+    # same call, same mode, other owner's deal: refused and untouched
+    r2 = auth_on_main.request(method, f"/api/deals/{theirs.deal_id}{suffix}", headers=headers)
+    assert r2.status_code == 404
+    assert r2.json()["detail"] == "deal not found"
+    assert ds.get(theirs.deal_id).status == "computed"
+
+
 def test_b13_permissive_mode_lets_other_owner_archive(client, stores, monkeypatch):
     ds, _js, _ = stores
     rec = ds.create(_spec(), owner="someone-else@example.com", now_iso=NOW, status="computed")
@@ -610,6 +646,21 @@ def test_control_ownership_404_survives_hostile_host_auth(hostile_host_env, clie
     r = client.delete(f"/api/deals/{rec.deal_id}")
     assert r.status_code == 404
     assert r.json()["detail"] == "deal not found"
+
+
+def test_control_strict_ownership_allows_same_owner_under_hostile_host(hostile_host_env, auth_on_main, stores,
+                                                                       synthetic_crm, monkeypatch):
+    ds, _js, _ = stores
+    monkeypatch.setenv("DREAM_STRICT_OWNERSHIP", "1")  # hostile host said 0; the test turns strict ON
+    headers = _synthetic_bearer(auth_on_main)
+    mine = ds.create(_spec(), owner="synthetic@example.com", now_iso=NOW, status="computed")
+    theirs = ds.create(_spec(slug="other-heights"), owner="someone-else@example.com", now_iso=NOW, status="computed")
+    assert auth_on_main.post(f"/api/deals/{mine.deal_id}/archive", headers=headers).status_code == 200
+    r = auth_on_main.delete(f"/api/deals/{theirs.deal_id}", headers=headers)
+    assert r.status_code == 404
+    assert r.json()["detail"] == "deal not found"
+    assert ds.get(theirs.deal_id).status == "computed"
+    assert auth_on_main.delete(f"/api/deals/{mine.deal_id}", headers=headers).status_code == 200
 
 
 def test_control_login_and_gate_survive_hostile_host_db_and_auth(hostile_host_env, auth_on_main):
