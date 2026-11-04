@@ -27,3 +27,13 @@ Pass list (7): B64 control, B46, B47 (two), B55 zero exit cap, B57, B52.
 - The items below are still GUESS, not observed.
 - Can a draft PR be the bottom of a stack? GUESS yes. GitHub allows a PR to target any branch, draft or not. A draft base only blocks merge of the draft itself. Observation: not tested.
 - Pushing again to this branch: GUESS the layer-2 PR stays open with base = this branch, but its branch no longer contains the new head, so layer 2 needs a rebase or merge of this branch to pick it up. That makes a new layer-2 head, which means a fresh Argon review of layer 2. If layer 1 is force pushed or squash merged, layer 2 will likely show extra commits until rebased onto main. Not observed.
+
+## Repair round 2 (Argon finding on B33)
+- B33 test now isolates auth: AUTH_JWT_SECRET, AUTH_JWT_TTL_HOURS and GOOGLE_CLIENT_ID are cleared and require_auth is overridden with a synthetic user. The shared api fixture clears the same env vars.
+- New control test test_b33_control_agent_memo_reaches_generator_with_valid_request: a valid request returns 200 and the fake generator is called once.
+- The refusal test now rejects 401 and 403, needs 400/404/409/422, needs a string detail (not a pydantic field-error list) that mentions stored, model_results, engine result or run, and still asserts the generator was not called. Still strict xfail because current code returns 200.
+- Totals (reviewed head 584b9f23, then this repair), from backend/ with pytest.ini, pytest 8.3.3:
+  - File, normal: 8 passed, 10 xfailed. File, AUTH_JWT_SECRET=bogus: 8 passed, 10 xfailed.
+  - Full suite, normal: 558 passed, 1 skipped, 10 xfailed. Full suite, AUTH_JWT_SECRET=bogus: 49 failed, 509 passed, 1 skipped, 10 xfailed.
+  - The 49 bogus-env failures are all in other test files (for example test_review_fixes.py) and are not touched by this PR. At the reviewed head the same bogus run had 51 failed, 507 passed, 9 xfailed.
+- Not changed: parser strict xfail (B40c), empty-input schema claim, export JSON refusal test. Layer 2 (PR 16) is untouched and needs a restack.
