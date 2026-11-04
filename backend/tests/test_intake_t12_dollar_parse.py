@@ -58,3 +58,73 @@ def test_t12_abbreviated_millions_is_blank_not_made_up():
 def test_t12_no_number_is_blank():
     out = _extract_t12_from_text("Gross Potential Rent  n/a\n")
     assert "gpr_annual" not in out
+
+
+# ---------------------------------------------------------------------------
+# Argon finding: refuse ambiguous or unsupported first-column values.
+# The parser returns the first numeric token after the label only when it is an
+# unambiguous supported amount. Otherwise blank. It never skips forward to a
+# later column.
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "line",
+    [
+        "Gross Potential Rent 2025 $4,800,000\n",
+        "Gross Potential Rent FY2025 4,800,000\n",
+        "Gross Potential Rent FY 2025 $4,800,000\n",
+        "Gross Potential Rent 12/31/2025 $4,800,000\n",
+        "Gross Potential Rent 2025-26 $4,800,000\n",
+        "Gross Potential Rent Q3 $4,800,000\n",
+        "Effective Gross Income 2025 $4,512,345\n",
+    ],
+)
+def test_t12_intervening_numeric_metadata_is_blank(line):
+    out = _extract_t12_from_text(line)
+    assert "gpr_annual" not in out
+    assert "egi_annual" not in out
+
+
+@pytest.mark.parametrize(
+    "line",
+    [
+        "Gross Potential Rent  $4.8MM\n",
+        "Gross Potential Rent  $4.8 million\n",
+        "Gross Potential Rent  4.8 Million\n",
+        "Gross Potential Rent  $1.2B\n",
+        "Gross Potential Rent  $1.2 billion\n",
+        "Gross Potential Rent  $4.8mm\n",
+        "Gross Potential Rent  $4.8 MM\n",
+        "Gross Potential Rent  $4,800K\n",
+        "Gross Potential Rent  $4,800 thousand\n",
+    ],
+)
+def test_t12_multi_letter_or_spelled_magnitude_is_blank(line):
+    out = _extract_t12_from_text(line)
+    assert "gpr_annual" not in out
+
+
+@pytest.mark.parametrize(
+    "line",
+    [
+        "Gross Potential Rent  $4.8M  $5,950,000\n",
+        "Gross Potential Rent  $4.8MM  $5,950,000\n",
+        "Gross Potential Rent  4.8 Million  5,950,000\n",
+        "Gross Potential Rent  $1.2B  $5,950,000\n",
+        "Gross Potential Rent  12%  $5,950,000\n",
+    ],
+)
+def test_t12_unsupported_first_column_never_falls_through_to_second(line):
+    out = _extract_t12_from_text(line)
+    assert "gpr_annual" not in out
+
+
+def test_t12_valid_first_column_then_unsupported_second_uses_first():
+    out = _extract_t12_from_text("Gross Potential Rent  $4,800,000  $5.9MM\n")
+    assert out["gpr_annual"] == 4800000.0
+
+
+def test_t12_unsupported_line_does_not_block_a_later_clean_line():
+    text = "Gross Potential Rent  $4.8MM\nGross Potential Rent  $4,800,000\n"
+    assert _extract_t12_from_text(text)["gpr_annual"] == 4800000.0
