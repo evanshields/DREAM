@@ -38,10 +38,21 @@ Note on B26: it was marked "unprobed" in the map. Probed now: agency-sizing with
 Note on B34: the one xfail asserts a non-200 or a typed error event and no `[DONE]` after failure. A separate passing test pins today's `{"error": ...}` field.
 
 ## Full backend suite (from `backend/`, repo pytest.ini)
-`2 failed, 601 passed, 1 skipped, 30 xfailed in 10.13s`. The 2 failures are the layer 1 reds above. Baseline in the gap map was 550 passed, 1 skipped.
+`2 failed, 601 passed, 1 skipped, 30 xfailed in 10.13s` at layer 1 head d73a0abb. The 2 failures were the layer 1 reds above. Baseline in the gap map was 550 passed, 1 skipped. See the restack section for the totals after the merge.
 
 ## Rows not done
 None. All requested rows are covered.
 
 ## Stack observations
 See the PR body. Observed facts are recorded there after the PR was opened.
+
+
+## Restack onto new layer 1 head (2026-11-04, merge, no force push)
+Observed:
+- Layer 1 branch `cloud/2026-11-04-app-gate-tests` moved from `d73a0abb` to `584b9f23a7ba5aa79da6e6ca3ba87d51b166f5a8`. Layer 2 head before: `5674c679c0486fe0e0746d883715ee688c779c3e`.
+- `git merge --no-ff origin/cloud/2026-11-04-app-gate-tests` made merge commit `6fec5cbb5d344844ffc4cd99568e09a36fcd9861` with no conflicts. The merge brought in edits to layer 1's `backend/tests/test_gate_headline_numbers.py` and its handoff file. No layer 2 file was changed by the merge.
+- Own file `tests/test_input_validation_fail_closed.py`: 45 passed, 21 xfailed, 0 failed.
+- Full backend suite from `backend/`: 602 passed, 1 skipped, 31 xfailed, 0 failed in 10.03s (venv from `requirements.txt` plus `pytest==8.3.3`).
+- Read back through the GitHub API after the merge push: PR 16 head `6fec5cbb`, base sha `584b9f23` (was `d73a0abb`), 2 commits, 2 changed files, 614 additions, diff still shows only the layer 2 test file and this handoff file, mergeable state clean, still draft.
+- Layer 1 branch and PR 15 were not touched.
+Guess (not observed): the 2 earlier reds in layer 1 look fixed by the layer 1 update, since the suite is now 0 failed, but I did not rerun layer 1 alone.
