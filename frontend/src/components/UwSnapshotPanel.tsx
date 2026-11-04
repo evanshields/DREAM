@@ -24,25 +24,25 @@ export function UwSnapshotView({ view }: { view: UwSnapshotView }) {
         <p data-testid="uw-blank" className="text-sm text-slate/70">
           {view.blank_reason ?? 'No numbers to show.'}
         </p>
-        {snap?.verdict && (
+        {typeof snap?.verdict === 'string' && snap.verdict && (
           <p className="mt-2 text-sm">
             <span className="text-slate/60">Verdict: </span>
-            <Badge tone="warn">{snap.verdict}</Badge>
+            <Badge tone="neutral">{snap.verdict}</Badge>
           </p>
         )}
-        {snap?.engine_version && (
+        {typeof snap?.engine_version === 'string' && snap.engine_version && (
           <p className="mt-1 text-xs text-slate/60">Engine version: {snap.engine_version}</p>
         )}
       </Card>
     );
   }
-  const mix = snap.unit_mix ?? [];
-  const t12 = snap.seller_t12 ?? [];
+  const mix = Array.isArray(snap.unit_mix) ? snap.unit_mix : [];
+  const t12 = Array.isArray(snap.seller_t12) ? snap.seller_t12 : [];
   return (
     <Card className="p-4">
       <h2 className="font-heading text-base mb-1">UW Snapshot</h2>
       <p className="text-sm mb-3">
-        <Badge tone="teal">{show(snap.verdict)}</Badge>
+        <Badge tone="neutral">{show(snap.verdict)}</Badge>
         <span className="ml-2 text-xs text-slate/60">Engine version: {show(snap.engine_version)}</span>
       </p>
 
