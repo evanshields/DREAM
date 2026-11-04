@@ -2,20 +2,25 @@
 
 Branch: cloud/2026-11-04-app-auth-env-isolation, base main at 953cda4835602bbdfcf3df767adca936ddece3b5.
 
+## Scope
+One test-code file (`backend/tests/conftest.py`) plus this handoff note. No runtime or product code change.
+
 ## What was done
 - Reproduced: 49 backend tests fail when AUTH_JWT_SECRET=junk and GOOGLE_CLIENT_ID=junk are set in the host environment.
-- Added one autouse fixture in backend/tests/conftest.py that clears AUTH_JWT_SECRET, AUTH_JWT_TTL_HOURS, GOOGLE_CLIENT_ID, ALLOWED_EMAILS and DREAM_STRICT_OWNERSHIP with monkeypatch.delenv(raising=False) before every test.
-- Only that one file changed. No product code touched.
+- Review round 1 added an autouse fixture that clears AUTH_JWT_SECRET, AUTH_JWT_TTL_HOURS, GOOGLE_CLIENT_ID, ALLOWED_EMAILS and DREAM_STRICT_OWNERSHIP before every test.
+- Red team follow up: that fixture alone left `auth.GOOGLE_CLIENT_ID`, `auth.ALLOWED_EMAILS_RAW` and `auth.ALLOWED_EMAILS` holding host values, because `auth.py` reads them at import time, during collection.
+- Fix 1: `conftest.py` now pops the five variables from `os.environ` at module load, which runs before test modules are collected, so `auth.py` imports with a clean environment.
+- Fix 2: the fixture also resets the imported `auth` globals inside each test. `ALLOWED_EMAILS` is cleared in place and restored afterwards, because `auth_dep.py` and `routers/auth_login.py` bind the same set object.
+- Coverage is limited to the variables read by `auth.py`, `auth_dep.py`, `app_jwt.py` and `routers/deals.py`. No claim is made for any other auth module.
 
-## Results (run from backend/ with its pytest.ini)
-| Run | Before | After |
-|---|---|---|
-| Normal | 550 passed, 1 skipped | 550 passed, 1 skipped |
-| AUTH_JWT_SECRET=junk GOOGLE_CLIENT_ID=junk | 49 failed, 501 passed, 1 skipped | 550 passed, 1 skipped |
-| All five auth vars set to junk values | not run before | 550 passed, 1 skipped |
+## Results (run from backend/ with its pytest.ini, Python 3.11, pytest 8.3.3 plus pinned requirements.txt)
+| Run | Result |
+|---|---|
+| Host auth variables unset | 550 passed, 1 skipped |
+| Host has AUTH_JWT_SECRET, GOOGLE_CLIENT_ID, ALLOWED_EMAILS, AUTH_JWT_TTL_HOURS, DREAM_STRICT_OWNERSHIP set to junk | 550 passed, 1 skipped |
+| Before any fix, junk AUTH_JWT_SECRET and GOOGLE_CLIENT_ID | 49 failed, 501 passed, 1 skipped |
 
-## Known limit
-auth.py reads GOOGLE_CLIENT_ID and ALLOWED_EMAILS into module constants at import time. Those are read before any fixture runs, so a host value would still be captured there. In practice GOOGLE_CLIENT_ID is also re-read from the live environment at call time, and the all-vars-set run above passed. Fixing import-time capture would need a product code change, which was out of scope.
+Import-time proof: a throwaway probe test (not committed) asserting `auth.GOOGLE_CLIENT_ID == ""`, `auth.ALLOWED_EMAILS_RAW == ""` and `auth.ALLOWED_EMAILS == set()` with junk client id and allowlist in the host environment. It failed on the previous head (client id held the junk value) and passed on this head.
 
 ## Failing list before the fix (junk run)
 - tests/test_auth_gate.py::test_auth_disabled_returns_stub_user
