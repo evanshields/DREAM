@@ -40,6 +40,10 @@ ACQ = dict(
 EXIT_CAP_OK = dict(going_in_cap=0.055)
 AGENCY_OK = dict(stabilized_noi=4448271.31, stabilized_value=70000000.0, refi_rate=0.06)
 
+# Every equity-based return the ACQ boundary (engine_boundary.run_acq_underwrite) emits. An accepted
+# blank response must null or omit all of them, not just a subset.
+EQUITY_DEPENDENT_HEADLINES = ("irr", "equity_multiple", "coc_year1", "coc_stabilized")
+
 PYTHON_ERROR_TEXT = ("list index out of range", "division by zero", "Traceback",
                      "unsupported operand", "object has no attribute", "KeyError")
 
@@ -94,7 +98,7 @@ def test_b23_zero_equity_is_rejected_or_blank_never_a_zero_multiple(calc):
     r = calc.post("/api/recalc", json=dict(ACQ, total_equity=0.0))
     if r.status_code == 200:
         hm = r.json()["headline_metrics"]
-        for k in ("equity_multiple", "coc_stabilized"):
+        for k in EQUITY_DEPENDENT_HEADLINES:
             assert hm.get(k) is None, f"{k}={hm.get(k)!r} shown as a number with no equity"
     else:
         assert r.status_code == 422

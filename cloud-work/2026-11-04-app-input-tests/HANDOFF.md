@@ -56,3 +56,9 @@ Observed:
 - Read back through the GitHub API after the merge push: PR 16 head `6fec5cbb`, base sha `584b9f23` (was `d73a0abb`), 2 commits, 2 changed files, 614 additions, diff still shows only the layer 2 test file and this handoff file, mergeable state clean, still draft.
 - Layer 1 branch and PR 15 were not touched.
 Guess (not observed): the 2 earlier reds in layer 1 look fixed by the layer 1 update, since the suite is now 0 failed, but I did not rerun layer 1 alone.
+
+## Repair after red team (2026-11-04)
+Finding: the zero-equity expected-failure test (B23) accepted a 200 after checking only equity_multiple and coc_stabilized. The ACQ boundary (`engine_boundary.run_acq_underwrite`) also emits coc_year1 and irr, so a partial fix could blank two fields and trigger a strict unexpected pass early.
+Fix (test file only): a new constant `EQUITY_DEPENDENT_HEADLINES` = irr, equity_multiple, coc_year1, coc_stabilized. The test now passes only on a 422, or on a 200 where all four are null or absent. Still a strict xfail with its gap reason. The negative equity and negative loan tests already require a 422 only, so they have no partial field pattern and were not changed.
+Observed today at zero equity: 200 with irr null, equity_multiple 0.0, coc_year1 0.0, coc_stabilized 0.0, so the test still fails as expected.
+Totals from `backend/` (venv from `requirements.txt` plus `pytest==8.3.3`): this file 45 passed, 21 xfailed; full suite 602 passed, 1 skipped, 31 xfailed, 0 failed. No product code changed.
