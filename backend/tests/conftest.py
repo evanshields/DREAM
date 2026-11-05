@@ -38,18 +38,18 @@ def _isolate_auth_env(monkeypatch):
     """
     for name in _AUTH_ENV_VARS:
         monkeypatch.delenv(name, raising=False)
-    auth_mod = sys.modules.get("auth")
-    if auth_mod is not None:
-        monkeypatch.setattr(auth_mod, "GOOGLE_CLIENT_ID", "", raising=False)
-        monkeypatch.setattr(auth_mod, "ALLOWED_EMAILS_RAW", "", raising=False)
-        # auth_dep.py and routers/auth_login.py bind the same set object with "from auth import",
-        # so clear it in place and restore it afterwards instead of rebinding the name.
-        saved = set(auth_mod.ALLOWED_EMAILS)
-        auth_mod.ALLOWED_EMAILS.clear()
-        try:
-            yield
-        finally:
-            auth_mod.ALLOWED_EMAILS.clear()
-            auth_mod.ALLOWED_EMAILS.update(saved)
-    else:
+    # Import unconditionally so a test that first imports auth inside its own body still gets
+    # teardown. Importing here is safe: the module-level pop above already cleared the host values.
+    import auth as auth_mod
+
+    monkeypatch.setattr(auth_mod, "GOOGLE_CLIENT_ID", "", raising=False)
+    monkeypatch.setattr(auth_mod, "ALLOWED_EMAILS_RAW", "", raising=False)
+    # auth_dep.py and routers/auth_login.py bind the same set object with "from auth import",
+    # so clear it in place and restore it afterwards instead of rebinding the name.
+    saved = set(auth_mod.ALLOWED_EMAILS)
+    auth_mod.ALLOWED_EMAILS.clear()
+    try:
         yield
+    finally:
+        auth_mod.ALLOWED_EMAILS.clear()
+        auth_mod.ALLOWED_EMAILS.update(saved)
