@@ -5,7 +5,6 @@
 // installed on this branch, so these have not been executed.
 import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest';
 import { render, screen, within, waitFor, cleanup } from '@testing-library/react';
-import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 
 vi.mock('../src/auth/AuthContext', () => ({
@@ -67,8 +66,13 @@ afterEach(() => {
 
 function column(label: string): HTMLElement {
   // The column root is the ancestor that holds the heading label and its cards.
-  const heading = screen.getByText(label, { selector: 'span' });
-  return heading.parentElement!.parentElement as HTMLElement;
+  // A card badge can carry the same text as a column heading, so keep only the span that sits in
+  // the column header row (its parent is the justify-between row, not a card link).
+  const heading = screen
+    .getAllByText(label, { selector: 'span' })
+    .filter((el) => el.parentElement?.classList.contains('justify-between') && !el.closest('a'));
+  expect(heading).toHaveLength(1);
+  return heading[0].parentElement!.parentElement as HTMLElement;
 }
 
 describe('F11 Pipeline attention column', () => {
@@ -99,6 +103,17 @@ describe('F11 Pipeline attention column', () => {
   // F11 gap: the "Needs Attention" preset in cards and table view only matches gate_failed and
   // awaiting_input, so failed and cancelled deals the kanban flags are missing from it.
   // RED today. Remove .fails when the preset covers failed and cancelled.
+  it('Needs Attention preset renders the gate failed deal and hides computed ones', async () => {
+    setView('cards', 'needs_attention');
+    stubDeals(() => json(deals));
+    renderPipeline();
+
+    await screen.findByText('Gate Failed Deal');
+    expect(screen.queryByText('Computed Deal')).toBeNull();
+  });
+
+  // The expected failure covers only the two assertions that are red today, so a render crash
+  // or a timeout above can no longer hide behind it.
   it.fails('F11 gap: Needs Attention preset lists failed and cancelled deals too', async () => {
     setView('cards', 'needs_attention');
     stubDeals(() => json(deals));
@@ -107,7 +122,6 @@ describe('F11 Pipeline attention column', () => {
     await screen.findByText('Gate Failed Deal');
     expect(screen.queryByText('Failed Deal')).not.toBeNull();
     expect(screen.queryByText('Cancelled Deal')).not.toBeNull();
-    expect(screen.queryByText('Computed Deal')).toBeNull();
   });
 });
 

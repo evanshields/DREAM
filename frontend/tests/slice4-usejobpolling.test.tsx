@@ -92,7 +92,7 @@ describe('F13 useJobPolling', () => {
     expect(onUpdate).toHaveBeenCalledTimes(2);
   });
 
-  it.each(['failed', 'cancelled', 'awaiting_cp1'])('stops after a terminal status: %s', async (status) => {
+  it.each(['failed', 'cancelled', 'awaiting_cp1', 'awaiting_input', 'completed'])('stops after a terminal status: %s', async (status) => {
     const fetchFn = vi.fn(async () => json(view(status)));
     const { onUpdate, onError } = host(fetchFn);
 
