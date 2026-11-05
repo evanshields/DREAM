@@ -12,8 +12,14 @@ import uuid
 
 from store.mono_deal_store import MonoConflict
 from .config import canonical_hash, digest
+from .publication_files import PublicationFilesError
 from .provider import MonoProvider, wait_for_bridge, unsafe_root, unresolved_launches
 from .revisions import now, write_new
+
+
+# Failures the app raises itself, with fixed messages that hold no path or source text. Everything else is
+# reported by type only, because an operating system or parser message can carry a path or source text.
+CURATED_FAILURES = (PublicationFilesError, MonoConflict)
 
 
 def registered_plan(config, registration, release):
@@ -158,7 +164,8 @@ class PublicationProvider:
                     if job['state'] in ('queued', 'running'):
                         self.store.update(deal_id, job_id, {'state':'failed', 'package':None,
                             'finished_at':now(), 'updated_at':now(),
-                            'diagnostics':[type(error).__name__+': publication verification failed. Sources remain private.']})
+                            'diagnostics':[type(error).__name__+': '+(str(error) if isinstance(error, CURATED_FAILURES)
+                                else 'publication verification failed. Sources remain private.')]})
                 self._active_job = None
         except BaseException as error:
             self._quarantine('Publisher dispatcher stopped unexpectedly: ' + type(error).__name__, kind='publication')
