@@ -23,16 +23,20 @@ describe('F18 null max loan shows a dash', () => {
       'fetch',
       vi.fn(async (url: string) =>
         String(url).endsWith('/recalc/agency-sizing')
-          ? json({ max_loan: null, binding_constraint: null, by_dscr: 5000000, by_ltv: 6000000, by_debt_yield: 7000000 })
+          ? json({ max_loan: null, binding_constraint: 'dscr', by_dscr: 5000000, by_ltv: 6000000, by_debt_yield: 7000000 })
           : json({ detail: 'not mocked' }, 500),
       ),
     );
     render(<BondScreen />);
     await screen.findByText('$5,000,000');
     expect(screen.getByText('$6,000,000')).toBeTruthy();
+    expect(screen.getByText('$7,000,000')).toBeTruthy();
     const heading = screen.getByText(/Agency Takeout Sizing/);
     const card = heading.closest('div')!.parentElement!.parentElement!;
-    expect(card.textContent).toContain('—');
-    expect(card.textContent).not.toMatch(/\$0\b|NaN|null|undefined/);
+    // The big max-loan number is the only text-4xl element in the card.
+    const tile = card.querySelector('.text-4xl') as HTMLElement;
+    expect(tile.textContent).toBe('—');
+    // textContent joins neighbours with no space, so a bare word boundary after $0 would miss "$0Binding".
+    expect(card.textContent).not.toMatch(/\$0(?![0-9,])|NaN|null|undefined/);
   });
 });

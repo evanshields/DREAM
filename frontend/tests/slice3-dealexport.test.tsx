@@ -44,10 +44,15 @@ describe('F20 refusal groups always visible', () => {
       })),
     );
     await screen.findByText(/Populate completed with refusals/);
-    expect(screen.getByText('S12')).toBeVisible();
-    expect(screen.getByText('D9')).toBeVisible();
-    expect(screen.getByText(/B7/)).toBeVisible();
-    expect(screen.getByText(/fee above bound/)).toBeVisible();
+    // No jest-dom here, so "visible" means: not inside a closed <details> (the collapse is the gap).
+    for (const el of [
+      screen.getByText('S12'),
+      screen.getByText('D9'),
+      screen.getByText(/B7/),
+      screen.getByText(/fee above bound/),
+    ]) {
+      expect(el.closest('details')).toBeNull();
+    }
     expect(container.querySelector('summary')).toBeNull();
     expect(screen.queryByRole('button', { name: /download/i })).toBeNull();
   });

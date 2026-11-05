@@ -47,6 +47,7 @@ describe('F26 unknown URL goes to pipeline', () => {
 describe('F24 error boundary', () => {
   // No ErrorBoundary exists in the app today, so a render error blanks the whole page. Red first.
   it.fails('F24 a render error shows a fallback with a reload hint, not a blank screen', async () => {
+    vi.resetModules(); // App is imported at the top, so clear the cache before mocking, even when run alone.
     vi.doMock('../src/pages/Pipeline', () => ({
       Pipeline: () => (('x') as any).toFixed(2),
     }));
