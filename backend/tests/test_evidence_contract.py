@@ -253,6 +253,10 @@ def test_module_is_pure_no_forbidden_imports():
     ("6.5", "6.5%", False),
     ("6.5%", "6.5", False),
     ("$1,000", "1,000", True),
+    ("6.5%%", "0.065", False),
+    ("6.5%", "6.5%%", False),
+    ("%6.5%", "0.065", False),
+    ("6%5%", "0.65", False),
 ])
 def test_percent_in_value_text_is_scaled_like_matched_text(matched, value, ok):
     assert c.matched_text_agrees(matched, value) is ok
@@ -264,15 +268,29 @@ def test_percent_in_value_text_is_scaled_like_matched_text(matched, value, ok):
 def test_non_finite_page_dimension_is_rejected(fx, field, bad):
     ev = copy.deepcopy(fx["cell"]["evidence"])
     ev["citations"][0][field] = bad
-    ev["citations"][0]["rects_pt"] = [[72.0, 310.5, 100000.0, 100000.0]]
+    ev["citations"][0]["rects_pt"] = [[72.0, 310.5, 100.0, 324.1]]  # in bounds on its own
     assert "bad_rects" in _codes(c.validate_evidence(ev, 41250000))
 
 
-def test_non_finite_rect_coordinate_is_rejected(fx):
-    for bad in (float("inf"), float("-inf"), float("nan")):
-        ev = copy.deepcopy(fx["cell"]["evidence"])
-        ev["citations"][0]["rects_pt"] = [[72.0, 310.5, bad, 324.1]]
-        assert "bad_rects" in _codes(c.validate_evidence(ev, 41250000)), bad
+@pytest.mark.parametrize("idx", [0, 1, 2, 3])
+@pytest.mark.parametrize("bad", [float("inf"), float("-inf"), float("nan")])
+def test_non_finite_rect_coordinate_is_rejected(fx, idx, bad):
+    ev = copy.deepcopy(fx["cell"]["evidence"])
+    rect = [72.0, 310.5, 100.0, 324.1]
+    rect[idx] = bad
+    ev["citations"][0]["rects_pt"] = [rect]
+    assert "bad_rects" in _codes(c.validate_evidence(ev, 41250000))
+
+
+@pytest.mark.parametrize("second", ["", "   ", "N/A"])
+def test_unparseable_second_matched_text_is_invalid_not_conflict(fx, second):
+    ev = copy.deepcopy(fx["cell"]["evidence"])
+    other = copy.deepcopy(ev["citations"][0])
+    other["matched_text"] = second
+    ev["citations"].append(other)
+    result = c.validate_evidence(ev, 41250000)
+    assert result["state"] == "invalid"
+    assert "conflict" not in _codes(result)
 
 
 # ---- Group 3: citation field types and nonempty semantic text ----

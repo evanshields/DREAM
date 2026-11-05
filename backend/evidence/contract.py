@@ -81,8 +81,8 @@ def _strip(text):
 def _norm_matched(matched_text):
     """Canonical number text of a matched string (percent scaled to a fraction), or None."""
     m = _strip(matched_text)
-    is_pct = "%" in m
-    mc = _canonical(m.replace("%", ""))
+    is_pct = m.endswith("%")
+    mc = _canonical(m[:-1] if is_pct else m)
     if mc is not None and is_pct:
         mc = _canonical(_shift_left_two(mc))
     return mc
@@ -184,8 +184,9 @@ def validate_evidence(evidence, value, page_count=None):
             errors.append(_err("document_needs_citation", "basis document needs at least one citation"))
         for i, cite in enumerate(cites):
             _check_citation(i, cite, value, page_count, errors)
-        texts = {_norm_matched(c.get("matched_text")) for c in cites
-                 if isinstance(c, dict) and isinstance(c.get("matched_text"), str)}
+        texts = {nm for c in cites
+                 if isinstance(c, dict) and isinstance(c.get("matched_text"), str)
+                 for nm in (_norm_matched(c.get("matched_text")),) if nm is not None}
         if len(texts) > 1:
             errors.append(_err("conflict", "citations disagree on the value"))
         return _result(errors, "ok")
