@@ -82,12 +82,12 @@ def test_negative_percent_is_blank():
     assert _first_pct("Vacancy -5%", "vacancy") is None
 
 
-@pytest.mark.xfail(strict=True, reason="pct gap: accounting parentheses (5%) read as positive 5%")
+@pytest.mark.xfail(strict=True, reason="pct gap: accounting parentheses (5%) read as positive 5% instead of blank")
 def test_parenthesized_percent_is_blank():
     assert _first_pct("Vacancy (5%)", "vacancy") is None
 
 
-@pytest.mark.xfail(strict=True, reason="pct gap: parenthesized decimal (5.0 %) reads as positive")
+@pytest.mark.xfail(strict=True, reason="pct gap: parenthesized decimal (5.0 %) reads as 0.0 instead of blank")
 def test_parenthesized_percent_with_space_is_blank():
     assert _first_pct("Vacancy (5.0 %)", "vacancy") is None
 
@@ -111,17 +111,17 @@ def test_per_unit_rate_is_blank():
 
 # --- Percent-like numbers that are really a year or a count --------------------------------
 
-@pytest.mark.xfail(strict=True, reason="pct gap: 2024% accepted as 20.24 instead of blank")
+@pytest.mark.xfail(strict=True, reason="pct gap: 2024% reads as 4% instead of blank")
 def test_year_like_value_is_blank():
     assert _first_pct("Vacancy 2024%", "vacancy") is None
 
 
-@pytest.mark.xfail(strict=True, reason="pct gap: values above 100% (count-like 250%) accepted")
+@pytest.mark.xfail(strict=True, reason="pct gap: values above 100% (count-like 250%) reads as 0.0 instead of blank")
 def test_over_100_percent_is_blank():
     assert _first_pct("Vacancy 250%", "vacancy") is None
 
 
-@pytest.mark.xfail(strict=True, reason="pct gap: thousands separator truncated so 1,250% reads as 250%")
+@pytest.mark.xfail(strict=True, reason="pct gap: thousands separator truncated so 1,250% reads as 0.0 instead of blank")
 def test_comma_grouped_count_is_blank():
     assert _first_pct("Vacancy 1,250%", "vacancy") is None
 

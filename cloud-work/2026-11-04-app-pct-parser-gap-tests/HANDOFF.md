@@ -7,8 +7,8 @@ Branch: cloud/2026-11-04-app-pct-parser-gap-tests (base main 953cda4835602bbdfcf
 - Target: `_first_pct` in backend/intake/intake_service.py. Draft PR 17 edits that file, so it was not touched.
 
 ## Results (run from backend/ with its pytest.ini, Python venv, requirements.txt plus pytest 8.3.3)
-- New file: 6 passed, 17 xfailed (strict).
-- Full backend suite: 556 passed, 1 skipped, 17 xfailed.
+- New file: 7 passed, 17 xfailed (strict).
+- Full backend suite: 557 passed, 1 skipped, 17 xfailed.
 
 ## Findings
 - Argon's four gaps are all real: negative or parenthesized values read positive, per-month and per-unit rates read as annual, year or count values accepted, and an n/a or dash first column borrows a later column.
