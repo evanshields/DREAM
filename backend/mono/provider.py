@@ -14,12 +14,21 @@ from .revisions import now, read, write_new
 from store.mono_deal_store import MonoConflict
 
 
+def latch_quarantine(path, payload):
+    """Write the durable cleanup latch. A latch that already exists is the state we want, not an error."""
+    try:
+        write_new(path, payload)
+    except FileExistsError:
+        pass
+
+
 def wait_for_bridge(process, directory, closing, quarantine, *, timeout=1320,
                     cancel_grace=30, clock=time.monotonic, sleep=time.sleep):
     """Bound the visible job, retaining ownership while uncertain cleanup runs."""
     deadline = clock() + timeout
     cancel_started = None
     quarantined = False
+    callback_error = None
     while process.poll() is None:
         current = clock()
         if closing() or current >= deadline:
@@ -28,12 +37,19 @@ def wait_for_bridge(process, directory, closing, quarantine, *, timeout=1320,
             if cancel_started is None:
                 cancel_started = current
             if current - cancel_started >= cancel_grace and not quarantined:
-                quarantine('Calculator did not finish cancellation within its cleanup grace. '
-                           'This dispatcher is quarantined until owned-process cleanup is verified.')
                 quarantined = True
+                try:
+                    quarantine('Calculator did not finish cancellation within its cleanup grace. '
+                               'This dispatcher is quarantined until owned-process cleanup is verified.')
+                except Exception as exc:
+                    # A failing latch callback must never end the wait while the child may still own Excel.
+                    # Keep waiting for the real exit, then report the failure.
+                    callback_error = exc
         # Retain the dispatcher lease until the actual parent process exits.
         # An elapsed observation is never permission to terminate owned Excel.
         sleep(0.2)
+    if callback_error is not None:
+        raise callback_error
     return quarantined
 
 
@@ -148,7 +164,7 @@ class MonoProvider:
             def quarantine(reason):
                 # Durable latch survives app restarts. Do not clear it merely
                 # because a PID later exits or a terminal receipt appears.
-                write_new(self._quarantine_path, {'job_id': job_id, 'bridge_pid': process.pid,
+                latch_quarantine(self._quarantine_path, {'job_id': job_id, 'bridge_pid': process.pid,
                     'recorded_at': now(), 'reason': reason,
                     'cleanup_verified': False})
                 current = self.store.job(deal_id, job_id)

@@ -377,3 +377,39 @@ def normalize_mono_rate(entered):
 def mono_rate_edit_text(value):
     """Server-owned display conversion preserves the canonical rate on replay."""
     return format(to_dec(value) * Decimal(100), 'f') + '%'
+
+
+def parse_mono_number(text, *, whole=False):
+    """Typed workbook-number text -> (number, had_dollar_sign). Decimal never leaves this module.
+
+    Accepts one optional sign before or after one optional ``$`` and thousands commas.
+    ``whole=True`` requires an integer value and returns an exact ``int`` (no binary rounding);
+    otherwise the value crosses to ``float`` once through ``f``.
+    """
+    bad = ValueError('A finite numeric value is required')
+    raw, sign = text.strip(), ''
+    if raw[:1] in ('+', '-'):
+        sign, raw = raw[0], raw[1:].lstrip()
+    dollar = raw.startswith('$')
+    if dollar:
+        raw = raw[1:].lstrip()
+        if raw[:1] in ('+', '-'):
+            if sign:
+                raise bad
+            sign, raw = raw[0], raw[1:].lstrip()
+    raw = raw.replace(',', '')
+    if not raw or raw[0] in ('+', '-', '$'):
+        raise bad
+    try:
+        value = Decimal(raw)
+        if sign == '-':
+            value = -value
+        if not value.is_finite() or not math.isfinite(float(value)):
+            raise bad
+    except (DecimalException, ValueError, OverflowError) as exc:
+        raise bad from exc
+    if whole:
+        if value != value.to_integral_value():
+            raise ValueError('A whole number is required in this unit')
+        return int(value), dollar
+    return f(value), dollar

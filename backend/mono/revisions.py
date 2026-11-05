@@ -85,20 +85,12 @@ def normalize(entry, entered, unit):
         if unit == 'date' and len(text) == 10 and text[4] == '-' and text[7] == '-':
             from datetime import date
             return (date.fromisoformat(text) - date(1899, 12, 30)).days
-        percent = text.endswith('%')
-        if percent and unit not in ('rate', '%'):
+        if text.endswith('%'):
             raise ValueError('A percentage cannot be used in this unit')
-        text = text.removesuffix('%').replace(',', '')
-        if text.startswith('$'):
-            if not unit.startswith('$') and unit not in ('usd', 'usd_per_unit', 'usd_per_sf'):
-                raise ValueError('Currency does not match this field')
-            text = text[1:]
-        try:
-            entered = float(text)
-        except ValueError as exc:
-            raise ValueError('A finite numeric value is required') from exc
-        if percent:
-            entered = entered / 100
+        from engine_boundary import parse_mono_number
+        entered, currency = parse_mono_number(text, whole=unit in ('count', 'months', 'years'))
+        if currency and not unit.startswith('$') and unit not in ('usd', 'usd_per_unit', 'usd_per_sf'):
+            raise ValueError('Currency does not match this field')
     if not isinstance(entered, (int, float)) or not math.isfinite(entered):
         raise ValueError('A finite numeric value is required')
     if unit in ('count', 'months', 'years') and int(entered) != entered:
@@ -154,6 +146,16 @@ class RevisionBuilder:
             shutil.copyfile(source_path, target)
             if digest(target) != source['sha256']:
                 raise ValueError('Staged source identity changed')
+
+    def discard(self, staged):
+        """Remove a staged revision that the store did not publish. Only server-owned folders are touched."""
+        owned = {'revisions': self.config.data_root / 'revisions', 'trusted': self.config.data_root / 'trusted'}
+        root = Path(staged['root']).resolve()
+        if root.parent == owned['revisions'].resolve() and root.is_dir():
+            shutil.rmtree(root, ignore_errors=True)
+        ledger = Path((staged.get('trusted_rulings') or {}).get('path') or '').resolve()
+        if ledger.parent == owned['trusted'].resolve() and ledger.is_file():
+            ledger.unlink(missing_ok=True)
 
     def initial(self, deal_id, registration):
         from tools.mono_calc.contracts import identifier
@@ -212,7 +214,7 @@ class RevisionBuilder:
                  'deal_id': doc['slug'], 'assumption_id': field_id, 'old': a['value'], 'new': value, 'unit': a.get('unit'),
                  'reason': reason, 'actor': copy.deepcopy(actor), 'parent_revision': current['revision'],
                  'revision': current['revision'] + 1, 'request_id': request_id, 'at': now(),
-                 'supersedes': prior[0]['decision_id'] if prior else None}
+                 'supersedes': prior[-1]['decision_id'] if prior else None}
         root = self.config.data_root / 'revisions' / (doc['slug'] + '-r' + str(event['revision']) + '-' + uuid.uuid4().hex)
         root.mkdir()
         self._copy_sources(source_root, root, bundle)

@@ -151,7 +151,16 @@ class MonoService:
             if not body['reason'].strip():
                 raise HTTPException(422, 'A reason is required')
             revised, decision = self.builder.edit(record, body['field_id'], body['entered_value'], body['unit'], body['reason'], actor, body['idempotency_key'])
-            committed = self.store.commit_revision(deal_id, record['revision'], revised, decision, body['idempotency_key'], request_digest)
+            try:
+                committed = self.store.commit_revision(deal_id, record['revision'], revised, decision, body['idempotency_key'], request_digest)
+            except (MonoConflict, ValueError):
+                # The store rolled back, so nothing points at the staged copy. Do not leave it on disk.
+                self.builder.discard(revised)
+                raise
+            replayed = committed['root'] != revised['root']
+            if replayed:
+                # A concurrent identical request published first. Our staged copy is a duplicate.
+                self.builder.discard(revised)
             event = next(e for e in self.store.decisions(deal_id) if e['revision'] == committed['revision'])
         except MonoConflict as exc:
             self._conflict(exc)
@@ -159,7 +168,7 @@ class MonoService:
             raise HTTPException(403, str(exc))
         except ValueError as exc:
             raise HTTPException(422, str(exc))
-        return self._operation_view(deal_id, actor, 'edit', event, False)
+        return self._operation_view(deal_id, actor, 'edit', event, replayed)
 
     def _operation_view(self, deal_id, actor, kind, event, replayed):
         view = self.view(deal_id, actor)

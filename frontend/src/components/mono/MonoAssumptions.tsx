@@ -2,8 +2,7 @@ import { useMemo, useState } from 'react';
 import { Badge, Button, Input, Spinner } from '../ui';
 import { editMonoAssumption, monoConflict, monoError, revisionOf, type MonoAssumption, type MonoScalar, type MonoView } from '../../lib/monoApi';
 import { asRecord, Details, Evidence, monoText, monoValue, ProblemList } from './MonoEvidence';
-
-type ValueKind = 'text' | 'number' | 'boolean' | 'null';
+import { initialEditKind, type ValueKind } from '../../lib/monoEdit';
 
 function AssumptionRow({ field, view, onSaved, onReread }: { field: MonoAssumption; view: MonoView; onSaved: (view: MonoView) => void; onReread: () => Promise<void> }) {
   const [editing, setEditing] = useState(false);
@@ -19,7 +18,7 @@ function AssumptionRow({ field, view, onSaved, onReread }: { field: MonoAssumpti
 
   const start = () => {
     setDraft(field.edit_value ?? (field.value === null || field.value === undefined ? '' : String(field.value)));
-    setKind(field.value === null ? 'null' : typeof field.value === 'number' ? 'number' : typeof field.value === 'boolean' ? 'boolean' : 'text');
+    setKind(initialEditKind(field.value, field.unit));
     setReason(''); setError(null); setConflict(false); setReviewedRevision(view.revision); setEditing(true);
     setRequestKey(null); setRequestFingerprint(null);
   };
