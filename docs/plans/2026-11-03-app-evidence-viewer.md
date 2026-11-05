@@ -45,7 +45,7 @@ All read at main commit `953cda4835602bbdfcf3df767adca936ddece3b5`. No real deal
 - `backend/jobs/contracts.py`: values carry a `source` string, either `llm-inferred` or a free-text citation such as "OM p.3". That free text is the only provenance today.
 - `backend/jobs/analysts.py`: cells are `{cell, value, source, phase}` and `source` is validated as a string. Headline calculations are fed by `assumptions_engine_inputs`, a separate dict of engine input values.
 - `backend/routers/deals.py`: the delete route and the `_assert_can_touch` ownership seam with its `DREAM_STRICT_OWNERSHIP` option.
-- `backend/adapters/spec_models.py`: the spec is the master record and the view round-trip preserves each cell's original metadata, so a new key on a cell will ride through untouched.
+- `backend/adapters/spec_models.py`: the spec is the master record and the view round-trip preserves each cell's original metadata, so a new key on a cell will ride through untouched. A new top-level key such as `assumptions_engine_inputs_evidence` does not ride through on its own, so slice 5 adds it to the round trip.
 - `backend/run_status/adapter.py` and `frontend/src/lib/runStatusApi.ts`: the run status screen already has `source_file` and `source_pointer` on headline rows and a closed evidence state list (`ok`, `missing`, `hash_mismatch`, `unverified`, `unreadable`, `invalid`). The viewer reuses that vocabulary.
 - `frontend/src/pages/DealDetail.tsx`: headline tiles (`HeadlineMetricsBlock`, `EFBMetricTiles`) and the `AssumptionDashboard` component, and the open questions list with the "Cited" or "LLM-inferred" badge. These are the click targets.
 - `backend/requirements.txt`: `pymupdf==1.24.11` is already a dependency, so word positions and page rendering need no new library.
@@ -67,6 +67,7 @@ Each spec cell gains one optional key, `evidence`. The existing `source` string 
   "evidence": {
     "schema": "dream.evidence.v1",
     "basis": "document",
+    "unit": "currency",
     "citations": [
       {
         "doc_sha256": "<64 hex chars>",
@@ -75,6 +76,7 @@ Each spec cell gains one optional key, `evidence`. The existing `source` string 
         "page": 4,
         "page_width_pt": 612.0,
         "page_height_pt": 792.0,
+        "rotation": 0,
         "rects_pt": [[72.0, 310.5, 388.2, 324.1]],
         "line_text": "Purchase Price $41,250,000",
         "matched_text": "$41,250,000",
@@ -91,9 +93,11 @@ Rules for the contract:
 
 - `basis` is a closed set: `document`, `llm_inferred`, `policy_default`, `manual_entry`, `none`. Anything else is rejected as `invalid`.
 - `document` needs at least one citation. Every other basis must have zero citations and a `reason` string.
-- `page` is 1-based. `rects_pt` are PDF points with the origin at the top left of the page (the pymupdf convention), one rectangle per line when the match wraps.
-- `matched_text` must normalise to the cell value. Normalising means stripping `$`, `,`, `%` and spaces and comparing as text against the cell value written the same way, with a percent cell compared after a fixed scale of 100. This is a text comparison done outside the Decimal seam on purpose, so no Decimal is introduced outside `engine_boundary.py`.
-- Two citations that disagree on value make the whole cell `conflict`, shown with both, never resolved silently.
+- `page` is 1-based. `rects_pt` are PDF points with the origin at the top left of the page as displayed, with rotation applied (the pymupdf convention), one rectangle per line when the match wraps. `page_width_pt`, `page_height_pt` and `rotation` are read from that same displayed page, so the rectangles and the rendered image share one coordinate space.
+- `unit` is a closed set: `currency`, `ratio`, `pct_points`, `count`, `text`. It says how the cell value is stored, so the check never guesses a scale. A `ratio` is stored as a fraction such as 0.055 and shown in a document as 5.5%. A `pct_points` value is stored as 5.5 and shown as 5.5%.
+- `matched_text` must normalise to the cell value. Normalising is a text comparison done outside the Decimal seam on purpose, so no Decimal is introduced outside `engine_boundary.py`. Both sides are reduced to a plain digit string: strip `$`, `,`, `%` and spaces, read a value in parentheses as negative, and drop trailing zeros after a decimal point, so `$41,250,000.00` matches 41250000 and `5.50%` matches 5.5. For a `ratio` the document text is shifted two places by moving the point in the string, not by arithmetic. Anything else, such as `$41.25M`, `41.25MM` or a range, does not normalise: the citation is `unverified` with the reason "format not supported in v1", never a guess. A citation whose `matched_text` does not normalise to the cell value is invalid, except inside a `conflict`.
+- Two citations that disagree on value make the whole cell `conflict`, shown with both, never resolved silently. This is the only case where a stored citation may disagree with the cell value, and the locator is what produces it (section 3).
+- Saving keeps evidence honest. `spec_to_view` and `view_to_spec` carry `evidence` on cells and the top-level `assumptions_engine_inputs_evidence` map through unchanged. When a save changes a cell value or an engine-input value from the stored one, that item's evidence is replaced in the same save with `{"basis": "manual_entry", "citations": [], "reason": "typed by a person"}`, so a stale document line is never kept for a value a person overrode. An unchanged value keeps its evidence byte for byte.
 - A spreadsheet citation uses `doc_kind: "xlsx"`, `sheet` and `cell_ref` in place of `page` and `rects_pt`.
 - Computed outputs (headline metrics) do not carry `evidence`. They are covered by a fixed lineage table in code, `metric -> [input identifiers]`. An identifier is one of two kinds. A cell address (`B10`) names a mapped spreadsheet cell. An engine-input key (`stabilized_noi`) names a value in `assumptions_engine_inputs`, which is how `backend/jobs/analysts.py` and `backend/jobs/synthesis.py` feed the headline calculations. Example: `irr -> [cell:B10, cell:B45, engine:stabilized_noi, ...]`. The table is written by hand, reviewed, and tested to only name cells that exist in the routing's field map and engine-input keys that exist in the deal's engine inputs.
 - Engine-input keys carry evidence too. Each key in `assumptions_engine_inputs` gets a sibling `assumptions_engine_inputs_evidence` map, `key -> evidence object` in the same shape as a cell's `evidence`. The existing engine-input dict is left untouched so the engine bridge and every existing test keep working. A key with no evidence entry is shown as `no_source` with the reason "no source recorded".
@@ -101,23 +105,23 @@ Rules for the contract:
 ### 2. Document store
 
 - New `backend/store/document_store.py`, content-addressed by SHA-256. It is inside `backend/store/` so the rule about database access stays intact.
-- Bytes live on disk under a configurable root (`DREAM_DOC_ROOT`), as `<root>/<sha[0:2]>/<sha>.bin`, plus a small index table `(sha256, deal_id, doc_name, doc_kind, size, uploaded_by, uploaded_at)`.
+- Bytes live on disk under a configurable root (`DREAM_DOC_ROOT`), as `<root>/<sha[0:2]>/<sha>.bin`, plus two small tables. `blobs` holds one row per file: `(sha256 primary key, size, doc_kind, uploaded_by, uploaded_at, orphaned_at)`, where `orphaned_at` stays empty until the last link to the file is removed. `deal_documents` holds one row per link: `(deal_id, sha256, doc_name, linked_at)` with primary key `(deal_id, sha256)`. One file can be linked to several deals, and a blob keeps its own dates after any link is deleted.
 - Write is idempotent on hash. Read recomputes the hash of the bytes and refuses on mismatch (hash mismatch is a hard stop).
 - Size cap per file (proposed 50 MB) and a page cap for rendering (proposed 500 pages).
 - `POST /api/intake` keeps its current response and additionally stores the file and returns its `doc_sha256`. Linking a document to a deal happens when the deal is saved.
 - Lifecycle contract. Documents are confidential, so the plan states what happens at every end of life:
-  - Deal deletion. The existing delete route (`delete_deal` in `backend/routers/deals.py`) must also remove every link row for that deal in the same step. After that, a document with no links left becomes unreferenced.
+  - Deal deletion. The existing delete route (`delete_deal` in `backend/routers/deals.py`) must also remove every link row for that deal in the same step. After that, a document with no links left becomes unreferenced, and the same step sets `orphaned_at` on its `blobs` row.
   - Unlinked page requests. A hash with no remaining link to a deal the caller can read answers 404 immediately, even while the bytes still sit on disk.
-  - Abandoned uploads. An intake upload that is never attached to a saved deal stays unreferenced. Each index row records `linked_at` (empty until linked) so such rows can be found.
-  - Retention policy for unreferenced blobs (proposed, for Evan to confirm). A scheduled sweep deletes the bytes and the index row of any blob with no links that is older than 7 days. A blob that lost its last link through deal deletion is deleted on the same sweep. The sweep logs counts only, never file names. A dry run mode reports what it would delete before the first real run.
+  - Abandoned uploads. An intake upload that is never attached to a saved deal stays unreferenced. Its `blobs` row has no `deal_documents` row, which is how such rows are found, and its clock is `uploaded_at`.
+  - Retention policy for unreferenced blobs (proposed, for Evan to confirm). A scheduled sweep deletes the bytes and the `blobs` row of any blob with no links that is older than 7 days by `uploaded_at`. A blob with `orphaned_at` set and still no links is deleted on the next sweep. A blob that gains a link before the sweep is kept and its `orphaned_at` is cleared. The sweep logs counts only, never file names. A dry run mode reports what it would delete before the first real run.
   - Archive keeps links. Archiving a deal does not remove its documents, and unarchiving works as before.
   - Authorization. Every read of a stored document goes through the current deal check described in section 4. Upload requires `require_auth` and records `uploaded_by`.
 
 ### 3. Locator (where on the page)
 
-- New pure module `backend/evidence/locator.py`. Input is document bytes, a label list and a target value. Output is zero, one or many candidate citations.
-- It uses pymupdf `page.get_text("words")` to get each word with its box, groups words into lines, and looks for a line holding both a label and the value, or the value within a fixed distance to the right of or below a label.
-- One match gives a citation. Zero matches gives `basis: none` with reason "not found in document". More than one distinct match gives `ambiguous`, which lists every candidate and picks none. It never picks the first match the way the current regex does.
+- New pure module `backend/evidence/locator.py`. Input is document bytes, a label list and a target value. Output is every candidate citation for the label, each with its own `matched_text`, including a line where the label sits next to a value that differs from the target. A candidate is never dropped for differing from the target, because that is how a conflict is seen.
+- It uses pymupdf `page.get_text("words")` to get each word with its box, groups words into lines, and looks for every line holding a label and a number, or a number within a fixed distance to the right of or below a label. Words and boxes are taken from the page as displayed, with rotation applied, and `page_width_pt`, `page_height_pt` and `rotation` come from that same page.
+- Classification, in this order. No candidate gives `basis: none` with reason "not found in document". Any candidate whose value differs from the target (after the normalisation in section 1) gives `conflict`, which lists every candidate. If every candidate agrees with the target, one location gives a citation and more than one distinct location gives `ambiguous`, which lists every candidate and picks none. It never picks the first match the way the current regex does.
 - The current regex extractor stays as is for prefill values. The locator runs after it to attach position, and if the locator cannot confirm the value, the value is still prefilled but marked unverified.
 
 ### 4. Backend endpoints
@@ -142,7 +146,7 @@ Both live in a new `backend/routers/evidence.py`, mounted in `main.py` with `dep
 
 `GET /api/documents/{sha256}/pages/{page}.png?scale=2`
 
-- Renders one page with pymupdf to PNG. Highlight boxes are drawn by the browser on top, not burned into the image, so one cached page serves every number on it.
+- Renders one page with pymupdf to PNG, as displayed with rotation applied, the same space the rectangles are measured in. Highlight boxes are drawn by the browser on top, not burned into the image, so one cached page serves every number on it.
 - Only serves a hash that is linked to at least one deal the caller is currently allowed to read, using the same ownership seam, so `DREAM_STRICT_OWNERSHIP` applies. A valid hash that is not linked, or linked only to deals the caller may not read, gets 404, the same as a missing one, so hashes cannot be probed.
 - Validates `page` within the page count and `scale` within a small allowed set. `Cache-Control: private`.
 - Re-hashes the bytes before rendering, and refuses with 409 on mismatch.
@@ -151,7 +155,7 @@ Both live in a new `backend/routers/evidence.py`, mounted in `main.py` with `dep
 
 - New `frontend/src/components/evidence/EvidenceDrawer.tsx` plus `frontend/src/lib/evidenceApi.ts` types mirroring the backend contract.
 - A shared `SourcedValue` wrapper for any number on the deal page. It renders the value, a small source icon coloured by state, and opens the drawer on click or Enter. It is a real button with an `aria-label` such as "Show source for Purchase Price".
-- Drawer layout, top to bottom: field name and value, a state line in words, document name and page, the page image with absolutely positioned highlight boxes scaled from points to pixels using `page_width_pt`, then `line_text` as selectable text.
+- Drawer layout, top to bottom: field name and value, a state line in words, document name and page, the page image with absolutely positioned highlight boxes scaled from points to pixels using `page_width_pt` for x and `page_height_pt` for y (two separate factors, each against the rendered image's own width and height), then `line_text` as selectable text.
 - Computed metric drawer: value, then the list of inputs as `SourcedValue` rows. Clicking one swaps the drawer to that input, with a back link.
 - Every non-`ok` state shows a sentence and no page image. Examples: "The file this came from has changed since it was read, so the location cannot be trusted." or "A model estimated this. No document supports it."
 - Wired into `HeadlineMetricsBlock`, `EFBMetricTiles` and the `AssumptionDashboard` controls and open questions on `DealDetail.tsx`, using the mapping tables from section 4. The existing "Cited" and "LLM-inferred" badge stays.
@@ -162,14 +166,14 @@ Both live in a new `backend/routers/evidence.py`, mounted in `main.py` with `dep
 Fixtures:
 
 - `backend/fixtures/evidence/build_synthetic_docs.py` generates PDFs at test time with pymupdf for an invented property, "Synthetic Oak Court, 1 Example Way". Every fixture says SYNTHETIC on each page. No real deal file, name or figure is used or copied.
-- Fixture set: a clean five-page offering memo with the purchase price on page four, one where the purchase price appears twice with different values (conflict), one where the same value appears under two labels (ambiguous), one with the price split across a line wrap, one image-only page (no text layer), a one-byte-changed copy (hash mismatch), and a small synthetic rent roll spreadsheet.
+- Fixture set: a clean five-page offering memo with the purchase price on page four, one where the purchase price appears twice with different values (conflict), one where the same value appears under two labels (ambiguous), one with the price split across a line wrap, one image-only page (no text layer), a one-byte-changed copy (hash mismatch), a clean page rotated 90 degrees, and a small synthetic rent roll spreadsheet.
 
 Red tests to write before each slice's code (each must be seen failing first, then passing):
 
-1. Contract: unknown `basis` is invalid. `document` with no citations is invalid. Non-document with citations is invalid. `matched_text` that does not normalise to the value is invalid.
-2. Store: round-trip by hash, idempotent re-write, tampered bytes refuse, oversize refuses, no `sqlite3` import outside `backend/store/` (existing guard still green).
-3. Locator: clean memo gives page 4 and a rectangle containing the price words. Duplicate value gives `ambiguous`. Conflicting values give `conflict`. Image-only gives `none` with a reason. Wrapped value gives two rectangles.
-4. Spec round-trip: a spec with `evidence` on cells survives `spec_to_view` then `view_to_spec` byte-identical, and the memo assumptions output is unchanged.
+1. Contract: unknown `basis` is invalid. `document` with no citations is invalid. Non-document with citations is invalid. `matched_text` that does not normalise to the value is invalid. Normalisation cases: `$41,250,000.00` matches 41250000, `5.50%` matches a `pct_points` 5.5 and a `ratio` 0.055, `($12,500)` matches -12500, and `$41.25M` is `unverified` with the reason "format not supported in v1".
+2. Store: round-trip by hash, idempotent re-write, tampered bytes refuse, oversize refuses, no `sqlite3` import outside `backend/store/` (existing guard still green), one file linked to two deals keeps its bytes until both links are gone, and a `blobs` row keeps its `uploaded_at` after its last link is deleted.
+3. Locator: clean memo gives page 4 and a rectangle containing the price words. Duplicate value gives `ambiguous`. The same label next to two different values gives `conflict` listing both, even when one of them equals the target. Image-only gives `none` with a reason. Wrapped value gives two rectangles. On the page rotated 90 degrees, a box drawn from the rectangles onto the rendered PNG covers the price words.
+4. Spec round-trip: a spec with `evidence` on cells survives `spec_to_view` then `view_to_spec` byte-identical, and the memo assumptions output is unchanged. The top-level `assumptions_engine_inputs_evidence` map survives the same round trip. Changing a cell value and changing an engine-input value each turn that item's evidence into `manual_entry` on save, and an item left unchanged keeps its evidence byte for byte.
 5. Evidence endpoint: 401 without a token, 404 for unknown deal or field, `ok` on clean fixture, `hash_mismatch` after swapping bytes on disk, `unverified` when stored rectangles are moved, computed metric returns its input list.
 6. Page endpoint: 401 without a token, 404 for unlinked hash, 400 for page 0 or past the end, 409 on tampered bytes, PNG magic bytes on success.
 7. Lineage table: every named cell exists in the routing's field map, every named engine-input key exists in the deal's engine inputs, and every headline metric shown on the page has an entry. A metric whose inputs include an engine-input key returns that key with its evidence or `no_source`.
@@ -202,8 +206,8 @@ Each slice is one branch, one draft PR, red tests first, full backend suite gree
 | 1 | Contract module `backend/evidence/contract.py` with a pure validator and closed state list | Contract red tests written, seen failing, then green |
 | 2 | Synthetic fixture builder plus SYNTHETIC-marker guard test | Fixture set builds in a temp folder during tests, guard green |
 | 3 | `backend/store/document_store.py` content-addressed store, link cleanup on deal deletion, unreferenced-blob sweep | Store and lifecycle tests green, existing storage guard still green |
-| 4 | `backend/evidence/locator.py` word locator | All locator cases green on fixtures |
-| 5 | Intake stores the file and attaches `evidence` to extracted cells and engine-input keys | Intake response keeps its shape plus `doc_sha256`. Spec round-trip byte-identical. Memo test unchanged |
+| 4 | `backend/evidence/locator.py` word locator | All locator cases green on fixtures, including conflict and the rotated page |
+| 5 | Intake stores the file and attaches `evidence` to extracted cells and engine-input keys | Intake response keeps its shape plus `doc_sha256`. Spec round-trip byte-identical, sibling evidence map included. An edited value becomes `manual_entry` on save. Memo test unchanged |
 | 6 | `GET /api/deals/{id}/evidence/{field}` with server re-verify and the per-request deal check | Endpoint and auth tests green, mounted with `require_auth`, strict ownership honoured |
 | 7 | `GET /api/documents/{sha}/pages/{n}.png` | Page endpoint tests green |
 | 8 | Lineage table (cells and engine-input keys), assumption and open-question target tables, and the computed and setting branches of the evidence endpoint | Lineage and target tests green |
