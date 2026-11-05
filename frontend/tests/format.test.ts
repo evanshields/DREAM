@@ -11,7 +11,7 @@ const BAD: Array<[string, unknown]> = [
   ['null', null],
   ['undefined', undefined],
 ];
-const FORMATTERS: Array<[string, (v: number) => string]> = [
+const FORMATTERS: Array<[string, (v: number | null | undefined) => string]> = [
   ['fmtUSD', fmtUSD],
   ['fmtUSDFull', fmtUSDFull],
   ['fmtPct', fmtPct],
@@ -22,7 +22,7 @@ const FORMATTERS: Array<[string, (v: number) => string]> = [
 for (const [fname, fn] of FORMATTERS) {
   for (const [label, bad] of BAD) {
     test(`${fname}(${label}) shows a dash, not a made-up number`, () => {
-      assert.equal(fn(bad as number), '—');
+      assert.equal(fn(bad as null | undefined), '—');
     });
   }
 }
@@ -40,4 +40,6 @@ test('control: a verified zero stays zero', () => {
   assert.equal(fmtPct(0), '0.00%');
   assert.equal(fmtEM(0), '0.00x');
   assert.equal(fmtUSD(0), '$0');
+  assert.equal(fmtUSDFull(0), '$0');
+  assert.equal(fmtPct1(0), '0.0%');
 });
