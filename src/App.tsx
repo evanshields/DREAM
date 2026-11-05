@@ -6,22 +6,23 @@ import AnalysisView from './pages/AnalysisView';
 import PipelineBoard from './pages/PipelineBoard';
 import DealIntake from './pages/DealIntake';
 import SalesFunnel from './pages/SalesFunnel';
+import { DEFAULT_VIEW, viewFromHash } from './lib/routing';
 
 const App: React.FC = () => {
-  const [view, setView] = useState<ViewState>('landing'); // Default to landing page
+  const [view, setView] = useState<ViewState>(DEFAULT_VIEW); // Default to landing page
 
   // Hash router simulation
   useEffect(() => {
     const handleHashChange = () => {
-      const hash = window.location.hash.slice(1);
-      if (hash && ['dashboard', 'analysis', 'pipeline', 'intake', 'landing'].includes(hash)) {
-        setView(hash as ViewState);
+      const next = viewFromHash(window.location.hash);
+      if (next) {
+        setView(next);
       }
     };
-    
+
     // Set initial hash if empty - default to landing
     if (!window.location.hash) {
-      window.location.hash = 'landing';
+      window.location.hash = DEFAULT_VIEW;
     }
 
     window.addEventListener('hashchange', handleHashChange);

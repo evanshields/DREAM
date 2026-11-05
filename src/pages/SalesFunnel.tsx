@@ -13,7 +13,6 @@ import {
   Building2,
   ChevronDown,
   ChevronUp,
-  Play,
   Star,
   Quote,
   Sparkles,
@@ -21,14 +20,46 @@ import {
   LineChart,
   Upload
 } from 'lucide-react';
+import { contactHref, planPrice, SAMPLE_CONTENT_NOTICE, scrollToSection } from '../lib/salesFunnel';
+import type { Billing } from '../lib/salesFunnel';
 
 interface SalesFunnelProps {
   onGetStarted: () => void;
 }
 
+// Sales contact comes from build configuration (VITE_SALES_CONTACT_EMAIL). Nothing is hard coded;
+// without it the contact buttons render disabled instead of doing nothing or opening the demo.
+const salesContact = (subject: string): string | null =>
+  contactHref(import.meta.env.VITE_SALES_CONTACT_EMAIL, subject);
+
+const ContactButton: React.FC<{ subject: string; className: string; children: React.ReactNode }> = ({
+  subject,
+  className,
+  children,
+}) => {
+  const href = salesContact(subject);
+  if (href) {
+    return (
+      <a href={href} className={className}>
+        {children}
+      </a>
+    );
+  }
+  return (
+    <button
+      type="button"
+      disabled
+      title="Sales contact is not configured in this preview"
+      className={`${className} opacity-60 cursor-not-allowed`}
+    >
+      {children}
+    </button>
+  );
+};
+
 const SalesFunnel: React.FC<SalesFunnelProps> = ({ onGetStarted }) => {
   const [openFaq, setOpenFaq] = useState<number | null>(null);
-  const [selectedPlan, setSelectedPlan] = useState<'monthly' | 'annual'>('annual');
+  const [selectedPlan, setSelectedPlan] = useState<Billing>('annual');
 
   return (
     <div className="min-h-screen bg-white">
@@ -43,13 +74,16 @@ const SalesFunnel: React.FC<SalesFunnelProps> = ({ onGetStarted }) => {
               <span className="font-serif font-bold text-2xl text-[#28323E] tracking-tight">DreamVision</span>
             </div>
             <div className="hidden md:flex items-center space-x-8">
-              <a href="#features" className="text-sm font-medium text-gray-600 hover:text-[#005253] transition-colors">Features</a>
-              <a href="#how-it-works" className="text-sm font-medium text-gray-600 hover:text-[#005253] transition-colors">How It Works</a>
-              <a href="#pricing" className="text-sm font-medium text-gray-600 hover:text-[#005253] transition-colors">Pricing</a>
-              <a href="#testimonials" className="text-sm font-medium text-gray-600 hover:text-[#005253] transition-colors">Testimonials</a>
+              <button type="button" onClick={() => scrollToSection('features')} className="text-sm font-medium text-gray-600 hover:text-[#005253] transition-colors">Features</button>
+              <button type="button" onClick={() => scrollToSection('how-it-works')} className="text-sm font-medium text-gray-600 hover:text-[#005253] transition-colors">How It Works</button>
+              <button type="button" onClick={() => scrollToSection('pricing')} className="text-sm font-medium text-gray-600 hover:text-[#005253] transition-colors">Pricing</button>
+              <button type="button" onClick={() => scrollToSection('testimonials')} className="text-sm font-medium text-gray-600 hover:text-[#005253] transition-colors">Testimonials</button>
             </div>
             <div className="flex items-center space-x-4">
-              <button className="text-sm font-medium text-[#005253] hover:text-[#003f3f] transition-colors">
+              <button
+                onClick={onGetStarted}
+                className="text-sm font-medium text-[#005253] hover:text-[#003f3f] transition-colors"
+              >
                 Sign In
               </button>
               <button 
@@ -89,10 +123,6 @@ const SalesFunnel: React.FC<SalesFunnelProps> = ({ onGetStarted }) => {
                 >
                   Start Free Trial
                   <ArrowRight className="ml-2 w-5 h-5 group-hover:translate-x-1 transition-transform" />
-                </button>
-                <button className="inline-flex items-center justify-center border-2 border-gray-200 hover:border-[#005253] text-[#28323E] px-8 py-4 rounded-xl text-lg font-semibold transition-all group">
-                  <Play className="mr-2 w-5 h-5 text-[#005253]" />
-                  Watch Demo
                 </button>
               </div>
               
@@ -183,22 +213,6 @@ const SalesFunnel: React.FC<SalesFunnelProps> = ({ onGetStarted }) => {
                 </div>
               </div>
             </div>
-          </div>
-        </div>
-      </section>
-
-      {/* Social Proof - Logos */}
-      <section className="py-12 bg-gray-50 border-y border-gray-100">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <p className="text-center text-sm text-gray-500 uppercase tracking-wider font-medium mb-8">
-            Trusted by leading real estate investment firms
-          </p>
-          <div className="flex flex-wrap justify-center items-center gap-x-12 gap-y-6 opacity-60">
-            {['Blackstone', 'Starwood', 'Greystar', 'Brookfield', 'CBRE Investment'].map((name) => (
-              <div key={name} className="text-xl font-serif font-bold text-gray-400">
-                {name}
-              </div>
-            ))}
           </div>
         </div>
       </section>
@@ -383,6 +397,7 @@ const SalesFunnel: React.FC<SalesFunnelProps> = ({ onGetStarted }) => {
               </div>
             ))}
           </div>
+          <p className="text-center text-sm text-white/70 mt-8">{SAMPLE_CONTENT_NOTICE}</p>
         </div>
       </section>
 
@@ -438,6 +453,7 @@ const SalesFunnel: React.FC<SalesFunnelProps> = ({ onGetStarted }) => {
               </div>
             ))}
           </div>
+          <p className="text-center text-sm text-gray-500 mt-8">{SAMPLE_CONTENT_NOTICE}</p>
         </div>
       </section>
 
@@ -473,7 +489,7 @@ const SalesFunnel: React.FC<SalesFunnelProps> = ({ onGetStarted }) => {
             {[
               {
                 name: 'Starter',
-                price: selectedPlan === 'annual' ? 199 : 249,
+                price: planPrice('starter', selectedPlan),
                 period: '/month',
                 description: 'Perfect for emerging sponsors and small teams',
                 features: [
@@ -484,11 +500,12 @@ const SalesFunnel: React.FC<SalesFunnelProps> = ({ onGetStarted }) => {
                   'Email support'
                 ],
                 cta: 'Start Free Trial',
+                ctaAction: 'trial',
                 popular: false
               },
               {
                 name: 'Professional',
-                price: selectedPlan === 'annual' ? 499 : 625,
+                price: planPrice('professional', selectedPlan),
                 period: '/month',
                 description: 'For growing investment firms with active pipelines',
                 features: [
@@ -501,6 +518,7 @@ const SalesFunnel: React.FC<SalesFunnelProps> = ({ onGetStarted }) => {
                   'Priority support'
                 ],
                 cta: 'Start Free Trial',
+                ctaAction: 'trial',
                 popular: true
               },
               {
@@ -518,6 +536,7 @@ const SalesFunnel: React.FC<SalesFunnelProps> = ({ onGetStarted }) => {
                   'Custom integrations'
                 ],
                 cta: 'Contact Sales',
+                ctaAction: 'contact',
                 popular: false
               }
             ].map((plan, index) => (
@@ -554,16 +573,25 @@ const SalesFunnel: React.FC<SalesFunnelProps> = ({ onGetStarted }) => {
                   ))}
                 </ul>
                 
-                <button 
-                  onClick={onGetStarted}
-                  className={`w-full py-3 rounded-xl font-semibold transition-all ${
-                    plan.popular 
-                      ? 'bg-[#005253] text-white hover:bg-[#003f3f]' 
-                      : 'bg-gray-100 text-[#28323E] hover:bg-gray-200'
-                  }`}
-                >
-                  {plan.cta}
-                </button>
+                {plan.ctaAction === 'contact' ? (
+                  <ContactButton
+                    subject="DreamVision Enterprise inquiry"
+                    className="block w-full py-3 rounded-xl font-semibold text-center transition-all bg-gray-100 text-[#28323E] hover:bg-gray-200"
+                  >
+                    {plan.cta}
+                  </ContactButton>
+                ) : (
+                  <button 
+                    onClick={onGetStarted}
+                    className={`w-full py-3 rounded-xl font-semibold transition-all ${
+                      plan.popular 
+                        ? 'bg-[#005253] text-white hover:bg-[#003f3f]' 
+                        : 'bg-gray-100 text-[#28323E] hover:bg-gray-200'
+                    }`}
+                  >
+                    {plan.cta}
+                  </button>
+                )}
               </div>
             ))}
           </div>
@@ -603,7 +631,7 @@ const SalesFunnel: React.FC<SalesFunnelProps> = ({ onGetStarted }) => {
               },
               {
                 question: 'Is my data secure?',
-                answer: 'Yes. We use bank-level encryption for all data in transit and at rest. Your deals and documents are never shared or used to train models for other customers. We offer SSO and advanced security controls for enterprise customers.'
+                answer: 'This preview runs on sample data in your browser and does not collect documents. Security controls and data-handling terms for production use will be published before launch.'
               }
             ].map((faq, index) => (
               <div 
@@ -639,7 +667,7 @@ const SalesFunnel: React.FC<SalesFunnelProps> = ({ onGetStarted }) => {
             Ready to Transform Your Acquisitions?
           </h2>
           <p className="text-xl text-[#58ABA8] mb-8 max-w-2xl mx-auto">
-            Join hundreds of investment teams already using DreamVision to close more deals, faster.
+            Give your acquisitions team a faster first pass on every deal with DreamVision.
           </p>
           <div className="flex flex-col sm:flex-row gap-4 justify-center">
             <button 
@@ -649,9 +677,12 @@ const SalesFunnel: React.FC<SalesFunnelProps> = ({ onGetStarted }) => {
               Start Your Free Trial
               <ArrowRight className="ml-2 w-5 h-5 group-hover:translate-x-1 transition-transform" />
             </button>
-            <button className="inline-flex items-center justify-center border-2 border-white/30 text-white px-8 py-4 rounded-xl text-lg font-semibold transition-all hover:bg-white/10">
+            <ContactButton
+              subject="DreamVision demo request"
+              className="inline-flex items-center justify-center border-2 border-white/30 text-white px-8 py-4 rounded-xl text-lg font-semibold transition-all hover:bg-white/10"
+            >
               Schedule a Demo
-            </button>
+            </ContactButton>
           </div>
           <p className="text-white/60 text-sm mt-6">
             14-day free trial • No credit card required • Cancel anytime
@@ -678,30 +709,30 @@ const SalesFunnel: React.FC<SalesFunnelProps> = ({ onGetStarted }) => {
             <div>
               <h4 className="text-white font-semibold mb-4">Product</h4>
               <ul className="space-y-2">
-                <li><a href="#features" className="text-gray-400 hover:text-white text-sm transition-colors">Features</a></li>
-                <li><a href="#pricing" className="text-gray-400 hover:text-white text-sm transition-colors">Pricing</a></li>
-                <li><a href="#" className="text-gray-400 hover:text-white text-sm transition-colors">Integrations</a></li>
-                <li><a href="#" className="text-gray-400 hover:text-white text-sm transition-colors">API</a></li>
+                <li><button type="button" onClick={() => scrollToSection('features')} className="text-gray-400 hover:text-white text-sm transition-colors">Features</button></li>
+                <li><button type="button" onClick={() => scrollToSection('pricing')} className="text-gray-400 hover:text-white text-sm transition-colors">Pricing</button></li>
+                <li><span className="text-gray-400 text-sm">Integrations</span></li>
+                <li><span className="text-gray-400 text-sm">API</span></li>
               </ul>
             </div>
             
             <div>
               <h4 className="text-white font-semibold mb-4">Resources</h4>
               <ul className="space-y-2">
-                <li><a href="#" className="text-gray-400 hover:text-white text-sm transition-colors">Documentation</a></li>
-                <li><a href="#" className="text-gray-400 hover:text-white text-sm transition-colors">Blog</a></li>
-                <li><a href="#" className="text-gray-400 hover:text-white text-sm transition-colors">Case Studies</a></li>
-                <li><a href="#" className="text-gray-400 hover:text-white text-sm transition-colors">Support</a></li>
+                <li><span className="text-gray-400 text-sm">Documentation</span></li>
+                <li><span className="text-gray-400 text-sm">Blog</span></li>
+                <li><span className="text-gray-400 text-sm">Case Studies</span></li>
+                <li><span className="text-gray-400 text-sm">Support</span></li>
               </ul>
             </div>
             
             <div>
               <h4 className="text-white font-semibold mb-4">Company</h4>
               <ul className="space-y-2">
-                <li><a href="#" className="text-gray-400 hover:text-white text-sm transition-colors">About</a></li>
-                <li><a href="#" className="text-gray-400 hover:text-white text-sm transition-colors">Careers</a></li>
-                <li><a href="#" className="text-gray-400 hover:text-white text-sm transition-colors">Privacy</a></li>
-                <li><a href="#" className="text-gray-400 hover:text-white text-sm transition-colors">Terms</a></li>
+                <li><span className="text-gray-400 text-sm">About</span></li>
+                <li><span className="text-gray-400 text-sm">Careers</span></li>
+                <li><span className="text-gray-400 text-sm">Privacy</span></li>
+                <li><span className="text-gray-400 text-sm">Terms</span></li>
               </ul>
             </div>
           </div>
