@@ -26,6 +26,12 @@ test('App.tsx routes through viewFromHash and the default view', () => {
   const app = readFileSync(new URL('../App.tsx', import.meta.url), 'utf8');
   assert.match(app, /viewFromHash\(window\.location\.hash\)/);
   assert.match(app, /window\.location\.hash = DEFAULT_VIEW/);
+  assert.match(app, /if \(!viewFromHash\(window\.location\.hash\)\)/);
   assert.match(app, /useState<ViewState>\(DEFAULT_VIEW\)/);
   assert.match(app, /onGetStarted=\{\(\) => navigate\('dashboard'\)\}/);
+});
+
+test('Layout removes the dark class when it unmounts', () => {
+  const layout = readFileSync(new URL('../components/Layout.tsx', import.meta.url), 'utf8');
+  assert.match(layout, /return \(\) => document\.documentElement\.classList\.remove\('dark'\)/);
 });

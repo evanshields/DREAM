@@ -17,6 +17,8 @@ export const Layout: React.FC<LayoutProps> = ({ children, activeView, onNavigate
     } else {
       document.documentElement.classList.remove('dark');
     }
+    // Leave no dark class behind when Layout unmounts (for example Back to the landing page)
+    return () => document.documentElement.classList.remove('dark');
   }, [isDark]);
 
   const navItems = [

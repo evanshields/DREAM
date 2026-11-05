@@ -20,8 +20,8 @@ const App: React.FC = () => {
       }
     };
 
-    // Set initial hash if empty - default to landing
-    if (!window.location.hash) {
+    // Normalize an empty or unrecognized hash to the landing page
+    if (!viewFromHash(window.location.hash)) {
       window.location.hash = DEFAULT_VIEW;
     }
 
