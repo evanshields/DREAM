@@ -1,0 +1,45 @@
+{
+  "marker": "SYNTHETIC",
+  "note": "SYNTHETIC invented property, Synthetic Oak Court, 1 Example Way. No real deal data.",
+  "document": {
+    "doc_name": "Synthetic_Oak_Court_OM.pdf",
+    "page_count": 5,
+    "expected_page": 4
+  },
+  "cell": {
+    "cell": "B10",
+    "value": 41250000,
+    "source": "OM p.4",
+    "phase": 3,
+    "evidence": {
+      "schema": "dream.evidence.v1",
+      "basis": "document",
+      "citations": [
+        {
+          "doc_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+          "doc_name": "Synthetic_Oak_Court_OM.pdf",
+          "doc_kind": "pdf",
+          "page": 4,
+          "page_width_pt": 612.0,
+          "page_height_pt": 792.0,
+          "rects_pt": [[72.0, 310.5, 388.2, 324.1]],
+          "line_text": "SYNTHETIC Purchase Price $41,250,000",
+          "matched_text": "$41,250,000",
+          "label_text": "Purchase Price",
+          "locator": "intake.word_locator",
+          "locator_version": "1"
+        }
+      ]
+    }
+  },
+  "engine_input": {
+    "key": "stabilized_noi",
+    "value": 2100000,
+    "evidence": {
+      "schema": "dream.evidence.v1",
+      "basis": "llm_inferred",
+      "citations": [],
+      "reason": "A model estimated this. SYNTHETIC."
+    }
+  }
+}
