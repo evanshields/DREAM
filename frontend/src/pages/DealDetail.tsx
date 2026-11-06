@@ -44,6 +44,8 @@ import { DealTimeline } from '../components/DealTimeline';
 import { DealRail } from '../components/DealRail';
 import { DealExport } from '../components/DealExport';
 import { fmtUSD, fmtPct1, fmtEM, prettyStatus, fmtDate } from '../lib/format';
+import { getMonoDeal } from '../lib/monoApi';
+import { MonoDealScreen } from '../components/mono';
 
 // Pull the EFB metric keys out of the generic per-deal headline_metrics bag.
 const EFB_METRIC_KEYS = [
@@ -142,6 +144,27 @@ const TABS: { id: TabId; label: string; icon: LucideIcon }[] = [
 //   2. Cold load (pipeline click / refresh) -> GET /api/deals/{id} carries the full view
 //      (spec + gate_summary + latest job block), so gates/questions/memo survive a refresh.
 export function DealDetail() {
+  const { id } = useParams<{ id: string }>();
+  const [registration, setRegistration] = useState<{id: string; mode: 'loading' | 'mono' | 'legacy' | 'error'; error?: string}>({id: '', mode: 'loading'});
+  useEffect(() => {
+    const controller = new AbortController();
+    if (!id) return;
+    setRegistration({id, mode: 'loading'});
+    getMonoDeal(id, controller.signal).then(() => {
+      if (!controller.signal.aborted) setRegistration({id, mode: 'mono'});
+    }).catch((error: unknown) => {
+      if (controller.signal.aborted) return;
+      if (error instanceof ApiError && error.status === 404) setRegistration({id, mode: 'legacy'});
+      else setRegistration({id, mode: 'error', error: error instanceof Error ? error.message : 'Unable to verify deal registration'});
+    });
+    return () => controller.abort();
+  }, [id]);
+  if (!id || registration.id !== id || registration.mode === 'loading') return <div role="status" className="p-6">Loading deal...</div>;
+  if (registration.mode === 'error') return <div role="alert" className="p-6 text-red-700">{registration.error}</div>;
+  return registration.mode === 'mono' ? <MonoDealScreen dealId={id} /> : <LegacyDealDetail />;
+}
+
+function LegacyDealDetail() {
   const { id } = useParams<{ id: string }>();
   const location = useLocation();
   const stateJob = (location.state as { job?: JobView } | null)?.job ?? null;
