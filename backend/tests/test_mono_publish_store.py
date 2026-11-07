@@ -9,13 +9,13 @@ from store.mono_publish_store import MonoPublicationStore
 
 
 def revision(number=1):
-    return {'revision': number, 'identity': {'deal_sha256': str(number), 'source_hashes': {'comps': 'comp-source'}}}
+    return {'revision': number, 'identity': {'deal_sha256': str(number), 'source_hashes': {'comps': 'c' * 64}}}
 
 
 def gate(deals, kind, decision, event_id):
     return deals.record_gate('fixture', 1, {'event_id': event_id, 'revision': 1,
         'gate': kind, 'decision': decision, 'identity': revision()['identity'],
-        'comps_sha256': 'comp-source', 'result_id': 'native-result',
+        'comps_sha256': 'c' * 64, 'result_id': 'native-result',
         'comps_event_id': 'comps-1'}, event_id, event_id)
 
 
@@ -27,7 +27,7 @@ def ready(tmp_path):
     calc = {'job_id': 'calc', 'revision': 1, 'identity': revision()['identity'], 'state': 'queued'}
     deals.add_job('fixture', calc)
     deals.update_job('fixture', 'calc', {'state': 'complete', 'result': {'result_id': 'native-result',
-        'artifact_sha256': 'w' * 64, 'identity': {'calculation_id': 'native-result'},
+        'artifact_sha256': 'b' * 64, 'identity': {'calculation_id': 'native-result'},
         'checks': {'release_passed': True}}})
     assert deals.promote_result('fixture', 'calc', 1, revision()['identity'])
     gate(deals, 'comps', 'confirm', 'comps-1')
@@ -45,7 +45,8 @@ def publication(store, job_id='publish-1'):
 def finish(store, job):
     return store.update('fixture', job['job_id'], {'state': 'complete', 'package': {
         'identity': job['identity'], 'validation': {'passed': True},
-        'deliverables': {k: {'fixture': True} for k in ['memo', 'onepager', 'deck', 'workbook']}}})
+        'deliverables': {k: {'files':[{'path':k+'/synthetic','sha256':'a'*64}],
+                            'validation':{'status':'passed'}} for k in ['memo', 'onepager', 'deck', 'workbook']}}})
 
 
 def test_two_instances_create_one_actor_payload_bound_job_and_restart_replay(ready):
@@ -137,7 +138,8 @@ def test_queued_plan_hash_is_distinct_from_the_compiled_projection_hash(ready):
     with pytest.raises(MonoConflict,match='actual projection'):
         finish(store,job)
     package={'identity':job['identity'],'validation':{'passed':True},'projection_sha256':'f'*64,
-        'deliverables':{kind:{'synthetic':True} for kind in ('memo','onepager','deck','workbook')}}
+        'deliverables':{kind:{'files':[{'path':kind+'/synthetic','sha256':'a'*64}],
+                             'validation':{'status':'passed'}} for kind in ('memo','onepager','deck','workbook')}}
     store.update('fixture',job['job_id'],{'state':'complete','package':package})
     assert store.promote('fixture',job['job_id'])
 

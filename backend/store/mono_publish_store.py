@@ -10,6 +10,28 @@ import json
 from .mono_deal_store import MonoConflict, MonoNotFound, _json, _load, _TERMINAL
 
 
+def _sha256(value):
+    return isinstance(value, str) and len(value) == 64 and all(c in '0123456789abcdef' for c in value)
+
+
+def _deliverables_verified(package):
+    if not isinstance(package, dict) or not isinstance(package.get('deliverables'), dict):
+        return False
+    deliverables = package['deliverables']
+    if set(deliverables) != {'memo', 'onepager', 'deck', 'workbook'}:
+        return False
+    for item in deliverables.values():
+        if (not isinstance(item, dict) or not isinstance(item.get('validation'), dict)
+                or item['validation'].get('status') != 'passed'
+                or not isinstance(item.get('files'), list) or not item['files']):
+            return False
+        for entry in item['files']:
+            if (not isinstance(entry, dict) or not isinstance(entry.get('path'), str)
+                    or not entry['path'] or not _sha256(entry.get('sha256'))):
+                return False
+    return True
+
+
 class MonoPublicationStore:
     def __init__(self, deal_store):
         self.deals = deal_store
@@ -31,8 +53,8 @@ class MonoPublicationStore:
         result = job.get('result')
         if (job['state'] != 'complete' or job.get('cancel_requested') or not isinstance(result, dict)
                 or job['revision'] != current['revision'] or job.get('identity') != current['identity']
-                or not result.get('checks', {}).get('release_passed') or not result.get('result_id')
-                or not result.get('artifact_sha256')):
+                or not isinstance(result.get('checks'), dict) or result['checks'].get('release_passed') is not True
+                or not result.get('result_id') or not _sha256(result.get('artifact_sha256'))):
             raise MonoConflict('Current result is not eligible for publication', current['revision'])
         if not self.deals._comps_binding_current(db, current, result):
             raise MonoConflict('Current result comps confirmation changed', current['revision'])
@@ -42,7 +64,7 @@ class MonoPublicationStore:
             gates[gate] = json.loads(raw)
         comps, go = gates.get('comps'), gates.get('go_no_go')
         expected_comps = current['identity'].get('source_hashes', {}).get('comps')
-        if (not expected_comps or not comps or comps.get('decision') != 'confirm'
+        if (not _sha256(expected_comps) or not comps or comps.get('decision') != 'confirm'
                 or comps.get('comps_sha256') != expected_comps or comps.get('identity') != current['identity']
                 or not go or go.get('decision') != 'go' or go.get('identity') != current['identity']
                 or go.get('result_id') != result['result_id']
@@ -122,7 +144,7 @@ class MonoPublicationStore:
                 package = updated.get('package')
                 if (not isinstance(package, dict) or package.get('identity') != record['identity']
                         or package.get('validation', {}).get('passed') is not True
-                        or set(package.get('deliverables', {})) != {'memo', 'onepager', 'deck', 'workbook'}):
+                        or not _deliverables_verified(package)):
                     raise MonoConflict('All four verified deliverables are required for package completion')
                 if updated.get('cancel_requested'):
                     raise MonoConflict('Cancelled publication cannot complete')
@@ -137,7 +159,7 @@ class MonoPublicationStore:
     def promote(self, deal_id, job_id):
         with self.deals._connection(write=True) as db:
             record = self._job(db, deal_id, job_id)
-            if record['state'] != 'complete' or record.get('cancel_requested') or not record.get('package'):
+            if record['state'] != 'complete' or record.get('cancel_requested') or not _deliverables_verified(record.get('package')):
                 return False
             try:
                 snapshot = self._snapshot(db, deal_id)

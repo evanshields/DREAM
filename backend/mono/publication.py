@@ -20,6 +20,12 @@ from .revisions import now, write_new
 # Failures the app raises itself, with fixed messages that hold no path or source text. Everything else is
 # reported by type only, because an operating system or parser message can carry a path or source text.
 CURATED_FAILURES = (PublicationFilesError, MonoConflict)
+PUBLIC_FAILURE_MESSAGES = frozenset({
+    'Required PDF has invalid content', 'Publication reviews changed before rendering',
+    'Office cleanup is unverified', 'Publication file changed after verification',
+    'Required deliverable files are missing or inconsistent',
+    'Reopened workbook proof did not pass', 'Current result is not eligible for publication',
+})
 
 
 def registered_plan(config, registration, release):
@@ -164,7 +170,7 @@ class PublicationProvider:
                     if job['state'] in ('queued', 'running'):
                         self.store.update(deal_id, job_id, {'state':'failed', 'package':None,
                             'finished_at':now(), 'updated_at':now(),
-                            'diagnostics':[type(error).__name__+': '+(str(error) if isinstance(error, CURATED_FAILURES)
+                            'diagnostics':[type(error).__name__+': '+(str(error) if isinstance(error, CURATED_FAILURES) and str(error) in PUBLIC_FAILURE_MESSAGES
                                 else 'publication verification failed. Sources remain private.')]})
                 self._active_job = None
         except BaseException as error:

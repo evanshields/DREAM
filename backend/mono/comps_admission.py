@@ -33,7 +33,9 @@ def canonical_packet(record):
     if sha != source['sha256'] or sha != record['identity']['source_hashes'].get('comps'):
         raise ValueError('Registered canonical comps bytes changed')
     packet = _json(packet_raw)
-    return sha if packet.get('format') == 'dream-canonical-comps-v1' else None
+    if not isinstance(packet, dict) or packet.get('format') != 'dream-canonical-comps-v1':
+        raise ValueError('Direct JSON comps source must be a canonical comps packet')
+    return sha
 
 
 def protected_transport(store, record, data_root, *, create=False):

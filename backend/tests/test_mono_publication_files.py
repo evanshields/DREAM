@@ -38,7 +38,9 @@ def fixture(root):
         source_entry = entry(source, 'editable_source', None if kind == 'deck' else b'SYNTHETIC HTML')
         pdf_entry = entry(kind+'/source.pdf', 'pdf', b'%PDF-1.4\nSYNTHETIC TEST ONLY')
         deliverables[kind] = {'files':[source_entry, pdf_entry], 'validation':{'status':'passed'}}
-    workbook = entry('mono.xlsx', 'underwriting_record', b'SYNTHETIC TEST, NOT A WORKBOOK')
+    with ZipFile(root/'mono.xlsx', 'x') as archive:
+        archive.writestr('xl/workbook.xml', '<workbook><sheets><sheet name="synthetic-sheet"/></sheets></workbook>')
+    workbook = entry('mono.xlsx', 'underwriting_record', None)
     deliverables['workbook'] = {'files':[workbook], 'validation':{'status':'passed'}}
     identity = {key:'a'*64 for key in ('deal_sha256', 'bundle_sha256', 'source_sha256',
         'ledger_sha256', 'map_sha256', 'template_sha256', 'calculator_sha256')}

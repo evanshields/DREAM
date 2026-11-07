@@ -216,6 +216,12 @@ class MonoService:
         self._expected(record, body)
         if not self.provider:
             raise HTTPException(503, 'Native calculator is not running')
+        view = self.view(deal_id, actor)
+        comps = view['gates'].get('comps') or {}
+        expected_comps = record['identity'].get('source_hashes', {}).get('comps')
+        if (not view['readiness']['ready'] or not expected_comps
+                or comps.get('decision') != 'confirm' or comps.get('comps_sha256') != expected_comps):
+            raise HTTPException(409, 'Calculation requires ready sources and current confirmed comps')
         from engine_boundary import submit_mono_calculation
         try:
             return submit_mono_calculation(self.provider, deal_id, record,

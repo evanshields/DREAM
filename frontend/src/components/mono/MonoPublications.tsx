@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { validComparisonMonth, historicalDownloadName } from '../../lib/monoPublicationLabels';
 import { Badge, Button, Card, Spinner } from '../ui';
 import { Details, ProblemList } from './MonoEvidence';
 import { monoJobTerminal } from '../../hooks/useMonoJob';
@@ -52,10 +53,11 @@ export function MonoPublications({ view }: { view: MonoView }) {
   const selected = view.current_result?.selected_financial_projection;
   const historical = selected?.provider_id === 'esplanade_historical_annual_v1';
   const comparisonMonth = selected?.historical_profile?.comparison_month;
-  const visibleDownloads = downloads.map((item) => historical ? {
+  const validHistoricalMonth = validComparisonMonth(comparisonMonth);
+  const visibleDownloads = historical && !validHistoricalMonth ? [] : downloads.map((item) => historical ? {
     ...item,
     label: item.kind === 'workbook' ? `Historical source comparison: ${monthLabel(comparisonMonth)} (Excel)` : item.label,
-    filename: `historical-source-comparison-${comparisonMonth}-${item.filename}`,
+    filename: historicalDownloadName(item.filename, comparisonMonth)!,
   } : item);
   const running = state?.jobs.filter((job) => !monoJobTerminal(job.state)) ?? [];
   const perform = async (name: string, action: () => Promise<void>) => {
@@ -107,6 +109,7 @@ export function MonoPublications({ view }: { view: MonoView }) {
       <p className="text-xs text-slate/60">You can leave and return. Progress is saved on the server.</p></div>)}
     {current && <div className="space-y-3"><div className="flex flex-wrap gap-2 items-center"><Badge tone="ok">Current package verified</Badge>
       <span className="text-xs text-slate/60">Revision {current.revision}. Built {new Date(current.updated_at).toLocaleString()}.</span></div>
+      {historical && !validHistoricalMonth && <p className="text-sm text-warn">Historical downloads are unavailable: comparison month is missing or invalid.</p>}
       {historical && <p className="text-sm text-slate/70">Historical source comparison: {monthLabel(comparisonMonth)}. Expected closing: {monthLabel(selected?.historical_profile?.expected_closing_month)}, day unknown. Annual source periods and conventions apply. Open Historical Bond for the selected comparison.</p>}
       <div className="flex flex-wrap gap-2">{visibleDownloads.map((item) => <Button key={item.kind} variant="secondary"
         disabled={Boolean(busy)} onClick={() => { void download(item); }}>{busy === item.label && <Spinner />}{item.label}</Button>)}</div>

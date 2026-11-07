@@ -124,7 +124,7 @@ def test_completed_synthetic_worker_promotes_only_current_uncancelled_package(re
     projection = {'identity':receipt['identity'],'synthetic_boundary_only':True}
     save(source/'projection.json',projection)
     save(source/'verification.json',{'policy':'mono-publication-extraction-v1',
-        'identity':receipt['identity'],'all_sheet_errors':{'synthetic':0},
+        'identity':receipt['identity'],'all_sheet_errors':{'synthetic-sheet':0},
         'receipt_sha256':'0'*64 if change=='different_reopened_receipt' else digest(tmp_path/'not-read.json')})
     for entry in receipt['files']:
         if entry['path'] in ('projection.json','verification.json'):

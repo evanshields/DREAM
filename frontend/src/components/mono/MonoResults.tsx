@@ -1,4 +1,5 @@
 import { Badge, Card } from '../ui';
+import { validComparisonMonth } from '../../lib/monoPublicationLabels';
 import type { MonoIdentity, MonoJob, MonoResult } from '../../lib/monoApi';
 import { asRecord, Details, Evidence, monoText, monoValue, ProblemList } from './MonoEvidence';
 
@@ -26,7 +27,7 @@ const historicalHeadlines: Record<string, string> = {
 };
 
 export function monthLabel(value: unknown) {
-  if (typeof value !== 'string' || !/^\d{4}-\d{2}$/.test(value)) return 'Unknown';
+  if (!validComparisonMonth(value)) return 'Unavailable (missing or invalid month)';
   return new Date(`${value}-01T00:00:00Z`).toLocaleDateString('en-US', { month: 'long', year: 'numeric', timeZone: 'UTC' });
 }
 
@@ -36,12 +37,13 @@ function HistoricalFinancials({ result }: {result: MonoResult}) {
   return <section aria-label="Historical financial comparison" className="space-y-3">
     <p className="text-sm text-slate/70">Historical source comparison: {monthLabel(context.comparison_month)}. Expected closing: {monthLabel(context.expected_closing_month)}, day unknown. Annual source periods and conventions apply.</p>
     <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3">{Object.entries(historicalHeadlines).map(([id, label]) => {
-      const metric = selected?.metrics[id];
+      const metric = selected?.metrics?.[id];
+      const available = metric?.availability === 'available' && typeof metric.value === 'number' && Number.isFinite(metric.value);
       return <div key={id} data-output-id={id} className="p-4 rounded-lg border border-slate/10 bg-white min-w-0">
         <p className="text-xs font-label uppercase tracking-wide text-slate/60">{label}</p>
-        <p className="text-xl tnum text-teal font-semibold mt-2">{metric?.availability === 'available' ? monoValue(metric.value, metric.unit === 'USD/year' ? 'USD' : metric.unit) : 'Unavailable'}</p>
-        {metric?.availability === 'available' && <p className="text-xs mt-1 text-slate/60">{metric.unit === 'USD/year' ? 'Annual dollars' : metric.unit === 'multiple' ? 'Coverage multiple' : 'Dollars'}</p>}
-        {metric?.availability !== 'available' && <p className="text-xs mt-2 text-warn">The historical source has no verified value for this measure.</p>}
+        <p className="text-xl tnum text-teal font-semibold mt-2">{available ? monoValue(metric.value, metric.unit === 'USD/year' ? 'USD' : metric.unit) : 'Unavailable'}</p>
+        {available && <p className="text-xs mt-1 text-slate/60">{metric.unit === 'USD/year' ? 'Annual dollars' : metric.unit === 'multiple' ? 'Coverage multiple' : 'Dollars'}</p>}
+        {!available && <p className="text-xs mt-2 text-warn">The historical source has no verified value for this measure.</p>}
       </div>;
     })}</div>
     <p className="text-sm text-slate/70">Investment returns: Not applicable to Bond. Other forward monthly measures are unavailable in this historical comparison because their definitions differ.</p>
@@ -53,14 +55,20 @@ function Output({ id, value, metadata }: { id: string; value: unknown; metadata:
   const applicability = asRecord(metadata.applicability);
   const availability = asRecord(metadata.availability);
   const notApplicable = applicability.status === 'not_applicable';
-  const totalLoss = !notApplicable && availability.status === 'total_loss';
+  const totalLoss = !notApplicable && availability.status === 'total_loss' && value === null
+    && typeof availability.display_text === 'string' && availability.display_text.trim() !== ''
+    && typeof availability.reason === 'string' && availability.reason.trim() !== '';
+  const available = ['applies', 'applicable'].includes(String(applicability.status))
+    && (['available', 'computed'].includes(String(availability.status))
+      || (metadata.availability === undefined && typeof metadata.origin === 'string' && metadata.origin.trim() !== ''))
+    && typeof value === 'number' && Number.isFinite(value);
   return <div data-output-id={id} className="p-4 rounded-lg border border-slate/10 bg-white min-w-0">
     <p className="text-xs font-label uppercase tracking-wide text-slate/60 break-words">{typeof metadata.label === 'string' ? metadata.label : outputLabels[id] ?? id}</p>
-    <p className="text-xl tnum text-teal font-semibold mt-2 whitespace-pre-wrap break-words">{notApplicable ? 'Not applicable' : totalLoss ? monoText(availability.display_text) : monoValue(value, metadata.unit)}</p>
+    <p className="text-xl tnum text-teal font-semibold mt-2 whitespace-pre-wrap break-words">{notApplicable ? 'Not applicable' : totalLoss ? monoText(availability.display_text) : available ? monoValue(value, metadata.unit) : 'Unavailable'}</p>
     <p className="text-xs mt-1 text-slate/60">Unit: {monoText(metadata.unit)}</p>
     {notApplicable && <div className="mt-2 text-xs text-slate/70 space-y-1"><p>{monoText(applicability.reason)}</p><p>Rule: {monoText(applicability.rule_id)}</p></div>}
     {totalLoss && <p className="text-xs mt-2 text-warn">{monoText(availability.reason)}</p>}
-    {value === null && !notApplicable && !totalLoss && <p className="text-xs mt-2 text-warn">No numeric value returned.</p>}
+    {!available && !notApplicable && !totalLoss && <p className="text-xs mt-2 text-warn">No verified numeric value is available.</p>}
     <details className="mt-3"><summary className="text-xs cursor-pointer text-teal">Output evidence</summary><div className="mt-2"><Evidence value={{...metadata, displayed_value: value}} label={`Metadata for ${id}`} /></div></details>
   </div>;
 }
@@ -71,11 +79,12 @@ export function MonoIdentityDetails({ identity }: { identity: MonoIdentity }) {
 
 export function MonoResultView({ result, historical = false }: { result: MonoResult; historical?: boolean }) {
   const checks = asRecord(result.checks);
+  const released = checks.release_passed === true;
   const historicalProvider = result.selected_financial_projection?.provider_id === 'esplanade_historical_annual_v1';
   const historicalContext = asRecord(result.historical_profile).profile !== undefined && asRecord(result.historical_profile).profile !== 'Forward';
   return <div className="space-y-4">
-    <div className="flex flex-wrap gap-2 items-center"><Badge tone={historical ? 'taupe' : 'teal'}>{historical ? 'Historical result' : 'Validated current result'}</Badge><p className="text-xs text-slate/60 break-all">Result {result.result_id}</p></div>
-    {historicalProvider ? <HistoricalFinancials result={result} /> : historicalContext ? <p className="text-sm text-warn">Historical financials are unavailable until the selected comparison is verified.</p> : <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3">{Object.entries(result.outputs).filter(([id]) => !id.startsWith('out_checks_')).map(([id, value]) => <Output key={id} id={id} value={value} metadata={result.output_metadata[id] ?? {}} />)}</div>}
+    <div className="flex flex-wrap gap-2 items-center"><Badge tone={!released || historical ? 'taupe' : 'teal'}>{!released ? 'Release not verified' : historical ? 'Historical result' : 'Validated current result'}</Badge><p className="text-xs text-slate/60 break-all">Result {result.result_id}</p></div>
+    {!released ? <p className="text-sm text-warn">Financial outputs are withheld until release checks pass.</p> : historicalProvider ? <HistoricalFinancials result={result} /> : historicalContext ? <p className="text-sm text-warn">Historical financials are unavailable until the selected comparison is verified.</p> : <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3">{Object.entries(result.outputs).filter(([id]) => !id.startsWith('out_checks_')).map(([id, value]) => <Output key={id} id={id} value={value} metadata={result.output_metadata[id] ?? {}} />)}</div>}
     {!Object.keys(result.outputs).length && <p className="text-sm text-warn">This result contains no outputs.</p>}
     <Details title="Release checks and caution rows" open={checks.release_passed !== true}>
       <p className="text-sm">{checks.release_passed === true ? 'The server verified release checks for this result.' : 'Release checks have not been verified as passing.'}</p>

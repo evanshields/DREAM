@@ -1,5 +1,6 @@
 """Independently verify a renderer's complete private package before use."""
 from __future__ import annotations
+from xml.etree import ElementTree
 
 import hashlib
 import json
@@ -117,19 +118,25 @@ def verify_package(root, *, identity, projection_sha256):
         if proof_entry is None or verification.get('sha256') != proof_entry['sha256']:
             raise PublicationFilesError('Workbook verification is absent from the package')
         proof = json.loads(proof_path.read_text(encoding='utf-8'))
+        workbook_entry = record['deliverables']['workbook']['files'][0]
+        with ZipFile(output_file(root, workbook_entry['path'])) as workbook:
+            tree = ElementTree.fromstring(workbook.read('xl/workbook.xml'))
+        sheets = {sheet.attrib['name'] for sheet in tree.iter()
+                  if sheet.tag.rsplit('}', 1)[-1] == 'sheet'}
         fields = {'deal_id', 'revision', 'result_id', 'deal_sha256', 'bundle_sha256', 'source_sha256',
                   'ledger_sha256', 'map_sha256', 'template_sha256', 'calculator_sha256', 'workbook_sha256'}
         if (proof.get('policy') != 'mono-publication-extraction-v1'
                 or not fields <= set(proof.get('identity', {}))
                 or any(identity.get(key) != value for key, value in proof['identity'].items())
-                or not proof.get('all_sheet_errors')
+                or not sheets or not isinstance(proof.get('all_sheet_errors'), dict)
+                or set(proof['all_sheet_errors']) != sheets
                 or any(type(value) not in (int, float) or value != 0
                        for value in proof['all_sheet_errors'].values())):
-            raise PublicationFilesError('Reopened workbook proof did not pass')
+            raise PublicationFilesError('Reopened workbook all-sheet proof did not pass')
         return record
     except PublicationFilesError:
         raise
-    except (OSError, ValueError, KeyError, TypeError, BadZipFile) as error:
+    except (OSError, ValueError, KeyError, TypeError, BadZipFile, ElementTree.ParseError) as error:
         raise PublicationFilesError('Publication package verification failed') from error
 
 

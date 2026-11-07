@@ -40,7 +40,7 @@ def validate_context(native, record, config):
     template = record['identity']['template_sha256']
     deal_id = record['deal_id']
     profile = validate_metadata(native.get('historical_profile'), template, deal_id=deal_id)
-    if profile is not None and profile != expected_profile(record, config):
+    if profile != expected_profile(record, config):
         raise ValueError('Saved financial profile differs from the current prepared sources')
     selected = validate_selected_projection(native.get('selected_financial_projection'), template,
         deal_id=deal_id, historical_profile=profile)

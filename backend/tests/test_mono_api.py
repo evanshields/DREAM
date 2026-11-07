@@ -54,7 +54,7 @@ def test_factory_routes_validated_values_and_server_actor(setup, method, suffix,
         assert args[1] == body
 
 
-@pytest.mark.parametrize("suffix,body", [("/edits", EDIT), ("/calculations", REVISION), ("/gates", GATE), ("/jobs/job/cancel", {})])
+@pytest.mark.parametrize("suffix,body", [("/edits", EDIT), ("/calculations", CALCULATE), ("/gates", GATE), ("/jobs/job/cancel", {})])
 @pytest.mark.parametrize("forged", [{"actor": {"subject": "evan"}}, {"path": "C:/arbitrary"}, {"authority": "owner"}, {"source": {"ledger_root": "caller"}}])
 def test_mutation_extra_fields_rejected_before_service(setup, suffix, body, forged):
     client, service, _ = setup
