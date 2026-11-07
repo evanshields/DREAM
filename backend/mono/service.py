@@ -116,6 +116,11 @@ class MonoService:
                 'history': [h for h in doc.get('history', []) if h.get('id') == id_]})
         current = self._current_job(record) if valid else None
         gates = self.store.gates(deal_id)
+        expected_comps = record['identity']['source_hashes'].get('comps')
+        if (not valid or not expected_comps or
+                (gates.get('comps') or {}).get('comps_sha256') != expected_comps):
+            gates['comps'] = None
+            gates['go_no_go'] = None
         go = gates.get('go_no_go') or {}
         comps = gates.get('comps') or {}
         if (not valid or go.get('decision') == 'go' and (
@@ -231,7 +236,9 @@ class MonoService:
             elif body['decision'] == 'go':
                 result, comps = view['current_result'], view['gates'].get('comps')
                 if (not view['readiness']['ready'] or not result or not comps or comps['decision'] != 'confirm'
-                    or result['result_id'] != body.get('result_id') or not result['checks'].get('release_passed')):
+                    or not record['identity']['source_hashes'].get('comps')
+                    or comps.get('comps_sha256') != record['identity']['source_hashes']['comps']
+                    or result['result_id'] != body.get('result_id') or result['checks'].get('release_passed') is not True):
                     raise HTTPException(409, 'A go decision requires current verified results and confirmed comps')
             elif body['decision'] != 'no_go':
                 raise HTTPException(422, 'Invalid decision for this gate')

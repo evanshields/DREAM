@@ -9,8 +9,12 @@ export function monoText(value: unknown): string {
   return String(value);
 }
 
-export function monoValue(value: unknown, unit: unknown): string {
+export function monoValue(value: unknown, unit: unknown, exactText?: string): string {
   if (typeof value !== 'number' || !Number.isFinite(value)) return monoText(value);
+  if (['count', 'months', 'years'].includes(String(unit)) && !Number.isSafeInteger(value)) {
+    return typeof exactText === 'string' && /^-?[0-9]+$/.test(exactText)
+      ? new Intl.NumberFormat('en-US').format(BigInt(exactText)) : 'Unavailable';
+  }
   if (unit === '%' || unit === 'rate') return new Intl.NumberFormat('en-US', { style: 'percent', maximumFractionDigits: 2 }).format(value);
   if (unit === '$' || unit === 'usd' || unit === 'USD') return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 2 }).format(value);
   return new Intl.NumberFormat('en-US', { maximumFractionDigits: 6 }).format(value);

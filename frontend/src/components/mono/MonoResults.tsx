@@ -18,14 +18,19 @@ function Output({ id, value, metadata }: { id: string; value: unknown; metadata:
   const applicability = asRecord(metadata.applicability);
   const availability = asRecord(metadata.availability);
   const notApplicable = applicability.status === 'not_applicable';
-  const totalLoss = !notApplicable && availability.status === 'total_loss';
+  const totalLoss = !notApplicable && availability.status === 'total_loss' && value === null
+    && typeof availability.display_text === 'string' && availability.display_text.trim() !== ''
+    && typeof availability.reason === 'string' && availability.reason.trim() !== '';
+  const available = ['applies', 'applicable'].includes(String(applicability.status))
+    && ['available', 'computed'].includes(String(availability.status))
+    && typeof value === 'number' && Number.isFinite(value);
   return <div data-output-id={id} className="p-4 rounded-lg border border-slate/10 bg-white min-w-0">
     <p className="text-xs font-label uppercase tracking-wide text-slate/60 break-words">{typeof metadata.label === 'string' ? metadata.label : outputLabels[id] ?? id}</p>
-    <p className="text-xl tnum text-teal font-semibold mt-2 whitespace-pre-wrap break-words">{notApplicable ? 'Not applicable' : totalLoss ? monoText(availability.display_text) : monoValue(value, metadata.unit)}</p>
+    <p className="text-xl tnum text-teal font-semibold mt-2 whitespace-pre-wrap break-words">{notApplicable ? 'Not applicable' : totalLoss ? monoText(availability.display_text) : available ? monoValue(value, metadata.unit) : 'Unavailable'}</p>
     <p className="text-xs mt-1 text-slate/60">Unit: {monoText(metadata.unit)}</p>
     {notApplicable && <div className="mt-2 text-xs text-slate/70 space-y-1"><p>{monoText(applicability.reason)}</p><p>Rule: {monoText(applicability.rule_id)}</p></div>}
     {totalLoss && <p className="text-xs mt-2 text-warn">{monoText(availability.reason)}</p>}
-    {value === null && !notApplicable && !totalLoss && <p className="text-xs mt-2 text-warn">No numeric value returned.</p>}
+    {!available && !notApplicable && !totalLoss && <p className="text-xs mt-2 text-warn">No verified numeric value is available.</p>}
     <details className="mt-3"><summary className="text-xs cursor-pointer text-teal">Output evidence</summary><div className="mt-2"><Evidence value={{...metadata, displayed_value: value}} label={`Metadata for ${id}`} /></div></details>
   </div>;
 }
@@ -36,9 +41,10 @@ export function MonoIdentityDetails({ identity }: { identity: MonoIdentity }) {
 
 export function MonoResultView({ result, historical = false }: { result: MonoResult; historical?: boolean }) {
   const checks = asRecord(result.checks);
+  const released = checks.release_passed === true;
   return <div className="space-y-4">
-    <div className="flex flex-wrap gap-2 items-center"><Badge tone={historical ? 'taupe' : 'teal'}>{historical ? 'Historical result' : 'Validated current result'}</Badge><p className="text-xs text-slate/60 break-all">Result {result.result_id}</p></div>
-    <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3">{Object.entries(result.outputs).filter(([id]) => !id.startsWith('out_checks_')).map(([id, value]) => <Output key={id} id={id} value={value} metadata={result.output_metadata[id] ?? {}} />)}</div>
+    <div className="flex flex-wrap gap-2 items-center"><Badge tone={released && !historical ? 'teal' : 'taupe'}>{!released ? 'Release not verified' : historical ? 'Historical result' : 'Validated current result'}</Badge><p className="text-xs text-slate/60 break-all">Result {result.result_id}</p></div>
+    {released ? <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3">{Object.entries(result.outputs).filter(([id]) => !id.startsWith('out_checks_')).map(([id, value]) => <Output key={id} id={id} value={value} metadata={result.output_metadata[id] ?? {}} />)}</div> : <p className="text-sm text-warn">Financial outputs are withheld until release checks pass.</p>}
     {!Object.keys(result.outputs).length && <p className="text-sm text-warn">This result contains no outputs.</p>}
     <Details title="Release checks and caution rows" open={checks.release_passed !== true}>
       <p className="text-sm">{checks.release_passed === true ? 'The server verified release checks for this result.' : 'Release checks have not been verified as passing.'}</p>

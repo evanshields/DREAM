@@ -67,7 +67,7 @@ function AssumptionRow({ field, view, onSaved, onReread }: { field: MonoAssumpti
       <div className="min-w-0 flex-1">
         <div className="flex flex-wrap gap-2 items-center"><h4 className="font-semibold text-sm">{field.label || field.id}</h4><Badge tone={field.bucket === 'D' ? 'warn' : 'neutral'}>Bucket {field.bucket || 'Unknown'}</Badge></div>
         <p className="text-xs text-slate/50 mt-1 break-all">{field.id}</p>
-        <div className="mt-3 text-xl tnum font-semibold whitespace-pre-wrap break-words">{monoValue(field.value, field.unit)} <span className="text-xs font-normal text-slate/60">{field.unit === '%' ? 'Percent' : field.unit || 'Unit not recorded'}</span></div>
+        <div className="mt-3 text-xl tnum font-semibold whitespace-pre-wrap break-words">{monoValue(field.value, field.unit, field.edit_value)} <span className="text-xs font-normal text-slate/60">{field.unit === '%' ? 'Percent' : field.unit || 'Unit not recorded'}</span></div>
         {Object.prototype.hasOwnProperty.call(field.source ?? {}, 'initially_recorded_value') && <p className="text-xs text-slate/60 mt-1">Initially recorded: {monoValue(asRecord(field.source).initially_recorded_value, field.unit)}</p>}
       </div>
       {view.can_edit && !editing && <Button variant="secondary" onClick={start} aria-label={`Edit ${field.label || field.id}`}>Edit</Button>}

@@ -91,11 +91,19 @@ def normalize(entry, entered, unit):
         entered, currency = parse_mono_number(text, whole=unit in ('count', 'months', 'years'))
         if currency and not unit.startswith('$') and unit not in ('usd', 'usd_per_unit', 'usd_per_sf'):
             raise ValueError('Currency does not match this field')
-    if not isinstance(entered, (int, float)) or not math.isfinite(entered):
+    if not isinstance(entered, (int, float)) or (isinstance(entered, float) and not math.isfinite(entered)):
         raise ValueError('A finite numeric value is required')
-    if unit in ('count', 'months', 'years') and int(entered) != entered:
-        raise ValueError('A whole number is required in this unit')
-    if not safe_scalar(entered):
+    if unit in ('count', 'months', 'years'):
+        if isinstance(entered, float) and abs(entered) >= 2**53:
+            raise ValueError('Enter large whole numbers as exact text rather than a JSON float')
+        if int(entered) != entered:
+            raise ValueError('A whole number is required in this unit')
+        entered = int(entered)
+    try:
+        safe = safe_scalar(entered)
+    except (ValueError, TypeError, OverflowError) as exc:
+        raise ValueError('Unsafe workbook value') from exc
+    if not safe:
         raise ValueError('Unsafe workbook value')
     return entered
 
@@ -196,6 +204,12 @@ class RevisionBuilder:
         records = ledger['records']
         prior = [r for r in records if (r['deal_id'], r['assumption_id']) == (doc['slug'], field_id)]
         protected = a['source']['type'] == 'evan_override'
+        for previous in prior:
+            provenance = previous.get('provenance') or {}
+            principal = (provenance.get('event') or {}).get('actor') or {}
+            if (provenance.get('type') == 'evan_ruling' or
+                    principal.get('issuer', '') + '|' + principal.get('subject', '') in self.config.evan_principals):
+                protected = True
         if a['source']['type'] == 'authenticated_human_override':
             from tools.mono_calc.contracts import safe_file
             from tools.mono_calc.sources import locate
@@ -207,7 +221,7 @@ class RevisionBuilder:
             artifact = read(safe_file(source_root, source['path']))
             verified = resolve_ruling(ledger, doc, a, locate(artifact, claim['locator'], source['format']))
             original_actor = verified['provenance']['event']['actor']
-            protected = original_actor['issuer'] + '|' + original_actor['subject'] in self.config.evan_principals
+            protected = protected or original_actor['issuer'] + '|' + original_actor['subject'] in self.config.evan_principals
         if protected and actor['issuer'] + '|' + actor['subject'] not in self.config.evan_principals:
             raise PermissionError('Existing Evan rulings require Evan-specific supersession authority')
         event = {'format': 'dream-authenticated-decision-v1', 'decision_id': 'decision-' + uuid.uuid4().hex,
@@ -217,29 +231,34 @@ class RevisionBuilder:
                  'supersedes': prior[-1]['decision_id'] if prior else None}
         root = self.config.data_root / 'revisions' / (doc['slug'] + '-r' + str(event['revision']) + '-' + uuid.uuid4().hex)
         root.mkdir()
-        self._copy_sources(source_root, root, bundle)
-        event_path = 'model-inputs/decisions/' + event['decision_id'] + '.json'
-        write_new(root / event_path, event)
-        a.update(value=value, source={'type': 'authenticated_human_override', 'detail': reason}, changed_by=actor['subject'],
-                 changed_at=event['at'], bucket='B', supplied=True, applicability='applies')
-        a.pop('missing_reason', None)
-        doc['updated'] = event['at']
-        doc['history'].append({'id': field_id, 'old': event['old'], 'new': value, 'by': actor['subject'], 'at': event['at'], 'reason': reason})
-        if validate(doc):
-            raise ValueError('Edited deal does not satisfy the deal-file schema')
-        write_new(root / 'model-inputs/deal-file.json', doc)
-        source_id = event['decision_id']
-        bundle['sources'].append({'id': source_id, 'path': event_path, 'sha256': digest(root / event_path), 'format': 'json',
-                                  'as_of': event['at'][:10], 'extraction_version': 'dream-authenticated-decision-v1'})
-        bundle['claims'][field_id] = {'source_id': source_id, 'locator': {'pointer': ''}}
-        bundle['deal_revision'] = digest(root / 'model-inputs/deal-file.json')
-        write_new(root / 'model-inputs/source-bundle.json', bundle)
-        record = {'decision_id': event['decision_id'], 'deal_id': doc['slug'], 'assumption_id': field_id, 'value': value,
-                  'reason': reason, 'provenance': {'type': 'authenticated_decision', 'event': event, 'event_sha256': canonical_hash(event)}}
-        new_ledger = {'format': 'dream-trusted-rulings-v2', 'records': [r for r in records if r not in prior] + [record]}
-        ledger_path = self.config.data_root / 'trusted' / (uuid.uuid4().hex + '.json')
-        write_new(ledger_path, new_ledger)
-        trusted = {'path': str(ledger_path), 'sha256': digest(ledger_path)}
-        self.verify(current)
-        return {'deal_id': doc['slug'], 'revision': event['revision'], 'root': str(root), 'trusted_rulings': trusted,
-                'identity': self._identity(root, trusted), 'doc_snapshot': doc, 'bundle_snapshot': bundle, 'created_at': now()}, event
+        ledger_path = None
+        try:
+            self._copy_sources(source_root, root, bundle)
+            event_path = 'model-inputs/decisions/' + event['decision_id'] + '.json'
+            write_new(root / event_path, event)
+            a.update(value=value, source={'type': 'authenticated_human_override', 'detail': reason}, changed_by=actor['subject'],
+                     changed_at=event['at'], bucket='B', supplied=True, applicability='applies')
+            a.pop('missing_reason', None)
+            doc['updated'] = event['at']
+            doc['history'].append({'id': field_id, 'old': event['old'], 'new': value, 'by': actor['subject'], 'at': event['at'], 'reason': reason})
+            if validate(doc):
+                raise ValueError('Edited deal does not satisfy the deal-file schema')
+            write_new(root / 'model-inputs/deal-file.json', doc)
+            source_id = event['decision_id']
+            bundle['sources'].append({'id': source_id, 'path': event_path, 'sha256': digest(root / event_path), 'format': 'json',
+                                      'as_of': event['at'][:10], 'extraction_version': 'dream-authenticated-decision-v1'})
+            bundle['claims'][field_id] = {'source_id': source_id, 'locator': {'pointer': ''}}
+            bundle['deal_revision'] = digest(root / 'model-inputs/deal-file.json')
+            write_new(root / 'model-inputs/source-bundle.json', bundle)
+            record = {'decision_id': event['decision_id'], 'deal_id': doc['slug'], 'assumption_id': field_id, 'value': value,
+                      'reason': reason, 'provenance': {'type': 'authenticated_decision', 'event': event, 'event_sha256': canonical_hash(event)}}
+            new_ledger = {'format': 'dream-trusted-rulings-v2', 'records': [r for r in records if r not in prior] + [record]}
+            ledger_path = self.config.data_root / 'trusted' / (uuid.uuid4().hex + '.json')
+            write_new(ledger_path, new_ledger)
+            trusted = {'path': str(ledger_path), 'sha256': digest(ledger_path)}
+            self.verify(current)
+            return {'deal_id': doc['slug'], 'revision': event['revision'], 'root': str(root), 'trusted_rulings': trusted,
+                    'identity': self._identity(root, trusted), 'doc_snapshot': doc, 'bundle_snapshot': bundle, 'created_at': now()}, event
+        except Exception:
+            self.discard({'root': str(root), 'trusted_rulings': {'path': str(ledger_path)} if ledger_path else None})
+            raise

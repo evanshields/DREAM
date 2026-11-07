@@ -397,14 +397,15 @@ def parse_mono_number(text, *, whole=False):
             if sign:
                 raise bad
             sign, raw = raw[0], raw[1:].lstrip()
-    raw = raw.replace(',', '')
-    if not raw or raw[0] in ('+', '-', '$'):
+    import re
+    if not re.fullmatch(r'(?:[0-9]{1,3}(?:,[0-9]{3})+|[0-9]+)(?:\.[0-9]*)?|\.[0-9]+', raw):
         raise bad
+    raw = raw.replace(',', '')
     try:
         value = Decimal(raw)
         if sign == '-':
             value = -value
-        if not value.is_finite() or not math.isfinite(float(value)):
+        if not value.is_finite() or (not whole and not math.isfinite(float(value))):
             raise bad
     except (DecimalException, ValueError, OverflowError) as exc:
         raise bad from exc
