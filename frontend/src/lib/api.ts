@@ -44,7 +44,7 @@ export class ApiError extends Error {
   }
 }
 
-async function request<T>(
+export async function request<T>(
   path: string,
   opts: { method?: string; body?: unknown; signal?: AbortSignal; auth?: boolean } = {},
 ): Promise<T> {

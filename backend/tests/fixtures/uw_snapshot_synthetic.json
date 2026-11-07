@@ -1,0 +1,21 @@
+{
+  "_note": "SYNTHETIC. Invented property, not a real deal. The real shape must be confirmed by the UW Director.",
+  "property_name": "Fakeville Gardens (synthetic)",
+  "verdict": "PASS WITH CONDITIONS: synthetic example only",
+  "engine_version": "synthetic-engine-0.0.1",
+  "unit_mix": [
+    {"unit_type": "Studio", "units": 12, "safe_harbor_rent": 1050, "in_place_rent": 1075},
+    {"unit_type": "1BR", "units": 40, "safe_harbor_rent": 1280, "in_place_rent": 1310},
+    {"unit_type": "2BR", "units": 28, "safe_harbor_rent": 1590, "in_place_rent": 1540}
+  ],
+  "seller_t12": [
+    {"line": "Gross potential rent", "amount": 1250000},
+    {"line": "Vacancy and loss", "amount": -112500},
+    {"line": "Other income", "amount": 48000},
+    {"line": "Operating expenses", "amount": -610000}
+  ],
+  "seller_t12_noi": 575500,
+  "stabilized_gpr": 1198800,
+  "stabilized_noi": 541234,
+  "exempt_dscr": 1.37
+}

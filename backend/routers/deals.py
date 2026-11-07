@@ -62,6 +62,7 @@ from store import get_deal_store, DealStore, DealRecord, DealNotFound  # noqa: E
 from store import get_crm_store  # noqa: E402  (Phase 5 — deal-delete CRM link cascade)
 from jobs.contracts import JobRecord, RUNNING_STATUSES  # noqa: E402
 from jobs.job_store import get_job_store  # noqa: E402
+from uw_snapshot import build_uw_snapshot_view  # noqa: E402
 
 router = APIRouter(prefix="/api/deals", tags=["deals"])
 
@@ -167,6 +168,16 @@ def list_deals(
     if status is None and str(include_archived or "").strip().lower() not in ("1", "true", "yes", "on"):
         recs = [r for r in recs if r.status != "archived"]
     return [_deal_view(rec) for rec in recs]
+
+
+@router.get("/{deal_id}/uw-snapshot")
+def get_uw_snapshot(deal_id: str) -> Dict[str, Any]:
+    """Read-only UW Snapshot: spec.uw_snapshot passed through exactly as stored. Never computes a
+    metric. Blank state (numbers withheld) when the verdict starts INCOMPLETE or is unreadable.
+    404 on unknown deal_id."""
+    ds: DealStore = get_deal_store()
+    rec = _get_deal_or_404(ds, deal_id)
+    return build_uw_snapshot_view(rec.deal_id, rec.spec)
 
 
 @router.post("/{deal_id}/archive")

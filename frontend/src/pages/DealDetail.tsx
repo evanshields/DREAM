@@ -43,6 +43,7 @@ import { DealMemo } from '../components/DealMemo';
 import { DealTimeline } from '../components/DealTimeline';
 import { DealRail } from '../components/DealRail';
 import { DealExport } from '../components/DealExport';
+import { UwSnapshotPanel } from '../components/UwSnapshotPanel';
 import { fmtUSD, fmtPct1, fmtEM, prettyStatus, fmtDate } from '../lib/format';
 
 // Pull the EFB metric keys out of the generic per-deal headline_metrics bag.
@@ -360,6 +361,8 @@ export function DealDetail() {
           </p>
         </Card>
       )}
+
+      {id && <UwSnapshotPanel dealId={id} />}
 
       {/* Gate summary (only available from a fresh CP-1 job view) */}
       {gateSummary && <GateSummaryBlock gates={gateSummary} />}
