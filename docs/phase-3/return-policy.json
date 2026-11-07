@@ -1,0 +1,55 @@
+{
+  "scope": "Lead-verified saved-workbook return correction. Final registered API/browser proof and independent review remain open.",
+  "policy": "evan_acquisition_total_loss_2026_10_20",
+  "working_calculator_code_sha256": "89198421df409196607b89f2454f8b397555cdd799a6d284c84e5b3132ee71ac",
+  "code_identity_qualification": "Current working code pin for next integration proof. Historical receipts retain their own execution scope and are not relabeled as a final API run.",
+  "v9h_sha256": "6c06ffbb99104ce38caee93f921167ec29d19c4c57ae09302fd9643f9acbf2f3",
+  "v9e_sha256": "1a160a50c93754c6e995b08378190e6550e81f40f75232aa9c2d97c79eed7f1d",
+  "formula_changes": 3,
+  "constant_changes": 0,
+  "azalea_named_outputs_exact": true,
+  "approved_legacy_display_exceptions": 6,
+  "saved_loss_labels_verified": true,
+  "saved_genuine_zero_guards_verified": true,
+  "private_receipt_sha256": {
+    "v9h-proof-003/whole-workbook-integrity.json": "a0d773f49a07d37a3ecc0e8bbed352d0adb3d6da5ebda5056881cfa76f045770",
+    "v9h-proof-003/blank-proof.json": "99d72a8e98a5574be81c19809c2b9bae10ad0e838fd92f04ebafe77afc34d84b",
+    "v9h-proof-004/baseline-receipt.json": "9e975184266bb96491d0c88d5b32fc41779185fde26c2888f04e48ea58811abd",
+    "v9h-proof-004/verify-azalea-receipt.json": "ff9563d4608dbccc0759f9c434a845bdfebfa3f547a2191b3885059863231fbd",
+    "v9h-proof-004/verify-loss-002-receipt.json": "0cb9cd98a053eb979e36764ec8f7d5df18662fe8fcec9213cec75dffbfd46b4c",
+    "v9h-zero-guard-005/verify-receipt.json": "68dcfdfc06289e2a5c5512c3fdab1ca596366ee812d901d7b46b1a8836767d92",
+    "return-policy-002/proof.json": "a639f868cf72a72060f201f1823fa71c175444196294a9252102cec1987c48a8",
+    "v9h-proof-003/cleanup-receipt.json": "a800d3e5cdb96703fab9623b4e0c818a6ba29cb7fa28c2a9987b0f6d0bb248e0"
+  },
+  "tests": {
+    "calculator_portable": {
+      "tests": 283,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "receipt": "calculator-portable-return-002-junit.xml"
+    },
+    "calculator_core": {
+      "tests": 2396,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 4,
+      "receipt": "calculator-core-return-001-junit.xml"
+    },
+    "app_backend": {
+      "tests": 343,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 1,
+      "receipt": "backend-return-001-junit.xml"
+    }
+  },
+  "pending": [
+    "Final registered native API and browser proof on new code and template pins",
+    "Pure Bond and hybrid final capability and status proof renewal",
+    "Independent Opus review of corrections in allocated Phase4 pass",
+    "Complete September37millionEsplanade mapping and exact parity",
+    "Phase4 workbook presentation and legacy subject-comparable fixes"
+  ],
+  "python_port_status": "All five full financial blocks remain unported. Return-state classification is not a financial model port."
+}

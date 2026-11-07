@@ -1,0 +1,1 @@
+export { MonoDealScreen } from './MonoDealScreen';
